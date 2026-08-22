@@ -1,5 +1,5 @@
 # DynamicL
-
+# VIBE-CODED
 **Dynamicallyrics** — an iOS app that displays time-synced lyrics for the currently playing track.
 
 ## Status
