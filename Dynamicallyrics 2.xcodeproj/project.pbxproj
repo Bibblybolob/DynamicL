@@ -15,14 +15,12 @@
 		40A0B0C78A59D5DB0095EA16 /* DynamicallyricsWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED59A6EB0239CFEE501B720 /* DynamicallyricsWatchApp.swift */; };
 		41E75F449CD0E115B148C31B /* WatchSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */; };
 		4DF3E591080D9A5B3D596161 /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = 296591B01A360C90D2243D26 /* LyricCore */; };
-		509CA8E44116D294131083BA /* LockscreenLyricWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA9C09E856EEE455AB2BDA2 /* LockscreenLyricWidget.swift */; };
 		530892FFEE46655631678752 /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = 300EDE2C72D7FCE07BB47403 /* LyricCore */; };
 		5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = FA45FDB582EC9BF0DA3D2FA6 /* LyricWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5FCD62010B2F10AFD1A7D58C /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = AF60AF8D98914E3640F5A629 /* LyricCore */; };
 		625B2DA26815ACD8682200C1 /* SpotifyProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */; };
 		6BA9B5D148352AB7DB7C6225 /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6D06020DA8782B58A82158 /* LiveActivityController.swift */; };
 		6EFBE47C2CFBCF80E74F7A02 /* LyricWatchWidgets.appex in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 5A18BB359D3D54AC22AD1EAE /* LyricWatchWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		7371AE3A0691726F85BD5FEA /* TogglePlaybackIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */; };
 		7BB6E571255EC8ADD3980380 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7C09312579956357A942BA /* AppModel.swift */; };
 		7EA4E0314E51BF2BF517A7BB /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4083C7544C6C54C2403D22F /* RootView.swift */; };
 		889A78B2FB3264300662E034 /* WatchLyricStackWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2643CFE43083020E2CFD9165 /* WatchLyricStackWidget.swift */; };
@@ -66,10 +64,10 @@
 		0403791FF95A93A0A532C370 /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
+			dstPath = Watch;
+			dstSubfolderSpec = 1;
 			files = (
-				5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */,
+				2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */,
 			);
 			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -77,10 +75,10 @@
 		3012F4C2FC0A625E5024D521 /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = Watch;
-			dstSubfolderSpec = 1;
+			dstPath = "";
+			dstSubfolderSpec = 13;
 			files = (
-				2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */,
+				5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */,
 			);
 			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -108,9 +106,7 @@
 		28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsLiveActivity.swift; sourceTree = "<group>"; };
 		285A712482FFD81B7371D537 /* LyricWatchWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LyricWatchWidgets.entitlements; sourceTree = "<group>"; };
 		3965998A69F8220714B425AF /* Dynamicallyrics.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Dynamicallyrics.entitlements; sourceTree = "<group>"; };
-		3AA9C09E856EEE455AB2BDA2 /* LockscreenLyricWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockscreenLyricWidget.swift; sourceTree = "<group>"; };
 		3CB3540DB76B27C3ECCECAE0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TogglePlaybackIntent.swift; sourceTree = "<group>"; };
 		5A18BB359D3D54AC22AD1EAE /* LyricWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LyricWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A6D06020DA8782B58A82158 /* LiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityController.swift; sourceTree = "<group>"; };
 		5F1EC04D45E45C8C053F9496 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -242,10 +238,8 @@
 			isa = PBXGroup;
 			children = (
 				6C7BD9BC79688FAB1D1A127C /* CurrentLineWidget.swift */,
-				3AA9C09E856EEE455AB2BDA2 /* LockscreenLyricWidget.swift */,
 				28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */,
 				79C1698CFC6BA00171949EE2 /* LyricWidgetsBundle.swift */,
-				499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */,
 				2FBD9B6FCFAB3EEEBD048D90 /* Support */,
 			);
 			path = LyricWidgets;
@@ -402,19 +396,15 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					49F0B3C3FB31BE5A2F22EAEF = {
-						DevelopmentTeam = 3SPTDK38K5;
 						ProvisioningStyle = Automatic;
 					};
 					71D9183A94988F2EC670AFA4 = {
-						DevelopmentTeam = 3SPTDK38K5;
 						ProvisioningStyle = Automatic;
 					};
 					826F5A0AEE2DCE4288B51C96 = {
-						DevelopmentTeam = 3SPTDK38K5;
 						ProvisioningStyle = Automatic;
 					};
 					C5BAFE5F2C8D5903A21FC586 = {
-						DevelopmentTeam = 3SPTDK38K5;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -450,10 +440,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				93AEB6C4EC54A424D86A37A2 /* CurrentLineWidget.swift in Sources */,
-				509CA8E44116D294131083BA /* LockscreenLyricWidget.swift in Sources */,
 				34B015BC4285859894148EF7 /* LyricWidgetsBundle.swift in Sources */,
 				0BFE9F9A2D88A9FF686B6B0D /* LyricsLiveActivity.swift in Sources */,
-				7371AE3A0691726F85BD5FEA /* TogglePlaybackIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -668,7 +656,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 3SPTDK38K5;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -734,7 +721,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 3SPTDK38K5;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
