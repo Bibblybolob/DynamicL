@@ -29,6 +29,13 @@ targets:
         codeSign: true
         copy:
           destination: plugins
+      - target: DynamicallyricsWatch
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Watch
+    # (watch widget extension is embedded inside the watch app target below)
     info:
       path: DynamicallyricsApp/Support/Info.plist
       properties:
@@ -41,6 +48,12 @@ targets:
         NSAppleMusicUsageDescription: "Dynamicallyrics reads the currently playing track to show synced lyrics."
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.jonathantran.dynamicallyrics
+            CFBundleURLSchemes:
+              - dynamicallyrics
+        LSApplicationQueriesSchemes:
+          - spotify
     entitlements:
       path: DynamicallyricsApp/Support/Dynamicallyrics.entitlements
       properties:
@@ -75,6 +88,53 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.jonathantran.dynamicallyrics.widgets
         TARGETED_DEVICE_FAMILY: "1,2"
 
+  LyricWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: WatchWidgets
+    dependencies:
+      - package: LyricCore
+    info:
+      path: WatchWidgets/Support/Info.plist
+      properties:
+        CFBundleDisplayName: LyricWidgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: WatchWidgets/Support/LyricWatchWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.jonathantran.dynamicallyrics
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jonathantran.dynamicallyrics.watchkitapp.widgets
+        TARGETED_DEVICE_FAMILY: "4"
+
+  DynamicallyricsWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: WatchApp
+    dependencies:
+      - package: LyricCore
+      - target: LyricWatchWidgets
+        embed: true
+        codeSign: true
+        copy:
+          destination: plugins
+    info:
+      path: WatchApp/Support/Info.plist
+      properties:
+        CFBundleDisplayName: Dynamicallyrics
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.jonathantran.dynamicallyrics
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jonathantran.dynamicallyrics.watchkitapp
+        TARGETED_DEVICE_FAMILY: "4"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""
+
 schemes:
   Dynamicallyrics:
     build:
@@ -83,3 +143,11 @@ schemes:
         LyricWidgets: all
     run:
       config: Debug
+  DynamicallyricsWatch:
+    build:
+      targets:
+        DynamicallyricsWatch: all
+        LyricWatchWidgets: all
+    run:
+      config: Debug
+

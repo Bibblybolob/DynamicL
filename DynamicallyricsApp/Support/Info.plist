@@ -18,8 +18,23 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.jonathantran.dynamicallyrics</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dynamicallyrics</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>spotify</string>
+	</array>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Dynamicallyrics reads the currently playing track to show synced lyrics.</string>
 	<key>NSSupportsLiveActivities</key>

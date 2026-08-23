@@ -5,5 +5,7 @@ import SwiftUI
 struct LyricWidgetsBundle: WidgetBundle {
     var body: some Widget {
         CurrentLineWidget()
+        LockscreenLyricWidget()
+        LyricsLiveActivity()
     }
 }
