@@ -145,10 +145,15 @@ final class AppModel {
         }
     }
 
+    private var tickCount = 0
+
     private func tick() {
-        // Heartbeat: proves whether the process is alive & polling while
-        // backgrounded/locked. Gaps in timestamps = iOS suspended us.
-        DiagnosticsLog.append("tick pos=\(String(format: "%.1f", lyrics.displayPosition)) doc=\(lyrics.document != nil) state=\(status.map { "\($0.state)" } ?? "nil") la=\(liveActivity.isRunning)")
+        // Heartbeat (throttled to ~5s): proves whether the process is alive &
+        // polling while backgrounded/locked. Gaps in timestamps = suspended.
+        tickCount += 1
+        if tickCount % 20 == 0 {
+            DiagnosticsLog.append("tick pos=\(String(format: "%.1f", lyrics.displayPosition)) doc=\(lyrics.document != nil) state=\(status.map { "\($0.state)" } ?? "nil") la=\(liveActivity.isRunning)")
+        }
         if let provider {
             if provider.signature != signature {
                 signature = provider.signature
