@@ -358,7 +358,12 @@ final class AppModel {
         // so ending it here would kill lock-screen lyrics until the app is
         // reopened. Only stopped/paused-timeout paths end it.
         guard let document = lyrics.document else {
-            if liveActivity.isRunning {
+            // Update the placeholder AT MOST once per state change — calling
+            // update() every tick (4/s) trips ActivityKit's rate limiter and
+            // gets the activity's updates parked by the system.
+            let placeholderKey = "\(signature.title)|\(lyrics.isAwaitingLyrics)"
+            if liveActivity.isRunning, placeholderKey != lastLAPlaceholderKey {
+                lastLAPlaceholderKey = placeholderKey
                 liveActivity.update(state: .init(
                     trackTitle: signature.title,
                     artistName: signature.artist,
@@ -380,6 +385,8 @@ final class AppModel {
             liveActivity.update(state: contentState(document: document))
         }
     }
+
+    @ObservationIgnored private var lastLAPlaceholderKey: String?
 
     private func contentState(document: LyricsDocument) -> LyricsActivityAttributes.ContentState {
         let index = lyrics.currentIndex
