@@ -24,9 +24,23 @@ final class SpotifyProvider {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.poll()
-                try? await Task.sleep(for: .seconds(3))
+                // During a suspected track transition the API serves stale data
+                // for a while; poll faster to catch the change ASAP.
+                let interval = self?.usesRapidProbe == true ? 0.7 : 3.0
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
+    }
+
+    private(set) var usesRapidProbe = false
+    private var rapidProbesLeft = 0
+    private var lastAppliedItemName: String?
+
+    private func beginRapidProbe(staleItem: String?) {
+        guard rapidProbesLeft == 0 else { return }
+        rapidProbesLeft = 25
+        usesRapidProbe = true
+        DiagnosticsLog.append("rapid probe: api reports paused \(staleItem ?? "?") after playing")
     }
 
     func stop() {
@@ -45,6 +59,10 @@ final class SpotifyProvider {
                 lastPollSummary = state.device?.name.map { "playing on \($0)" } ?? "no device info"
                 DiagnosticsLog.append("poll: item=\(state.item?.name ?? "nil") playing=\(state.isPlaying) pos=\(state.progressMs ?? -1)")
                 lastError = nil
+                if rapidProbesLeft > 0 {
+                    rapidProbesLeft -= 1
+                    if rapidProbesLeft == 0 { usesRapidProbe = false }
+                }
             case 204:
                 status = PlaybackStatus(state: .stopped, position: 0)
                 lastPollSummary = "no active Spotify device (204)"
@@ -88,6 +106,14 @@ final class SpotifyProvider {
     }
 
     private func apply(_ state: SpotifyPlayerState) {
+        let wasPlaying = status?.state == .playing
+        let itemName = state.item?.name
+        // Old track flips to "paused" right after it was playing → classic
+        // stale-API skip transition; probe fast until real state arrives.
+        if wasPlaying, state.isPlaying == false, let itemName, itemName == lastAppliedItemName {
+            beginRapidProbe(staleItem: itemName)
+        }
+        lastAppliedItemName = itemName
         signature = state.signature ?? signature
         status = state.status
     }

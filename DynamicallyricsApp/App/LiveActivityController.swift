@@ -70,7 +70,12 @@ final class LiveActivityController {
         nonisolated(unsafe) let ref = activity
         nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: nil)
         Task { @MainActor in
-            try? await ref.update(content)
+            do {
+                try await ref.update(content)
+            } catch {
+                Self.log.error("LA update failed: \(error.localizedDescription)")
+                DiagnosticsLog.append("LA update failed: \(error.localizedDescription)")
+            }
         }
     }
 
