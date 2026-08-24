@@ -185,6 +185,28 @@ final class AppModel {
     }
 
     private func syncWidgetSnapshot() {
+        // Track changed but the new song's lyrics haven't loaded yet: publish an
+        // interim snapshot for the NEW track so widgets don't keep rendering the
+        // previous song's timeline until WidgetKit's reload budget allows an
+        // update. The full snapshot with scheduled lines follows once lyrics land.
+        if let signature, status?.state == .playing,
+           lyrics.document == nil || lyrics.document?.track != signature {
+            let key = "interim|\(signature.title)|\(signature.artist)"
+            guard key != lastPublishedWidgetKey else { return }
+            lastPublishedWidgetKey = key
+            widgetIdlePublished = false
+            SharedNowPlaying.save(
+                WidgetLyricSnapshot(
+                    trackTitle: signature.title,
+                    artistName: signature.artist,
+                    currentLine: lyrics.isLoading ? "Loading lyrics…" : "♪",
+                    isPlaying: true
+                )
+            )
+            reloadWidgetTimelines()
+            return
+        }
+
         switch status?.state {
         case .stopped, .none:
             clearWidgetSnapshot()
@@ -311,10 +333,26 @@ final class AppModel {
             return
         }
 
-        // ActivityKit attributes (trackTitle/artistName) are immutable per activity,
-        // so a track change requires ending and restarting: start() does exactly
-        // that when the track key differs from the running activity's key.
-        if !liveActivity.isRunning || liveActivity.currentTrackKey != LiveActivityController.trackKey(for: signature) {
+        // Track changed: end the previous track's activity this tick and start
+        // the new one on a later tick, once ActivityKit finished the teardown.
+        // Ending and immediately requesting in the same tick races the
+        // teardown and the new activity can be silently dropped.
+        if liveActivity.isRunning,
+           liveActivity.currentTrackKey != LiveActivityController.trackKey(for: signature) {
+            liveActivity.end()
+            lastLineIndex = nil
+            return
+        }
+
+        guard let document = lyrics.document else {
+            // No lyrics yet (loading, failed, or none exist). Keep a running
+            // activity for this same track alive — it updates when lyrics
+            // arrive. Only end it when loading finished without a document.
+            if !lyrics.isLoading, liveActivity.isRunning { liveActivity.end() }
+            return
+        }
+
+        if !liveActivity.isRunning {
             liveActivity.start(track: signature, state: contentState(document: document))
             lastLineIndex = lyrics.currentIndex
             return
