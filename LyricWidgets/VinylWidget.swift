@@ -1,9 +1,11 @@
 import WidgetKit
 import SwiftUI
+import UIKit
 import LyricCore
 
-/// Lock-screen circular widget: spinning vinyl record with the album cover as
-/// its label. Spins while music plays; static (with a pause glyph) when paused.
+/// Lock-screen circular widget: vinyl record with the album cover as its label.
+/// Spins while music plays via timeline-driven rotation (WidgetKit cannot run
+/// infinite SwiftUI animations — motion must come from successive entries).
 struct VinylWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "VinylWidget", provider: VinylProvider()) { entry in
@@ -18,125 +20,148 @@ struct VinylWidget: Widget {
 
 struct VinylEntry: TimelineEntry {
     let date: Date
-    let trackTitle: String
-    let artistName: String
-    let albumImageURL: String?
+    let rotation: Double
+    let imageData: Data?
     let isPlaying: Bool
 
-    static let idle = VinylEntry(
-        date: .now,
-        trackTitle: "No music",
-        artistName: "",
-        albumImageURL: nil,
-        isPlaying: false
-    )
+    static let idle = VinylEntry(date: .now, rotation: 0, imageData: nil, isPlaying: false)
+}
+
+/// WidgetKit completions aren't Sendable; box them so the async provider can
+/// hand results back from inside a Task (called exactly once).
+private final class CompletionBox<T> : @unchecked Sendable {
+    let apply: (T) -> Void
+    init(_ apply: @escaping (T) -> Void) { self.apply = apply }
 }
 
 struct VinylProvider: TimelineProvider {
     func placeholder(in context: Context) -> VinylEntry { .idle }
 
     func getSnapshot(in context: Context, completion: @escaping (VinylEntry) -> Void) {
-        completion(currentEntry() ?? .idle)
+        let box = CompletionBox(completion)
+        Task { box.apply(await currentEntry() ?? .idle) }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<VinylEntry>) -> Void) {
-        completion(Timeline(entries: [currentEntry() ?? .idle], policy: .after(.now.addingTimeInterval(600))))
+        let box = CompletionBox(completion)
+        Task { box.apply(await buildTimeline()) }
     }
 
-    private func currentEntry() -> VinylEntry? {
-        guard let s = SharedNowPlaying.load() else { return nil }
+    private func buildTimeline() async -> Timeline<VinylEntry> {
+        guard let snapshot = SharedNowPlaying.load(),
+              let base = await entry(from: snapshot, rotation: 0) else {
+            return Timeline(entries: [.idle], policy: .after(.now.addingTimeInterval(600)))
+        }
+
+        // Paused / stopped: single static entry.
+        guard base.isPlaying else {
+            return Timeline(entries: [base], policy: .after(.now.addingTimeInterval(300)))
+        }
+
+        // Playing: 20° every 0.3s (one revolution ≈ 5.4s), ~200 entries ≈
+        // 60s of motion per reload.
+        var entries: [VinylEntry] = []
+        entries.reserveCapacity(200)
+        let start = Date.now
+        for step in 0..<200 {
+            if let e = await entry(from: snapshot, rotation: Double(step) * 20,
+                                   date: start.addingTimeInterval(Double(step) * 0.3)) {
+                entries.append(e)
+            }
+        }
+        let refreshAt = (entries.last?.date ?? .now).addingTimeInterval(1)
+        return Timeline(entries: entries.isEmpty ? [base] : entries, policy: .after(refreshAt))
+    }
+
+    private func currentEntry() async -> VinylEntry? {
+        guard let snapshot = SharedNowPlaying.load() else { return nil }
+        return await entry(from: snapshot, rotation: 0)
+    }
+
+    private func entry(from snapshot: WidgetLyricSnapshot, rotation: Double, date: Date = .now) async -> VinylEntry? {
+        let data = await Self.artData(for: snapshot.albumImageURL)
         return VinylEntry(
-            date: .now,
-            trackTitle: s.trackTitle,
-            artistName: s.artistName,
-            albumImageURL: s.albumImageURL,
-            isPlaying: effectiveIsPlaying(s)
+            date: date,
+            rotation: rotation,
+            imageData: data,
+            isPlaying: effectiveIsPlaying(snapshot)
         )
     }
-}
 
-/// Rotates continuously while playing using a repeating linear animation.
-/// WidgetKit renders this fine inside accessory widgets on iOS 17+.
-struct SpinEffect: ViewModifier {
-    let isPlaying: Bool
+    /// Album art bytes, cached in the app-group defaults per URL so each spin
+    /// timeline fetches at most once per album.
+    private static func artData(for urlString: String?) async -> Data? {
+        guard let urlString, let url = URL(string: urlString) else { return nil }
+        let defaults = UserDefaults(suiteName: SharedNowPlaying.appGroupID)
+        let key = "artCache|\(urlString)"
+        if let cached = defaults?.data(forKey: key) { return cached }
 
-    func body(content: Content) -> some View {
-        if isPlaying {
-            content
-                .rotationEffect(.zero)
-                .modifier(ContinuousRotation())
-        } else {
-            content
+        guard let (data, response) = try? await URLSession.shared.data(from: url),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let image = UIImage(data: data) else { return nil }
+
+        let maxDim: CGFloat = 128
+        let scale = min(1, maxDim / max(image.size.width, image.size.height))
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let small = UIGraphicsImageRenderer(size: size).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
         }
-    }
-}
-
-struct ContinuousRotation: ViewModifier {
-    @State private var angle: Double = 0
-
-    func body(content: Content) -> some View {
-        content
-            .rotationEffect(.degrees(angle))
-            .onAppear {
-                withAnimation(.linear(duration: 3.0).repeatForever(autoreverses: false)) {
-                    angle = 360
-                }
-            }
+        let payload = small.jpegData(compressionQuality: 0.85)
+        if let payload { defaults?.set(payload, forKey: key) }
+        return payload
     }
 }
 
 struct VinylWidgetView: View {
-    @Environment(\.widgetFamily) private var family
     let entry: VinylEntry
 
     var body: some View {
         ZStack {
             AccessoryWidgetBackground()
 
-            if let urlString = entry.albumImageURL, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        defaultLabel
-                    }
-                }
-                .frame(width: 44, height: 44)
-                .clipShape(Circle())
-                .overlay(
-                    Circle().stroke(Color.black.opacity(0.55), lineWidth: 3)
-                )
-                .modifier(SpinEffect(isPlaying: entry.isPlaying))
+            if let data = entry.imageData, let image = UIImage(data: data) {
+                disc(image: image)
             } else {
-                defaultLabel
+                ZStack {
+                    groovedRecord
+                    Image(systemName: entry.isPlaying ? "music.quarternote.3" : "pause.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.85))
+                }
             }
         }
         .containerBackground(for: .widget) { Color.clear }
     }
 
-    /// Record-groove look used while art loads or nothing is playing.
-    private var defaultLabel: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [.black.opacity(0.85), Color(white: 0.15)],
-                        center: .center,
-                        startRadius: 2,
-                        endRadius: 26
-                    )
+    private func disc(image: UIImage) -> some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: 44, height: 44)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.black.opacity(0.65), lineWidth: 4))
+            .overlay(
+                Circle().fill(Color.black.opacity(0.9)).frame(width: 6, height: 6)
+            )
+            .rotationEffect(.degrees(entry.isPlaying ? entry.rotation : 0))
+    }
+
+    /// Fallback record look before any art has loaded.
+    private var groovedRecord: some View {
+        Circle()
+            .fill(
+                RadialGradient(
+                    colors: [Color(white: 0.08), Color(white: 0.22)],
+                    center: .center,
+                    startRadius: 4,
+                    endRadius: 26
                 )
-            Image(systemName: entry.isPlaying ? "music.quarternote.3" : "pause.fill")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.8))
-        }
+            )
     }
 }
 
 #Preview(as: .accessoryCircular) {
     VinylWidget()
 } timeline: {
-    VinylEntry(date: .now, trackTitle: "Song", artistName: "Artist", albumImageURL: nil, isPlaying: true)
+    VinylEntry(date: .now, rotation: 0, imageData: nil, isPlaying: true)
 }
