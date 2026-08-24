@@ -13,6 +13,10 @@ final class LyricsService {
     private(set) var displayPosition: TimeInterval = 0
     /// Human-readable reason the current track has no lyrics (nil when fine).
     private(set) var lookupStatus: String?
+    /// True while a fetch is in flight OR a retry is scheduled — i.e. lyrics
+    /// may still arrive for this track. Distinct from isLoading so callers can
+    /// avoid treating a retrying lookup as a final "no lyrics".
+    private(set) var isAwaitingLyrics = false
 
     var userOffset: TimeInterval {
         get { engine.userOffset }
@@ -40,6 +44,7 @@ final class LyricsService {
         // failed, or a fresh load) or it stays wedged true forever.
         isLoading = false
         lookupStatus = nil
+        isAwaitingLyrics = false
 
         guard let signature else {
             apply(nil)
@@ -59,6 +64,7 @@ final class LyricsService {
         }
 
         isLoading = true
+        isAwaitingLyrics = true
         loadTask = Task { [weak self] in
             await self?.loadAndApply(signature)
         }
@@ -121,6 +127,7 @@ final class LyricsService {
         // reset isLoading so an in-flight fetch can't leave it wedged true.
         isLoading = false
         lookupStatus = nil
+        isAwaitingLyrics = false
         currentSignature = doc.track
         apply(doc)
     }

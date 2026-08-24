@@ -343,11 +343,19 @@ final class AppModel {
 
         // One activity for the whole session: song changes are plain updates
         // (track info is part of ContentState), which work from the background.
+        // NOTE: never end the activity just because lyrics are momentarily
+        // unavailable — starting a new one is impossible from the background,
+        // so ending it here would kill lock-screen lyrics until the app is
+        // reopened. Only stopped/paused-timeout paths end it.
         guard let document = lyrics.document else {
-            // No lyrics yet (loading, failed, or none exist). Keep a running
-            // activity alive — it updates when lyrics arrive. Only end it when
-            // loading finished without a document.
-            if !lyrics.isLoading, liveActivity.isRunning { liveActivity.end() }
+            if liveActivity.isRunning {
+                liveActivity.update(state: .init(
+                    trackTitle: signature.title,
+                    artistName: signature.artist,
+                    currentLine: lyrics.isAwaitingLyrics ? "Finding lyrics…" : "No lyrics for this track",
+                    isPlaying: status?.state == .playing
+                ))
+            }
             return
         }
 
