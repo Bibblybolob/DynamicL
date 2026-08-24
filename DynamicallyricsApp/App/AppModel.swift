@@ -84,6 +84,7 @@ final class AppModel {
     }
 
     func handleScenePhase(_ phase: ScenePhase) {
+        scenePhase = phase
         switch phase {
         case .active:
             if auth.isConnected { startPolling() }
@@ -349,17 +350,10 @@ final class AppModel {
             if liveActivity.isRunning { liveActivity.end() }
             return
         }
-        guard let document = lyrics.document else {
-            if !lyrics.isLoading, liveActivity.isRunning { liveActivity.end() }
-            return
-        }
-
-        // One activity for the whole session: song changes are plain updates
-        // (track info is part of ContentState), which work from the background.
         // NOTE: never end the activity just because lyrics are momentarily
         // unavailable — starting a new one is impossible from the background,
         // so ending it here would kill lock-screen lyrics until the app is
-        // reopened. Only stopped/paused-timeout paths end it.
+        // reopened (this exact bug shipped once; see placeholder path below).
         guard let document = lyrics.document else {
             // Update the placeholder AT MOST once per state change — calling
             // update() every tick (4/s) trips ActivityKit's rate limiter and
@@ -378,6 +372,9 @@ final class AppModel {
         }
 
         if !liveActivity.isRunning {
+            // Foreground only — ActivityKit forbids starting from the
+            // background, and a doomed request wastes nothing but logs noise.
+            guard scenePhase == .active else { return }
             liveActivity.start(state: contentState(document: document))
             lastLineIndex = lyrics.currentIndex
             return
@@ -400,6 +397,7 @@ final class AppModel {
     }
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
+    private var scenePhase: ScenePhase = .inactive
     @ObservationIgnored private var lastLASentIsPlaying = false
     @ObservationIgnored private var lastLASentTrack: String?
 
