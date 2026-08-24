@@ -21,6 +21,7 @@
 		530892FFEE46655631678752 /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = 300EDE2C72D7FCE07BB47403 /* LyricCore */; };
 		5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = FA45FDB582EC9BF0DA3D2FA6 /* LyricWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5FCD62010B2F10AFD1A7D58C /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = AF60AF8D98914E3640F5A629 /* LyricCore */; };
+		62483A38BD32B3E49DA53896 /* VinylWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD540050018CAB1FC2EF880F /* VinylWidget.swift */; };
 		625B2DA26815ACD8682200C1 /* SpotifyProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */; };
 		6BA9B5D148352AB7DB7C6225 /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6D06020DA8782B58A82158 /* LiveActivityController.swift */; };
 		6EFBE47C2CFBCF80E74F7A02 /* LyricWatchWidgets.appex in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 5A18BB359D3D54AC22AD1EAE /* LyricWatchWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -68,10 +69,10 @@
 		0403791FF95A93A0A532C370 /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = Watch;
-			dstSubfolderSpec = 1;
+			dstPath = "";
+			dstSubfolderSpec = 13;
 			files = (
-				2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */,
+				5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */,
 			);
 			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -79,10 +80,10 @@
 		3012F4C2FC0A625E5024D521 /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
+			dstPath = Watch;
+			dstSubfolderSpec = 1;
 			files = (
-				5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */,
+				2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */,
 			);
 			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -132,6 +133,7 @@
 		B1184F3BE09CFF70813F92CC /* LyricCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LyricCore; path = Packages/LyricCore; sourceTree = SOURCE_ROOT; };
 		B4083C7544C6C54C2403D22F /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		C1BBBCD17E2B33ABAAEBC64A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CD540050018CAB1FC2EF880F /* VinylWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VinylWidget.swift; sourceTree = "<group>"; };
 		CF751E96C7E275470CF7A478 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLog.swift; sourceTree = "<group>"; };
 		F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyProvider.swift; sourceTree = "<group>"; };
@@ -252,6 +254,7 @@
 				28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */,
 				79C1698CFC6BA00171949EE2 /* LyricWidgetsBundle.swift */,
 				499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */,
+				CD540050018CAB1FC2EF880F /* VinylWidget.swift */,
 				2FBD9B6FCFAB3EEEBD048D90 /* Support */,
 			);
 			path = LyricWidgets;
@@ -472,6 +475,7 @@
 				34B015BC4285859894148EF7 /* LyricWidgetsBundle.swift in Sources */,
 				0BFE9F9A2D88A9FF686B6B0D /* LyricsLiveActivity.swift in Sources */,
 				7371AE3A0691726F85BD5FEA /* TogglePlaybackIntent.swift in Sources */,
+				62483A38BD32B3E49DA53896 /* VinylWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
