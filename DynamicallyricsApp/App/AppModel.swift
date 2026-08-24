@@ -266,8 +266,18 @@ final class AppModel {
                 scheduledLines: scheduled
             )
         )
-        reloadWidgetTimelines()
+        // Reload WidgetKit ONLY on meaningful changes (track, lyrics arriving,
+        // play state). The daily reload budget cannot sustain per-line reloads;
+        // between reloads the widget steps through its precomputed timeline
+        // locally without talking to us.
+        let reloadKey = "\(signature.title)|\(signature.artist)|\(isPlaying)|\(scheduled.isEmpty ? "nosched" : "sched")"
+        if reloadKey != lastReloadedWidgetKey {
+            lastReloadedWidgetKey = reloadKey
+            reloadWidgetTimelines()
+        }
     }
+
+    @ObservationIgnored private var lastReloadedWidgetKey: String?
 
     private func reloadWidgetTimelines() {
         WidgetCenter.shared.reloadTimelines(ofKind: "CurrentLineWidget")
@@ -382,7 +392,7 @@ final class AppModel {
         if lineChanged || playChanged || trackChanged {
             let now = Date.now
             let urgent = playChanged || trackChanged
-            if urgent || now.timeIntervalSince(lastLASentAt ?? .distantPast) >= 6 {
+            if urgent || now.timeIntervalSince(lastLASentAt ?? .distantPast) >= 10 {
                 liveActivity.update(state: targetState)
                 lastLASentAt = now
                 lastLineIndex = lyrics.currentIndex
