@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF2D78"/>
+      <stop offset="100%" stop-color="#7B2DFF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="55%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#glow)"/>
+
+  <!-- quarter note -->
+  <g fill="#ffffff">
+    <rect x="648" y="150" width="38" height="215" rx="19"/>
+    <ellipse cx="585" cy="345" rx="98" ry="74" transform="rotate(-18 585 345)"/>
+  </g>
+
+  <!-- lyric lines: past, current, next -->
+  <rect x="150" y="560" width="480" height="54" rx="27" fill="#ffffff" opacity="0.45"/>
+  <rect x="150" y="668" width="640" height="76" rx="38" fill="#ffffff"/>
+  <rect x="150" y="798" width="380" height="54" rx="27" fill="#ffffff" opacity="0.45"/>
+</svg>

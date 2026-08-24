@@ -8,6 +8,7 @@ final class SpotifyProvider {
     private(set) var signature: TrackSignature?
     private(set) var status: PlaybackStatus?
     private(set) var lastError: String?
+    private(set) var lastPollSummary: String?
     private(set) var isPolling = false
 
     private let auth: SpotifyAuthManager
@@ -39,10 +40,13 @@ final class SpotifyProvider {
             let (data, http) = try await requestPlayerState()
             switch http.statusCode {
             case 200:
-                apply(try JSONDecoder().decode(SpotifyPlayerState.self, from: data))
+                let state = try JSONDecoder().decode(SpotifyPlayerState.self, from: data)
+                apply(state)
+                lastPollSummary = state.device?.name.map { "playing on \($0)" } ?? "no device info"
                 lastError = nil
             case 204:
                 status = PlaybackStatus(state: .stopped, position: 0)
+                lastPollSummary = "no active Spotify device (204)"
                 lastError = nil
             case 429:
                 let retryAfter = TimeInterval(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 30

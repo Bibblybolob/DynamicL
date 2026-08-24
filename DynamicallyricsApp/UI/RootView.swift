@@ -98,7 +98,7 @@ struct RootView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.auth.isConnected ? "Connected to Spotify" : "Not connected")
                         .font(.subheadline.weight(.semibold))
-                    Text(model.provider?.lastError ?? (model.auth.isConnected ? "Listening for playback…" : "Sign in to see live lyrics"))
+                    Text(model.provider?.lastError ?? model.provider?.lastPollSummary ?? (model.auth.isConnected ? "Listening for playback…" : "Sign in to see live lyrics"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -211,6 +211,13 @@ struct RootView: View {
                     .foregroundStyle(.tertiary)
                 Text("Play something on Spotify")
                     .foregroundStyle(.secondary)
+                if let status = model.lyrics.lookupStatus {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
             } else if model.lyrics.document == nil {
                 Image(systemName: "waveform")
                     .font(.system(size: 48))

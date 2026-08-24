@@ -21,6 +21,30 @@ final class LRCLIBParsingTests: XCTestCase {
         XCTAssertFalse(result.instrumental)
     }
 
+    /// LRCLIB switched its live API to camelCase keys (Aug 2026); the app must
+    /// decode both shapes. Regression test against a real captured response.
+    func testDecodesCamelCaseLRCLibResponse() throws {
+        let json = """
+        {
+          "id": 32917007,
+          "name": "Living Room",
+          "trackName": "Living Room",
+          "artistName": "Not for Radio",
+          "albumName": "Bloom",
+          "duration": 258.0,
+          "instrumental": false,
+          "plainLyrics": "One, two\\nSomewhere in my living room",
+          "syncedLyrics": "[00:12.50]One, two\\n[00:15.00]Somewhere in my living room",
+          "lyricsfile": "https://lrclib.net/lyrics/32917007.lrc"
+        }
+        """
+        let result = try JSONDecoder().decode(LRCLibResult.self, from: Data(json.utf8))
+        XCTAssertEqual(result.trackName, "Living Room")
+        XCTAssertEqual(result.artistName, "Not for Radio")
+        XCTAssertEqual(result.duration, 258.0)
+        XCTAssertEqual(result.syncedLyrics?.contains("[00:12.50]"), true)
+    }
+
     func testDocumentFromSyncedResult() throws {
         let result = LRCLibResult(
             id: 1,
