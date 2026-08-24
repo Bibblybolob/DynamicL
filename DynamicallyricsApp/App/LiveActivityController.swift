@@ -32,19 +32,31 @@ final class LiveActivityController {
             return
         }
 
-        // End any activities left over from previous sessions/installs —
-        // they survive process restarts and otherwise pile up frozen on the
-        // Lock Screen forever.
+        // Adopt an activity left over from a previous session/relaunch when
+        // possible: updating works from the background, creating doesn't. Any
+        // OTHER leftovers get ended so they don't pile up frozen.
+        var adopted = false
         let orphans = Activity<LyricsActivityAttributes>.activities
-        if !orphans.isEmpty {
-            Self.log.info("ending \(orphans.count) orphaned activity(ies)")
-            DiagnosticsLog.append("ending \(orphans.count) orphaned live activity(ies)")
-            for orphan in orphans {
+        for orphan in orphans {
+            if !adopted {
+                nonisolated(unsafe) let found = orphan
+                activity = found
+                isRunning = true
+                adopted = true
+                Self.log.info("adopted existing live activity")
+                DiagnosticsLog.append("adopted existing live activity")
+            } else {
                 nonisolated(unsafe) let stale = orphan
                 Task { await stale.end(dismissalPolicy: .immediate) }
             }
         }
+        if adopted {
+            update(state: state)
+            return
+        }
 
+        // Creating a brand-new activity is foreground-only on iOS; skip
+        // quietly in the background (next foreground tick will retry).
         let attributes = LyricsActivityAttributes()
         do {
             activity = try Activity.request(

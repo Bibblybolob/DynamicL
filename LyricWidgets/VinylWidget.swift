@@ -58,15 +58,14 @@ struct VinylProvider: TimelineProvider {
             return Timeline(entries: [base], policy: .after(.now.addingTimeInterval(300)))
         }
 
-        // Playing: 8° every 0.15s (one revolution ≈ 6.75s) — fine enough that
-        // WidgetKit's entry-stepping reads as constant rotation. ~400 entries
-        // ≈ 60s of motion per reload.
+        // Playing: 6° every 0.25s (one revolution ≈ 15s) — slow, constant,
+        // few visible steps. ~240 entries ≈ 60s of motion per reload.
         var entries: [VinylEntry] = []
-        entries.reserveCapacity(400)
+        entries.reserveCapacity(240)
         let start = Date.now
-        for step in 0..<400 {
-            if let e = await entry(from: snapshot, rotation: Double(step) * 8,
-                                   date: start.addingTimeInterval(Double(step) * 0.15)) {
+        for step in 0..<240 {
+            if let e = await entry(from: snapshot, rotation: Double(step) * 6,
+                                   date: start.addingTimeInterval(Double(step) * 0.25)) {
                 entries.append(e)
             }
         }
