@@ -380,16 +380,21 @@ final class AppModel {
             return
         }
 
-        // Update cadence: every line change goes out immediately. ActivityKit
-        // may still delay delivery in the background; we add no queueing of
-        // our own.
+        // Update cadence: track changes and play/pause go out immediately;
+        // line updates at most every 4s. Every update spends from the same
+        // small ActivityKit background budget — spending it all on per-line
+        // refresh is exactly what made track changes render ~10s late.
         let targetState = contentState(document: document)
         let trackKey = "\(targetState.trackTitle)|\(document.lines.count)"
         let trackChanged = trackKey != lastLASentTrack
         let lineChanged = lyrics.currentIndex != lastLineIndex
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
-        if lineChanged || playChanged || trackChanged {
+        let now = Date.now
+        let urgent = trackChanged || playChanged
+        let cooledDown = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast) >= 4
+        if urgent || (lineChanged && cooledDown) {
             liveActivity.update(state: targetState)
+            lastLAUpdateAt = now
             lastLineIndex = lyrics.currentIndex
             lastLASentIsPlaying = targetState.isPlaying
             lastLASentTrack = trackKey
@@ -397,6 +402,7 @@ final class AppModel {
     }
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
+    @ObservationIgnored private var lastLAUpdateAt: Date?
     private var scenePhase: ScenePhase = .inactive
     @ObservationIgnored private var lastLASentIsPlaying = false
     @ObservationIgnored private var lastLASentTrack: String?
