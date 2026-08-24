@@ -266,8 +266,18 @@ final class AppModel {
                 scheduledLines: scheduled
             )
         )
-        reloadWidgetTimelines()
+        // Reload WidgetKit only on meaningful changes (track, lyrics arriving,
+        // play state). Per-line reloads would exhaust WidgetKit's tiny daily
+        // reload budget within one song and freeze all widgets afterwards;
+        // line-stepping is handled by the precomputed timeline on-device.
+        let reloadKey = "\(signature.title)|\(signature.artist)|\(document.lines.count)|\(isPlaying)"
+        if reloadKey != lastReloadedWidgetKey {
+            lastReloadedWidgetKey = reloadKey
+            reloadWidgetTimelines()
+        }
     }
+
+    @ObservationIgnored private var lastReloadedWidgetKey: String?
 
     private func reloadWidgetTimelines() {
         WidgetCenter.shared.reloadTimelines(ofKind: "CurrentLineWidget")
