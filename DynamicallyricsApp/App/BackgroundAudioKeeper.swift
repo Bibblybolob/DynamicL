@@ -25,6 +25,8 @@ final class BackgroundAudioKeeper {
             player?.volume = 0.01
             player?.play()
             isKeepingAlive = true
+            Self.log.info("keep-alive started, playing=\(self.player?.isPlaying ?? false)")
+            DiagnosticsLog.append("keep-alive started, playing=\(player?.isPlaying ?? false)")
 
             if interruptionObserver == nil {
                 interruptionObserver = NotificationCenter.default.addObserver(

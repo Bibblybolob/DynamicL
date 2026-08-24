@@ -61,7 +61,7 @@ private struct LockScreenLyricsView: View {
                 Image(systemName: "music.note")
                     .font(.caption2.bold())
                     .foregroundStyle(.pink)
-                Text("\(context.attributes.trackTitle) — \(context.attributes.artistName)")
+                Text("\(context.state.trackTitle) — \(context.state.artistName)")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.55))
                     .lineLimit(1)

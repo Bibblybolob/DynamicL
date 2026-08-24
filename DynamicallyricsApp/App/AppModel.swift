@@ -146,6 +146,9 @@ final class AppModel {
     }
 
     private func tick() {
+        // Heartbeat: proves whether the process is alive & polling while
+        // backgrounded/locked. Gaps in timestamps = iOS suspended us.
+        DiagnosticsLog.append("tick pos=\(String(format: "%.1f", lyrics.displayPosition)) doc=\(lyrics.document != nil) state=\(status.map { "\($0.state)" } ?? "nil") la=\(liveActivity.isRunning)")
         if let provider {
             if provider.signature != signature {
                 signature = provider.signature
@@ -333,27 +336,18 @@ final class AppModel {
             return
         }
 
-        // Track changed: end the previous track's activity this tick and start
-        // the new one on a later tick, once ActivityKit finished the teardown.
-        // Ending and immediately requesting in the same tick races the
-        // teardown and the new activity can be silently dropped.
-        if liveActivity.isRunning,
-           liveActivity.currentTrackKey != LiveActivityController.trackKey(for: signature) {
-            liveActivity.end()
-            lastLineIndex = nil
-            return
-        }
-
+        // One activity for the whole session: song changes are plain updates
+        // (track info is part of ContentState), which work from the background.
         guard let document = lyrics.document else {
             // No lyrics yet (loading, failed, or none exist). Keep a running
-            // activity for this same track alive — it updates when lyrics
-            // arrive. Only end it when loading finished without a document.
+            // activity alive — it updates when lyrics arrive. Only end it when
+            // loading finished without a document.
             if !lyrics.isLoading, liveActivity.isRunning { liveActivity.end() }
             return
         }
 
         if !liveActivity.isRunning {
-            liveActivity.start(track: signature, state: contentState(document: document))
+            liveActivity.start(state: contentState(document: document))
             lastLineIndex = lyrics.currentIndex
             return
         }
@@ -369,6 +363,8 @@ final class AppModel {
         let current = index.map { document.lines[$0].text } ?? "♪"
         let next = index.map { $0 + 1 < document.lines.count ? document.lines[$0 + 1].text : nil } ?? nil
         return .init(
+            trackTitle: signature?.title ?? document.track.title,
+            artistName: signature?.artist ?? document.track.artist,
             currentLine: current,
             nextLine: next,
             isPlaying: status?.state == .playing
