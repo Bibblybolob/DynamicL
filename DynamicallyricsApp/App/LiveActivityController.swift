@@ -21,8 +21,8 @@ final class LiveActivityController {
         ActivityAuthorizationInfo().areActivitiesEnabled
     }
 
-    func start(state: LyricsActivityAttributes.ContentState, allowCreate: Bool = true) {
-        Self.log.info("start requested, enabled=\(self.isEnabled), allowCreate=\(allowCreate)")
+    func start(state: LyricsActivityAttributes.ContentState) {
+        Self.log.info("start requested, enabled=\(self.isEnabled)")
         guard isEnabled else {
             lastErrorText = "Live Activities disabled in Settings"
             return
@@ -55,10 +55,8 @@ final class LiveActivityController {
             return
         }
 
-        guard allowCreate else {
-            Self.log.info("no existing activity and creation not allowed (background)")
-            return
-        }
+        // No survivor to adopt: create fresh. When called from the background
+        // iOS may throw — caught below; the next tick tries again.
         let attributes = LyricsActivityAttributes()
         do {
             activity = try Activity.request(

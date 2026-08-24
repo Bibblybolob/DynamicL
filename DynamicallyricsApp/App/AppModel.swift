@@ -372,10 +372,10 @@ final class AppModel {
         }
 
         if !liveActivity.isRunning {
-            // Adoption of a surviving activity works from the background;
-            // creating brand-new doesn't. Pass allowCreate so the controller
-            // can do the right thing in each situation.
-            liveActivity.start(state: contentState(document: document), allowCreate: scenePhase == .active)
+            // Recovery: try adoption AND fresh creation on every tick. iOS
+            // rejects what isn't allowed (background creation); attempting is
+            // free and self-heals faster than gating on scenePhase guesses.
+            liveActivity.start(state: contentState(document: document))
             lastLineIndex = lyrics.currentIndex
             return
         }
