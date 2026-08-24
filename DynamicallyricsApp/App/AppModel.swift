@@ -372,10 +372,10 @@ final class AppModel {
         }
 
         if !liveActivity.isRunning {
-            // Foreground only — ActivityKit forbids starting from the
-            // background, and a doomed request wastes nothing but logs noise.
-            guard scenePhase == .active else { return }
-            liveActivity.start(state: contentState(document: document))
+            // Adoption of a surviving activity works from the background;
+            // creating brand-new doesn't. Pass allowCreate so the controller
+            // can do the right thing in each situation.
+            liveActivity.start(state: contentState(document: document), allowCreate: scenePhase == .active)
             lastLineIndex = lyrics.currentIndex
             return
         }
