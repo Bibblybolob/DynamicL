@@ -17,6 +17,7 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
 
     public let trackTitle: String
     public let artistName: String
+    public var albumImageURL: String?
     public let currentLine: String
     public let isPlaying: Bool
     public let updatedAt: Date
@@ -25,6 +26,7 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
     public init(
         trackTitle: String,
         artistName: String,
+        albumImageURL: String? = nil,
         currentLine: String,
         isPlaying: Bool,
         updatedAt: Date = .now,
@@ -32,6 +34,7 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
     ) {
         self.trackTitle = trackTitle
         self.artistName = artistName
+        self.albumImageURL = albumImageURL
         self.currentLine = currentLine
         self.isPlaying = isPlaying
         self.updatedAt = updatedAt

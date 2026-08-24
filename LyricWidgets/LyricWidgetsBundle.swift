@@ -6,6 +6,7 @@ struct LyricWidgetsBundle: WidgetBundle {
     var body: some Widget {
         CurrentLineWidget()
         LockscreenLyricWidget()
+        VinylWidget()
         LyricsLiveActivity()
     }
 }

@@ -207,6 +207,7 @@ final class AppModel {
                 WidgetLyricSnapshot(
                     trackTitle: signature.title,
                     artistName: signature.artist,
+                    albumImageURL: provider?.lastAlbumImageURL,
                     currentLine: lyrics.isLoading ? "Loading lyrics…" : "♪",
                     isPlaying: true
                 )
@@ -260,6 +261,7 @@ final class AppModel {
             WidgetLyricSnapshot(
                 trackTitle: signature.title,
                 artistName: signature.artist,
+                albumImageURL: provider?.lastAlbumImageURL,
                 currentLine: current,
                 isPlaying: isPlaying,
                 updatedAt: .now,

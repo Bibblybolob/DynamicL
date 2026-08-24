@@ -18,7 +18,14 @@ public struct SpotifyPlayerState: Codable, Sendable, Equatable {
         }
 
         public struct Album: Codable, Sendable, Equatable {
+            public struct Image: Codable, Sendable, Equatable {
+                public var url: String?
+                public var width: Int?
+                public var height: Int?
+            }
+
             public var name: String?
+            public var images: [Image]?
         }
 
         public var name: String
@@ -42,6 +49,13 @@ public struct SpotifyPlayerState: Codable, Sendable, Equatable {
         case item
         case progressMs = "progress_ms"
         case device
+    }
+
+    /// URL of a reasonably-sized album cover image, when available.
+    public var albumImageURL: String? {
+        // Images come largest-first; prefer something near 300px wide.
+        guard let images = item?.album?.images, !images.isEmpty else { return nil }
+        return (images.last(where: { ($0.width ?? 0) >= 300 }) ?? images.last)?.url
     }
 
     public var signature: TrackSignature? {

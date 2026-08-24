@@ -114,9 +114,13 @@ final class SpotifyProvider {
             beginRapidProbe(staleItem: itemName)
         }
         lastAppliedItemName = itemName
+        lastAlbumImageURL = state.albumImageURL
         signature = state.signature ?? signature
         status = state.status
     }
+
+    /// Album cover URL from the most recent poll (for the vinyl widget etc).
+    private(set) var lastAlbumImageURL: String?
 
     /// Toggles play/pause via the Spotify Web API. Returns true when a request
     /// went out and got accepted (204); false when there was nothing to control.
