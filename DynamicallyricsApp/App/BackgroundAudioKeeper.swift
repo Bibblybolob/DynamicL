@@ -57,9 +57,10 @@ final class BackgroundAudioKeeper {
         case .began:
             player?.pause()
         case .ended:
-            if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt,
-               AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume),
-               isKeepingAlive {
+            // Resume whenever we're supposed to be keeping the app alive,
+            // even if iOS didn't set .shouldResume (e.g. short interruptions),
+            // otherwise the keep-alive silently dies mid-session.
+            if isKeepingAlive {
                 player?.play()
             }
         @unknown default:

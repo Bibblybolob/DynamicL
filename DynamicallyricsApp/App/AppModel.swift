@@ -88,7 +88,12 @@ final class AppModel {
         case .active:
             if auth.isConnected { startPolling() }
         case .background:
-            provider?.stop()
+            // Deliberately do NOT stop the poller here. While the silent
+            // keep-alive audio runs (playing + lock-screen toggle on), the tick
+            // loop must keep polling so the Lock Screen Live Activity stays in
+            // sync. When keep-alive doesn't apply, iOS suspends the process on
+            // its own within seconds, which stops polling anyway.
+            break
         default:
             break
         }
