@@ -152,7 +152,7 @@ final class AppModel {
         // polling while backgrounded/locked. Gaps in timestamps = suspended.
         tickCount += 1
         if tickCount % 20 == 0 {
-            DiagnosticsLog.append("tick pos=\(String(format: "%.1f", lyrics.displayPosition)) doc=\(lyrics.document != nil) state=\(status.map { "\($0.state)" } ?? "nil") la=\(liveActivity.isRunning)")
+            DiagnosticsLog.append("hb \(String(format: "%.1f", lyrics.displayPosition))s doc=\(lyrics.document != nil) la=\(liveActivity.isRunning)")
         }
         if let provider {
             if provider.signature != signature {
@@ -266,18 +266,8 @@ final class AppModel {
                 scheduledLines: scheduled
             )
         )
-        // Reload WidgetKit only on meaningful changes (track, lyrics arriving,
-        // play state). Per-line reloads would exhaust WidgetKit's tiny daily
-        // reload budget within one song and freeze all widgets afterwards;
-        // line-stepping is handled by the precomputed timeline on-device.
-        let reloadKey = "\(signature.title)|\(signature.artist)|\(document.lines.count)|\(isPlaying)"
-        if reloadKey != lastReloadedWidgetKey {
-            lastReloadedWidgetKey = reloadKey
-            reloadWidgetTimelines()
-        }
+        reloadWidgetTimelines()
     }
-
-    @ObservationIgnored private var lastReloadedWidgetKey: String?
 
     private func reloadWidgetTimelines() {
         WidgetCenter.shared.reloadTimelines(ofKind: "CurrentLineWidget")
