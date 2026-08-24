@@ -370,13 +370,27 @@ final class AppModel {
             return
         }
 
-        if lyrics.currentIndex != lastLineIndex {
-            lastLineIndex = lyrics.currentIndex
-            liveActivity.update(state: contentState(document: document))
+        // Update sparingly: ActivityKit delays/coalesces high-frequency
+        // background updates (reads as a frozen card mid-song). Cap cadence
+        // at ~1 update / 4s; play-state flips go through immediately.
+        // Skipped lines stay pending and are caught up in the next window.
+        let targetState = contentState(document: document)
+        let lineChanged = lyrics.currentIndex != lastLineIndex
+        let playChanged = targetState.isPlaying != lastLASentIsPlaying
+        if lineChanged || playChanged {
+            let now = Date.now
+            if playChanged || now.timeIntervalSince(lastLASentAt ?? .distantPast) >= 4 {
+                liveActivity.update(state: targetState)
+                lastLASentAt = now
+                lastLineIndex = lyrics.currentIndex
+                lastLASentIsPlaying = targetState.isPlaying
+            }
         }
     }
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
+    @ObservationIgnored private var lastLASentAt: Date?
+    @ObservationIgnored private var lastLASentIsPlaying = false
 
     private func contentState(document: LyricsDocument) -> LyricsActivityAttributes.ContentState {
         let index = lyrics.currentIndex
