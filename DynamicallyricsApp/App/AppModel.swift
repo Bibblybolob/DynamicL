@@ -383,30 +383,23 @@ final class AppModel {
             return
         }
 
-        // Update sparingly: ActivityKit escalates delays on high-frequency
-        // background updates. Line updates capped at ~6s. Track changes and
-        // play/pause bypass the throttle — a stale title is worse than a
-        // slightly higher chance of deferral.
+        // Update cadence: every line change goes out immediately. ActivityKit
+        // may still delay delivery in the background; we add no queueing of
+        // our own.
         let targetState = contentState(document: document)
         let trackKey = "\(targetState.trackTitle)|\(document.lines.count)"
         let trackChanged = trackKey != lastLASentTrack
         let lineChanged = lyrics.currentIndex != lastLineIndex
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
         if lineChanged || playChanged || trackChanged {
-            let now = Date.now
-            let urgent = playChanged || trackChanged
-            if urgent || now.timeIntervalSince(lastLASentAt ?? .distantPast) >= 10 {
-                liveActivity.update(state: targetState)
-                lastLASentAt = now
-                lastLineIndex = lyrics.currentIndex
-                lastLASentIsPlaying = targetState.isPlaying
-                lastLASentTrack = trackKey
-            }
+            liveActivity.update(state: targetState)
+            lastLineIndex = lyrics.currentIndex
+            lastLASentIsPlaying = targetState.isPlaying
+            lastLASentTrack = trackKey
         }
     }
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
-    @ObservationIgnored private var lastLASentAt: Date?
     @ObservationIgnored private var lastLASentIsPlaying = false
     @ObservationIgnored private var lastLASentTrack: String?
 
