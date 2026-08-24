@@ -138,12 +138,25 @@ struct VinylWidgetView: View {
         Image(uiImage: image)
             .resizable()
             .scaledToFill()
-            .frame(width: 44, height: 44)
+            .frame(width: 46, height: 46)
             .clipShape(Circle())
-            .overlay(Circle().stroke(Color.black.opacity(0.65), lineWidth: 4))
             .overlay(
-                Circle().fill(Color.black.opacity(0.9)).frame(width: 6, height: 6)
+                // Vinyl grooves: dark rim + subtle concentric rings, keeping
+                // the album art fully visible in the label area.
+                Circle()
+                    .stroke(
+                        AngularGradient(
+                            colors: [.black.opacity(0.85), .black.opacity(0.45),
+                                     .black.opacity(0.8), .black.opacity(0.4),
+                                     .black.opacity(0.85)],
+                            center: .center
+                        ),
+                        lineWidth: 9
+                    )
             )
+            .overlay(Circle().fill(Color.black).frame(width: 7, height: 7))
+            .overlay(Circle().fill(Color.white.opacity(0.25)).frame(width: 2, height: 2))
+            .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.5).frame(width: 30, height: 30))
             .rotationEffect(.degrees(entry.isPlaying ? entry.rotation : 0))
     }
 
