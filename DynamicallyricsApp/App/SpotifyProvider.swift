@@ -43,6 +43,7 @@ final class SpotifyProvider {
                 let state = try JSONDecoder().decode(SpotifyPlayerState.self, from: data)
                 apply(state)
                 lastPollSummary = state.device?.name.map { "playing on \($0)" } ?? "no device info"
+                DiagnosticsLog.append("poll: item=\(state.item?.name ?? "nil") playing=\(state.isPlaying) pos=\(state.progressMs ?? -1)")
                 lastError = nil
             case 204:
                 status = PlaybackStatus(state: .stopped, position: 0)

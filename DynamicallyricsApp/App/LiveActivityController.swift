@@ -32,6 +32,19 @@ final class LiveActivityController {
             return
         }
 
+        // End any activities left over from previous sessions/installs —
+        // they survive process restarts and otherwise pile up frozen on the
+        // Lock Screen forever.
+        let orphans = Activity<LyricsActivityAttributes>.activities
+        if !orphans.isEmpty {
+            Self.log.info("ending \(orphans.count) orphaned activity(ies)")
+            DiagnosticsLog.append("ending \(orphans.count) orphaned live activity(ies)")
+            for orphan in orphans {
+                nonisolated(unsafe) let stale = orphan
+                Task { await stale.end(dismissalPolicy: .immediate) }
+            }
+        }
+
         let attributes = LyricsActivityAttributes()
         do {
             activity = try Activity.request(
