@@ -23,18 +23,42 @@ final class SpotifyProvider {
         isPolling = true
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.poll()
-                // During a suspected track transition the API serves stale data
-                // for a while; poll faster to catch the change ASAP.
-                let interval = self?.usesRapidProbe == true ? 0.7 : 3.0
-                try? await Task.sleep(for: .seconds(interval))
+                await self?.pollCycle()
+                // Stalled/rapid states poll fast to catch the transition ASAP.
+                let fast = self?.usesRapidProbe == true || self?.isStalledPause == true
+                try? await Task.sleep(for: .seconds(fast ? 0.7 : 3.0))
             }
+        }
+    }
+
+    /// One full poll wrapped in a hard timeout. A hung URLSession request can
+    /// never stall the scheduling loop — the group cancels it after 12s and
+    /// the loop moves on regardless of the outcome.
+    private func pollCycle() async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { [weak self] in await self?.poll() }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(12))
+            }
+            await group.next()
+            group.cancelAll()
         }
     }
 
     private(set) var usesRapidProbe = false
     private var rapidProbesLeft = 0
     private var lastAppliedItemName: String?
+
+    // MARK: Stalled stale-API pause detection
+    // Spotify sometimes serves the old track as "paused" at a frozen position
+    // for many seconds after a skip. If we treat that as a real pause the card
+    // freezes; N consecutive identical frozen positions = API is lying.
+    private var stalledPauseCount = 0
+    private var lastFrozenPos: Int?
+    private var didLogStall = false
+    /// True while we believe the API is serving a stale paused state.
+    private(set) var isStalledPause = false
+    static let stallThreshold = 4
 
     private func beginRapidProbe(staleItem: String?) {
         guard rapidProbesLeft == 0 else { return }
@@ -55,6 +79,21 @@ final class SpotifyProvider {
             switch http.statusCode {
             case 200:
                 let state = try JSONDecoder().decode(SpotifyPlayerState.self, from: data)
+                // Stall detector: frozen position across consecutive "paused"
+                // polls = stale API, not a real pause.
+                if !state.isPlaying, state.progressMs == lastFrozenPos {
+                    stalledPauseCount += 1
+                } else {
+                    stalledPauseCount = 0
+                    didLogStall = false
+                }
+                lastFrozenPos = state.progressMs
+                isStalledPause = stalledPauseCount >= Self.stallThreshold
+                if isStalledPause, !didLogStall {
+                    didLogStall = true
+                    DiagnosticsLog.append("stall confirmed: \(stalledPauseCount) frozen polls at pos=\(lastFrozenPos ?? -1)")
+                }
+
                 apply(state)
                 lastPollSummary = state.device?.name.map { "playing on \($0)" } ?? "no device info"
                 DiagnosticsLog.append("poll: item=\(state.item?.name ?? "nil") playing=\(state.isPlaying) pos=\(state.progressMs ?? -1)")
@@ -106,6 +145,12 @@ final class SpotifyProvider {
     }
 
     private func apply(_ state: SpotifyPlayerState) {
+        // Fresh playing state ends any stall episode immediately.
+        if state.isPlaying {
+            stalledPauseCount = 0
+            isStalledPause = false
+            didLogStall = false
+        }
         let wasPlaying = status?.state == .playing
         let itemName = state.item?.name
         // Old track flips to "paused" right after it was playing → classic
