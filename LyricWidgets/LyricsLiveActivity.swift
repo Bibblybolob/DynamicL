@@ -25,16 +25,23 @@ struct LyricsLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(context.state.currentLine)
-                            .font(.system(.headline, design: .rounded))
-                            .foregroundStyle(.white)
-                            .lineLimit(2)
+                        if context.isStale {
+                            Text("• • •")
+                                .font(.system(.headline, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.35))
+                        } else {
+                            Text(context.state.currentLine)
+                                .font(.system(.headline, design: .rounded))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                        }
                         if let next = context.state.nextLine {
                             Text(next)
                                 .font(.system(.footnote, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.45))
                                 .lineLimit(1)
                         }
+                        LAProgressBar(state: context.state)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -74,6 +81,9 @@ private struct LockScreenLyricsView: View {
                 .font(.system(.title3, design: .rounded, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(3)
+                .opacity(context.isStale ? 0.35 : 1)
+
+            LAProgressBar(state: context.state)
 
             if let next = context.state.nextLine {
                 Text(next)
@@ -84,5 +94,33 @@ private struct LockScreenLyricsView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Self-advancing song progress: the system animates ProgressView(timerInterval:)
+/// on its own clock between app updates — zero Live Activity update budget spent.
+/// While paused, renders a static bar at the frozen fraction instead (an interval
+/// would keep advancing after pause).
+struct LAProgressBar: View {
+    let state: LyricsActivityAttributes.ContentState
+
+    var body: some View {
+        if let start = state.progressStart, let end = state.progressEnd, state.isPlaying {
+            ProgressView(timerInterval: start...end, countsDown: false)
+                .progressViewStyle(.linear)
+                .tint(.pink)
+                .frame(height: 4)
+        } else if let frozen = state.frozenProgress {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.15))
+                    Capsule().fill(.pink)
+                        .frame(width: geo.size.width * frozen)
+                }
+            }
+            .frame(height: 4)
+        } else {
+            EmptyView()
+        }
     }
 }
