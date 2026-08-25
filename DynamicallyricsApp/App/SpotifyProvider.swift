@@ -56,9 +56,22 @@ final class SpotifyProvider {
     private var stalledPauseCount = 0
     private var lastFrozenPos: Int?
     private var didLogStall = false
+    /// When the current stall episode was first confirmed (nil = none).
+    private(set) var stalledSince: Date?
     /// True while we believe the API is serving a stale paused state.
     private(set) var isStalledPause = false
     static let stallThreshold = 4
+    /// How long a confirmed stall keeps us in "act like playing" mode before we
+    /// concede it might be a real pause (skip stale windows run 10–30s).
+    static let stallKeepAliveGrace: TimeInterval = 60
+
+    /// While a stall episode is confirmed the player really IS still playing —
+    /// only Spotify's API went stale — so the background keep-alive must not be
+    /// torn down the way it is for a genuine pause.
+    var shouldHoldKeepAlive: Bool {
+        guard isStalledPause, let since = stalledSince else { return false }
+        return Date.now.timeIntervalSince(since) < Self.stallKeepAliveGrace
+    }
 
     private func beginRapidProbe(staleItem: String?) {
         guard rapidProbesLeft == 0 else { return }
@@ -89,6 +102,11 @@ final class SpotifyProvider {
                 }
                 lastFrozenPos = state.progressMs
                 isStalledPause = stalledPauseCount >= Self.stallThreshold
+                if isStalledPause {
+                    if stalledSince == nil { stalledSince = .now }
+                } else {
+                    stalledSince = nil
+                }
                 if isStalledPause, !didLogStall {
                     didLogStall = true
                     DiagnosticsLog.append("stall confirmed: \(stalledPauseCount) frozen polls at pos=\(lastFrozenPos ?? -1)")

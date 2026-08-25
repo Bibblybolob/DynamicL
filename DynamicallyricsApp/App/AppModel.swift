@@ -315,8 +315,12 @@ final class AppModel {
     }
 
     private func manageKeepAlive() {
+        // A confirmed stale-API stall is not a real pause — the music is still
+        // going. Tearing down the keep-alive here gets the process suspended
+        // mid-song; hold it through the stall instead (time-capped grace).
+        let stalled = provider?.shouldHoldKeepAlive ?? false
         let shouldRun = (auth.isConnected || demoActive)
-            && status?.state == .playing
+            && (status?.state == .playing || stalled)
             && lockScreenLyricsEnabled
         if shouldRun {
             keeper.start()
