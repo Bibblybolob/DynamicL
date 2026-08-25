@@ -61,7 +61,7 @@ final class LiveActivityController {
         do {
             activity = try Activity.request(
                 attributes: attributes,
-                content: .init(state: state, staleDate: nil)
+                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(8) : nil)
             )
             isRunning = true
             lastErrorText = nil
@@ -80,7 +80,11 @@ final class LiveActivityController {
             return
         }
         nonisolated(unsafe) let ref = activity
-        nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: nil)
+        // Stale-date honesty: while playing, mark the content stale shortly
+        // after the next expected poll so a stalled feed decays visibly
+        // instead of freezing on a lie. Paused content never goes stale.
+        let staleDate: Date? = state.isPlaying ? .now.addingTimeInterval(8) : nil
+        nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: staleDate)
         Task { @MainActor in
             do {
                 try await ref.update(content)

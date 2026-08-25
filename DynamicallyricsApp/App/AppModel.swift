@@ -395,8 +395,12 @@ final class AppModel {
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
         let now = Date.now
         let urgent = trackChanged || playChanged
+        // Adaptive cadence: a line that will be visible ≥5s goes out
+        // immediately; rapid-fire sub-5s lines fold into the next urgent
+        // update instead of burning two background-update slots back-to-back.
+        let lineDwells = lineWillBeVisibleAtLeast5s(document: document)
         let cooledDown = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast) >= 4
-        if urgent || (lineChanged && cooledDown) {
+        if urgent || (lineChanged && (lineDwells || cooledDown)) {
             liveActivity.update(state: targetState)
             lastLAUpdateAt = now
             lastLineIndex = lyrics.currentIndex
@@ -411,16 +415,30 @@ final class AppModel {
     @ObservationIgnored private var lastLASentIsPlaying = false
     @ObservationIgnored private var lastLASentTrack: String?
 
+    /// True when the current lyric line (at the projected playback position)
+    /// stays active for ≥5 more seconds — safe to spend an LA update on it now.
+    private func lineWillBeVisibleAtLeast5s(document: LyricsDocument) -> Bool {
+        guard let index = lyrics.currentIndex,
+              index + 1 < document.lines.count else { return true }
+        let projected = status?.position(at: .now) ?? 0
+        let nextLineTime = document.lines[index + 1].time
+        return nextLineTime - projected >= 5
+    }
+
     private func contentState(document: LyricsDocument) -> LyricsActivityAttributes.ContentState {
         let index = lyrics.currentIndex
         let current = index.map { document.lines[$0].text } ?? "♪"
         let next = index.map { $0 + 1 < document.lines.count ? document.lines[$0 + 1].text : nil } ?? nil
+        let anchors = status.map { PlaybackAnchors(status: $0, duration: signature?.duration) }
         return .init(
             trackTitle: signature?.title ?? document.track.title,
             artistName: signature?.artist ?? document.track.artist,
             currentLine: current,
             nextLine: next,
-            isPlaying: status?.state == .playing
+            isPlaying: status?.state == .playing,
+            progressStart: anchors?.startDate,
+            progressEnd: anchors?.endDate,
+            frozenProgress: anchors?.frozenFraction
         )
     }
 }

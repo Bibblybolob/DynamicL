@@ -1,5 +1,6 @@
 #if os(iOS)
 import ActivityKit
+import Foundation
 
 public struct LyricsActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
