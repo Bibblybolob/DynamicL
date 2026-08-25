@@ -449,12 +449,23 @@ final class AppModel {
             let placeholderKey = "\(signature.title)|\(lyrics.isAwaitingLyrics)"
             if liveActivity.isRunning, placeholderKey != lastLAPlaceholderKey {
                 lastLAPlaceholderKey = placeholderKey
-                liveActivity.update(state: .init(
-                    trackTitle: signature.title,
-                    artistName: signature.artist,
-                    currentLine: lyrics.isAwaitingLyrics ? "Finding lyrics…" : "No lyrics for this track",
-                    isPlaying: status?.state == .playing
-                ))
+                let placeholderState: LyricsActivityAttributes.ContentState = {
+                    // Anchors included so the progress bar never vanishes for
+                    // the ~1s a track's lyrics are still loading.
+                    let anchors = status.map { PlaybackAnchors(status: $0, duration: signature.duration) }
+                    return LyricsActivityAttributes.ContentState(
+                        trackTitle: signature.title,
+                        artistName: signature.artist,
+                        currentLine: lyrics.isAwaitingLyrics ? "Finding lyrics…" : "No lyrics for this track",
+                        isPlaying: status?.state == .playing,
+                        progressStart: anchors?.startDate,
+                        progressEnd: anchors?.endDate,
+                        frozenProgress: anchors?.frozenFraction
+                    )
+                }()
+                liveActivity.update(state: placeholderState)
+                lastSentLAHash = laContentHash(placeholderState)
+                lastLAUpdateAt = .now
             }
             return
         }
@@ -465,6 +476,8 @@ final class AppModel {
             // free and self-heals faster than gating on scenePhase guesses.
             liveActivity.start(state: contentState(document: document))
             lastLineIndex = lyrics.currentIndex
+            lastLAUpdateAt = .now
+            lastSentLAHash = laContentHash(contentState(document: document))
             return
         }
 
@@ -484,17 +497,43 @@ final class AppModel {
         // update instead of burning two background-update slots back-to-back.
         let lineDwells = lineWillBeVisibleAtLeast5s(document: document)
         let cooledDown = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast) >= 4
-        if urgent || (lineChanged && (lineDwells || cooledDown)) {
+        let cadenceSend = lineChanged && (lineDwells || cooledDown)
+        // Reconciliation self-heal: ActivityKit silently throttles/drops
+        // back-to-back background updates, which froze renders while our
+        // bookkeeping believed everything was delivered. If what we last
+        // actually sent differs from current truth for >6s, resend — any
+        // lost update heals itself within one window.
+        let reconciling = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast) >= 6
+            && lastSentLAHash != nil
+            && lastSentLAHash != laContentHash(targetState)
+        if reconciling && !(urgent || cadenceSend) {
+            DiagnosticsLog.append("la reconcile: resending drifted state")
+        }
+        if urgent || cadenceSend || reconciling {
             liveActivity.update(state: targetState)
             lastLAUpdateAt = now
             lastLineIndex = lyrics.currentIndex
             lastLASentIsPlaying = targetState.isPlaying
             lastLASentTrack = trackKey
+            lastSentLAHash = laContentHash(targetState)
         }
     }
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
     @ObservationIgnored private var lastLAUpdateAt: Date?
+    /// Hash of the last ContentState we actually handed to ActivityKit —
+    /// compared against current truth by the reconciliation self-heal.
+    @ObservationIgnored private var lastSentLAHash: String?
+
+    /// Stable fingerprint of a ContentState. Anchor dates are second-rounded:
+    /// during steady playback startDate/endDate are constant anyway, so any
+    /// hash drift means real content (title, line, play state, bar) moved.
+    private func laContentHash(_ s: LyricsActivityAttributes.ContentState) -> String {
+        "\(s.trackTitle)|\(s.currentLine)|\(s.isPlaying)"
+            + "|\(s.progressStart.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
+            + "|\(s.progressEnd.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
+            + "|\(s.frozenProgress.map { Int(($0 * 100).rounded()) } ?? -1)"
+    }
     private var scenePhase: ScenePhase = .inactive
     @ObservationIgnored private var lastLASentIsPlaying = false
     @ObservationIgnored private var lastLASentTrack: String?

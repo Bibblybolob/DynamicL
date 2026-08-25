@@ -61,11 +61,15 @@ final class LiveActivityController {
         do {
             activity = try Activity.request(
                 attributes: attributes,
-                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(8) : nil)
+                // Stale-date honesty: mark playing content stale well past the
+                // worst-case poll gap (12s timeout + margin). Living permanently
+                // inside an 8s stale window made the system deprioritize renders.
+                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(30) : nil)
             )
             isRunning = true
             lastErrorText = nil
             Self.log.info("activity started ok")
+            DiagnosticsLog.append("LA started: \(state.trackTitle) play=\(state.isPlaying)")
         } catch {
             lastErrorText = "request failed: \(error.localizedDescription)"
             Self.log.error("request failed: \(error.localizedDescription)")
@@ -80,18 +84,19 @@ final class LiveActivityController {
             return
         }
         nonisolated(unsafe) let ref = activity
-        // Stale-date honesty: while playing, mark the content stale shortly
-        // after the next expected poll so a stalled feed decays visibly
-        // instead of freezing on a lie. Paused content never goes stale.
-        let staleDate: Date? = state.isPlaying ? .now.addingTimeInterval(8) : nil
+        // Stale-date honesty: while playing, mark the content stale well past
+        // the worst-case poll gap (12s request ceiling + margin) so a stalled
+        // feed decays visibly instead of freezing on a lie. Paused content
+        // never goes stale.
+        let staleDate: Date? = state.isPlaying ? .now.addingTimeInterval(30) : nil
         nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: staleDate)
+        let summary = "\(state.trackTitle) play=\(state.isPlaying) anchors=\(state.progressStart != nil && state.progressEnd != nil) frozen=\(state.frozenProgress.map { String(format: "%.2f", $0) } ?? "-")"
         Task { @MainActor in
-            do {
-                try await ref.update(content)
-            } catch {
-                Self.log.error("LA update failed: \(error.localizedDescription)")
-                DiagnosticsLog.append("LA update failed: \(error.localizedDescription)")
-            }
+            // NOTE: this update(_:) overload cannot throw — ActivityKit swallows
+            // throttling/drop failures silently, which is exactly why the
+            // reconciliation self-heal exists.
+            await ref.update(content)
+            DiagnosticsLog.append("LA sent: \(summary)")
         }
     }
 

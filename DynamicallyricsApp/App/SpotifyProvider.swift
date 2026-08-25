@@ -55,6 +55,23 @@ final class SpotifyProvider {
     /// Timestamp of the last successful (HTTP 200) player-state fetch.
     private(set) var lastSuccessfulPollAt: Date?
 
+    // MARK: Post-skip stale-echo rejection
+    // After a commanded skip, /v1/me/player keeps serving the PREVIOUS track
+    // as still-playing with an advancing position for 10–30s. Trusting it
+    // makes the LA count up the dead song. For a short window after every
+    // successful skip command, polls echoing the pre-skip item are discarded.
+    //
+    // KNOWN LIMIT — external skips (Spotify app / Spotify's lock-screen
+    // player, which owns transport while it holds audible playback; our
+    // remote-command bridge never fires in that case): a stale echo of the
+    // old track PLAYING is indistinguishable from continued playback until a
+    // different item arrives, so it can't be rejected without risking real
+    // pauses/scrubs. The stall probe + LA reconciliation self-heal cover the
+    // common paused-echo variant and any resulting render freeze.
+    private var pendingSkipItemName: String?
+    private var pendingSkipDeadline: Date?
+    static let skipEchoWindow: TimeInterval = 25
+
     /// Schedules N fast polls so a user-initiated change (transport command,
     /// audio interruption) shows up in ≤N×0.7s instead of waiting out the 3s cadence.
     func burst(count: Int = 6) {
@@ -130,6 +147,11 @@ final class SpotifyProvider {
                 lastPollSummary = state.device?.name.map { "playing on \($0)" } ?? "no device info"
                 DiagnosticsLog.append("poll: item=\(state.item?.name ?? "nil") playing=\(state.isPlaying) pos=\(state.progressMs ?? -1)")
                 lastError = nil
+                // Transition in progress (stale pause-echo or post-command
+                // probes): /me/player may be serving stale slices of the dead
+                // track. Cross-check against recently-played, which reports
+                // what actually played and flips us onto the real track fast.
+                await maybeCrossCheckRecentlyPlayed()
                 if rapidProbesLeft > 0 {
                     rapidProbesLeft -= 1
                     if rapidProbesLeft == 0 { usesRapidProbe = false }
@@ -177,6 +199,23 @@ final class SpotifyProvider {
     }
 
     private func apply(_ state: SpotifyPlayerState) {
+        // Post-skip echo rejection runs before anything else: a poll that
+        // still shows the pre-skip track carries zero information, so don't
+        // let it touch stall bookkeeping, the lie guard, or status/signature.
+        if let pending = pendingSkipItemName {
+            let expired = Date.now >= (pendingSkipDeadline ?? .distantPast)
+            // Repeat-one: same item, playing, restarted near 0 — real truth.
+            let restart = state.isPlaying && (state.progressMs ?? 999_999) < 5_000
+            if expired || state.item?.name != pending || restart {
+                pendingSkipItemName = nil
+                DiagnosticsLog.append("skip resolved: \(state.item?.name ?? "?")")
+            } else {
+                rapidProbesLeft = max(rapidProbesLeft, 3)
+                DiagnosticsLog.append("skip echo ignored: \(state.item?.name ?? "?") pos=\(state.progressMs ?? -1)")
+                return
+            }
+        }
+
         // Fresh playing state ends any stall episode immediately.
         if state.isPlaying {
             stalledPauseCount = 0
@@ -241,13 +280,102 @@ final class SpotifyProvider {
     /// Skips to the next track.
     @discardableResult
     func next() async -> Bool {
-        await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/next")!, method: "POST")
+        let ok = await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/next")!, method: "POST")
+        if ok { armPendingSkip() }
+        return ok
     }
 
     /// Skips back to the previous track.
     @discardableResult
     func previous() async -> Bool {
-        await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/previous")!, method: "POST")
+        let ok = await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/previous")!, method: "POST")
+        if ok { armPendingSkip() }
+        return ok
+    }
+
+    /// Arms stale-echo rejection for a fresh skip: freeze the displayed
+    /// position immediately (the LA flips to its static bar via the urgent
+    /// play-change path) and discard polls still echoing the pre-skip track.
+    private func armPendingSkip() {
+        guard let preSkip = lastAppliedItemName else { return }
+        pendingSkipItemName = preSkip
+        pendingSkipDeadline = .now.addingTimeInterval(Self.skipEchoWindow)
+        burst(count: 10)
+        if let status, status.state == .playing {
+            self.status = PlaybackStatus(state: .paused, position: status.position(at: .now))
+        }
+        DiagnosticsLog.append("skip armed: freezing over \(preSkip)")
+    }
+
+    // MARK: Recently-played cross-check
+    // While locked, /v1/me/player replays stale slices of a skipped track for
+    // 10–30s — even flipping back to "playing" with advancing (or rewound)
+    // positions. That endpoint can't be trusted mid-transition, but
+    // /recently-played reports what ACTUALLY played with played_at stamps.
+    // During any active transition we poll it cheaply; a fresh entry for a
+    // different track flips us onto the real song immediately instead of
+    // counting up the dead one until /me/player catches up.
+    private var lastRecentlyPlayedCheckAt: Date?
+
+    private func maybeCrossCheckRecentlyPlayed() async {
+        guard isStalledPause || rapidProbesLeft > 0 else { return }
+        if let last = lastRecentlyPlayedCheckAt,
+           Date.now.timeIntervalSince(last) < 2.5 { return }
+        lastRecentlyPlayedCheckAt = .now
+
+        guard let token = try? await auth.validAccessToken() else { return }
+        var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player/recently-played?limit=5")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let decoded = try? JSONDecoder().decode(RecentlyPlayedResponse.self, from: data),
+              let newest = decoded.items.first else { return }
+
+        guard let name = newest.track?.name else { return }
+        guard name != signature?.title else { return } // no skip happened
+        // Only fresh plays count as skips; older history entries are noise.
+        guard let playedAt = newest.playedAt,
+              Date.now.timeIntervalSince(playedAt) < 60 else {
+            DiagnosticsLog.append("recently-played: \(name) too old to trust")
+            return
+        }
+        applyOptimisticFlip(entry: newest)
+    }
+
+    /// Switches onto the track recently-played proves is actually playing,
+    /// with position estimated from its played_at stamp. The abandoned track
+    /// gets echo armor so later stale slices of it are discarded.
+    private func applyOptimisticFlip(entry: RecentlyPlayedResponse.Item) {
+        guard let track = entry.track, let name = track.name else { return }
+        let elapsed = max(0, Date.now.timeIntervalSince(entry.playedAt ?? .now))
+        let duration = track.durationMs.map { TimeInterval($0) / 1000.0 }
+        if let dying = lastAppliedItemName {
+            pendingSkipItemName = dying
+            pendingSkipDeadline = .now.addingTimeInterval(Self.skipEchoWindow)
+        }
+        signature = TrackSignature(
+            title: name,
+            artist: track.artists?.first?.name ?? "",
+            album: track.album?.name,
+            duration: duration
+        )
+        status = PlaybackStatus(
+            state: .playing,
+            position: min(elapsed, duration ?? elapsed),
+            rate: 1.0
+        )
+        lastAlbumImageURL = track.album?.images?
+            .last(where: { ($0.width ?? 0) >= 300 })?.url
+            ?? track.album?.images?.last?.url
+        lastAppliedItemName = name
+        lastAppliedPositionMs = Int(min(elapsed, duration ?? elapsed) * 1000)
+        stalledPauseCount = 0
+        isStalledPause = false
+        didLogStall = false
+        stalledSince = nil
+        burst(count: 8)
+        DiagnosticsLog.append("recently-played flip: \(name) est=\(Int(elapsed))s")
     }
 
     private func transportCall(url: URL, method: String = "PUT") async -> Bool {
@@ -301,4 +429,49 @@ final class SpotifyProvider {
             return false
         }
     }
+}
+
+/// Subset of `GET /v1/me/player/recently-played`.
+private struct RecentlyPlayedResponse: Codable, Sendable {
+    struct Item: Codable, Sendable {
+        struct Playable: Codable, Sendable {
+            var name: String?
+            var durationMs: Int?
+            var artists: [Artist]?
+            var album: Album?
+
+            struct Artist: Codable, Sendable { var name: String }
+            struct Album: Codable, Sendable {
+                var name: String?
+                var images: [Image]?
+                struct Image: Codable, Sendable {
+                    var url: String?
+                    var width: Int?
+                }
+            }
+
+            enum CodingKeys: String, CodingKey {
+                case name, artists, album
+                case durationMs = "duration_ms"
+            }
+        }
+
+        var track: Playable?
+        private var playedAtRaw: String?
+
+        enum CodingKeys: String, CodingKey {
+            case track
+            case playedAtRaw = "played_at"
+        }
+
+        /// Spotify stamps plays with fractional-second UTC ISO8601; tolerate
+        /// both formats so a server-side format change can't break decoding.
+        var playedAt: Date? {
+            guard let raw = playedAtRaw else { return nil }
+            if let date = try? Date(raw, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)) { return date }
+            return try? Date(raw, strategy: .iso8601)
+        }
+    }
+
+    var items: [Item]
 }
