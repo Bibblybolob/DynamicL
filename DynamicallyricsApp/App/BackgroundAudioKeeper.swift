@@ -12,6 +12,18 @@ final class BackgroundAudioKeeper {
     private(set) var isKeepingAlive = false
 
     private var interruptionObserver: (any NSObjectProtocol)?
+    /// Called when an audio interruption ends and playback resumes.
+    var onInterruptionEnded: (() -> Void)?
+
+    /// Audible-guard volumes: loud while playing, near-silent while paused/idle.
+    private static let loudVolume: Float = 0.01
+    private static let idleVolume: Float = 0.001
+
+    /// Drops playback volume while keeping the session active (process alive).
+    func setLoud(_ loud: Bool) {
+        guard isKeepingAlive else { return }
+        player?.volume = loud ? Self.loudVolume : Self.idleVolume
+    }
 
     func start() {
         guard !isKeepingAlive else { return }
@@ -64,6 +76,7 @@ final class BackgroundAudioKeeper {
             // otherwise the keep-alive silently dies mid-session.
             if isKeepingAlive {
                 player?.play()
+                onInterruptionEnded?()
             }
         @unknown default:
             break

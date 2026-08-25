@@ -39,6 +39,7 @@
 		CB52314340B80FA258C80C3B /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1EC04D45E45C8C053F9496 /* KeychainStore.swift */; };
 		CBBA77CACA9F39B9090F8DF6 /* DynamicallyricsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 248CAA9DBAA3A963E7C30BCD /* DynamicallyricsApp.swift */; };
 		E5259A459AEFB998837D5503 /* LyricWatchWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71606A970345C293848CDA8C /* LyricWatchWidgetsBundle.swift */; };
+		EFDAC79B9892C4101F973935 /* NowPlayingBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED4AE702F7821F3CDB5FBDE1 /* NowPlayingBridge.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,10 +70,10 @@
 		0403791FF95A93A0A532C370 /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
+			dstPath = Watch;
+			dstSubfolderSpec = 1;
 			files = (
-				5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */,
+				2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */,
 			);
 			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -80,10 +81,10 @@
 		3012F4C2FC0A625E5024D521 /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = Watch;
-			dstSubfolderSpec = 1;
+			dstPath = "";
+			dstSubfolderSpec = 13;
 			files = (
-				2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */,
+				5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */,
 			);
 			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -136,6 +137,7 @@
 		CD540050018CAB1FC2EF880F /* VinylWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VinylWidget.swift; sourceTree = "<group>"; };
 		CF751E96C7E275470CF7A478 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLog.swift; sourceTree = "<group>"; };
+		ED4AE702F7821F3CDB5FBDE1 /* NowPlayingBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingBridge.swift; sourceTree = "<group>"; };
 		F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyProvider.swift; sourceTree = "<group>"; };
 		FA45FDB582EC9BF0DA3D2FA6 /* LyricWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = LyricWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FED59A6EB0239CFEE501B720 /* DynamicallyricsWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicallyricsWatchApp.swift; sourceTree = "<group>"; };
@@ -220,6 +222,7 @@
 				5F1EC04D45E45C8C053F9496 /* KeychainStore.swift */,
 				5A6D06020DA8782B58A82158 /* LiveActivityController.swift */,
 				0AF723DBC9A4FDFB26CE3F30 /* LyricsService.swift */,
+				ED4AE702F7821F3CDB5FBDE1 /* NowPlayingBridge.swift */,
 				023703132FFF98E22ED6E203 /* SpotifyAuthManager.swift */,
 				8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */,
 				F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */,
@@ -509,6 +512,7 @@
 				CB52314340B80FA258C80C3B /* KeychainStore.swift in Sources */,
 				6BA9B5D148352AB7DB7C6225 /* LiveActivityController.swift in Sources */,
 				CA6023C68759B1EB2C0BE068 /* LyricsService.swift in Sources */,
+				EFDAC79B9892C4101F973935 /* NowPlayingBridge.swift in Sources */,
 				7EA4E0314E51BF2BF517A7BB /* RootView.swift in Sources */,
 				C0EEE6068BA4D38786D2718B /* SpotifyAuthManager.swift in Sources */,
 				A4BB10137173CCE619558EFE /* SpotifyConfig.swift in Sources */,

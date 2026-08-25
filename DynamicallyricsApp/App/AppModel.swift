@@ -7,10 +7,11 @@ import LyricCore
 @Observable
 final class AppModel {
     let auth = SpotifyAuthManager()
-    private(set) var provider: SpotifyProvider?
     let lyrics = LyricsService()
     let liveActivity = LiveActivityController()
+    private(set) var provider: SpotifyProvider?
     private let watchSync = WatchSyncManager.shared
+    private let nowPlaying = NowPlayingBridge()
 
     private(set) var connectError: String?
     var isConnecting = false
@@ -43,12 +44,43 @@ final class AppModel {
     init() {
         startTicker()
         watchSync.activateIfNeeded()
+        installNowPlayingBridge()
         if auth.isConnected {
             startPolling()
         }
         if ProcessInfo.processInfo.arguments.contains("-demoActivity") {
             startDemo()
         }
+    }
+
+    /// Routes lock-screen/transport events into Spotify control. Fires a fast
+    /// poll burst per event so the LA reflects the change in ≤1.5s.
+    private func installNowPlayingBridge() {
+        nowPlaying.install(
+            toggle: { [weak self] in
+                guard let self else { return }
+                DiagnosticsLog.append("cmd: toggle")
+                Task {
+                    let accepted = await self.provider?.togglePlayPause() ?? false
+                    if accepted { self.provider?.burst() } else { SharedNowPlaying.setPlayingOverride(nil) }
+                }
+            },
+            next: { [weak self] in
+                guard let self, let provider = self.provider else { return }
+                DiagnosticsLog.append("cmd: next")
+                Task { await provider.next() }
+            },
+            previous: { [weak self] in
+                guard let self, let provider = self.provider else { return }
+                DiagnosticsLog.append("cmd: prev")
+                Task { await provider.previous() }
+            },
+            changePosition: { [weak self] position in
+                guard let self, let provider = self.provider else { return }
+                DiagnosticsLog.append("cmd: seek \(Int(position))s")
+                Task { await provider.seek(to: position) }
+            }
+        )
     }
 
     var offset: TimeInterval {
@@ -172,7 +204,9 @@ final class AppModel {
         }
 
         lyrics.tick()
+        revivePollerIfNeeded()
         manageKeepAlive()
+        publishNowPlayingIfDue()
         syncLiveActivity()
         syncWidgetSnapshot()
         syncWatchSnapshot()
@@ -314,20 +348,64 @@ final class AppModel {
         )
     }
 
+    /// How long a real pause keeps the process alive so an unpause is heard
+    /// without unlocking. iOS suspends a released app within ~60s.
+    static let pausedKeepAliveLimit: TimeInterval = 600
+    @ObservationIgnored private var lastPlayingAt: Date = .distantPast
+
     private func manageKeepAlive() {
-        // A confirmed stale-API stall is not a real pause — the music is still
-        // going. Tearing down the keep-alive here gets the process suspended
-        // mid-song; hold it through the stall instead (time-capped grace).
+        // Session-wide persistence: the process must survive pauses (up to the
+        // limit above), stale-API stalls, and playback — otherwise iOS suspends
+        // it and resume events land unheard (tonight's 798s coma). Volume drops
+        // to near-silence while idle instead of releasing the session.
+        if status?.state == .playing { lastPlayingAt = .now }
+        let now = Date.now
         let stalled = provider?.shouldHoldKeepAlive ?? false
+        let withinPauseGrace = status?.state == .paused
+            && now.timeIntervalSince(lastPlayingAt) < Self.pausedKeepAliveLimit
         let shouldRun = (auth.isConnected || demoActive)
-            && (status?.state == .playing || stalled)
             && lockScreenLyricsEnabled
+            && (status?.state == .playing || withinPauseGrace || stalled)
         if shouldRun {
             keeper.start()
         } else {
             keeper.stop()
         }
+        keeper.setLoud(status?.state == .playing)
     }
+
+    /// Status says playing but data went quiet: something killed polling
+    /// (revoked audio session, hung socket past the 12s ceiling). Re-arm.
+    private func revivePollerIfNeeded() {
+        guard status?.state == .playing,
+              let last = provider?.lastSuccessfulPollAt,
+              Date.now.timeIntervalSince(last) > 6 else { return }
+        provider?.start()
+        DiagnosticsLog.append("watchdog: revive")
+    }
+
+    @ObservationIgnored private var lastPublishedNowPlaying: String?
+
+    /// Mirrors playback into MPNowPlayingInfoCenter (throttled to 2s) so the
+    /// system routes lock-screen transport events to us.
+    private func publishNowPlayingIfDue() {
+        guard let signature else { return }
+        let state = status?.state
+        let key = "\(signature.title)|\(state == .playing)"
+        let now = Date.now
+        let due = key != lastPublishedNowPlaying
+            || now.timeIntervalSince(lastNowPlayingPublishAt ?? .distantPast) >= 2
+        guard due else { return }
+        lastPublishedNowPlaying = key
+        lastNowPlayingPublishAt = now
+        nowPlaying.publish(
+            signature: signature,
+            position: status?.position(at: now) ?? 0,
+            duration: signature.duration,
+            rate: state == .playing ? (status?.rate ?? 1) : 0
+        )
+    }
+    @ObservationIgnored private var lastNowPlayingPublishAt: Date?
 
     private func syncLiveActivity() {
         guard lockScreenLyricsEnabled, auth.isConnected || demoActive else {
@@ -337,8 +415,13 @@ final class AppModel {
 
         switch status?.state {
         case .stopped, .none:
-            if liveActivity.isRunning { liveActivity.end() }
-            pausedAt = nil
+            // Single stopped blips happen right after skips (204/no-device).
+            // Require two consecutive observations before tearing the LA down.
+            stoppedStreak += 1
+            if stoppedStreak >= 2 {
+                if liveActivity.isRunning { liveActivity.end() }
+                pausedAt = nil
+            }
             return
         case .paused:
             if pausedAt == nil { pausedAt = .now }
@@ -349,6 +432,7 @@ final class AppModel {
         case .playing:
             pausedAt = nil
         }
+        stoppedStreak = 0
 
         guard let signature else {
             if liveActivity.isRunning { liveActivity.end() }
@@ -414,6 +498,8 @@ final class AppModel {
     private var scenePhase: ScenePhase = .inactive
     @ObservationIgnored private var lastLASentIsPlaying = false
     @ObservationIgnored private var lastLASentTrack: String?
+    /// Consecutive stopped/no-device observations (blip immunity for LA teardown).
+    @ObservationIgnored private var stoppedStreak = 0
 
     /// True when the current lyric line (at the projected playback position)
     /// stays active for ≥5 more seconds — safe to spend an LA update on it now.

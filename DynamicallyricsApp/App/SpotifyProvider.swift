@@ -19,7 +19,9 @@ final class SpotifyProvider {
     }
 
     func start() {
-        guard pollTask == nil else { return }
+        // Idempotent (re)start: cancelling a dead/hung scheduler and rebuilding
+        // is always safe; the watchdog relies on being able to call this freely.
+        pollTask?.cancel()
         isPolling = true
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -48,6 +50,17 @@ final class SpotifyProvider {
     private(set) var usesRapidProbe = false
     private var rapidProbesLeft = 0
     private var lastAppliedItemName: String?
+    /// Last raw position Spotify reported, for frozen/backwards lie detection.
+    private var lastAppliedPositionMs: Int?
+    /// Timestamp of the last successful (HTTP 200) player-state fetch.
+    private(set) var lastSuccessfulPollAt: Date?
+
+    /// Schedules N fast polls so a user-initiated change (transport command,
+    /// audio interruption) shows up in ≤N×0.7s instead of waiting out the 3s cadence.
+    func burst(count: Int = 6) {
+        rapidProbesLeft = max(rapidProbesLeft, count)
+        usesRapidProbe = true
+    }
 
     // MARK: Stalled stale-API pause detection
     // Spotify sometimes serves the old track as "paused" at a frozen position
@@ -113,6 +126,7 @@ final class SpotifyProvider {
                 }
 
                 apply(state)
+                lastSuccessfulPollAt = .now
                 lastPollSummary = state.device?.name.map { "playing on \($0)" } ?? "no device info"
                 DiagnosticsLog.append("poll: item=\(state.item?.name ?? "nil") playing=\(state.isPlaying) pos=\(state.progressMs ?? -1)")
                 lastError = nil
@@ -176,14 +190,84 @@ final class SpotifyProvider {
         if wasPlaying, state.isPlaying == false, let itemName, itemName == lastAppliedItemName {
             beginRapidProbe(staleItem: itemName)
         }
-        lastAppliedItemName = itemName
-        lastAlbumImageURL = state.albumImageURL
-        signature = state.signature ?? signature
+        defer {
+            lastAppliedItemName = itemName
+            lastAlbumImageURL = state.albumImageURL
+            signature = state.signature ?? signature
+        }
+
+        // Position-lie guard: while playing on the SAME track, a frozen or
+        // slightly-backwards position is a stale seek/scrub echo, not truth —
+        // never let the displayed position regress because of it.
+        let newPos = state.progressMs
+        if state.isPlaying, itemName == lastAppliedItemName,
+           let newPos, let last = lastAppliedPositionMs,
+           newPos <= last, abs(newPos - last) < 1500 {
+            staleSeekCount += 1
+            if staleSeekCount >= 3 {
+                if suppressedLieSamples < 40 {
+                    suppressedLieSamples += 1
+                    return // keep projecting our current (advancing) status
+                }
+                // Concede after ~2min of continuous lies: show API truth
+                // rather than diverge forever.
+                DiagnosticsLog.append("position lies conceded after \(suppressedLieSamples) samples")
+                staleSeekCount = 0
+                suppressedLieSamples = 0
+            }
+        } else {
+            staleSeekCount = 0
+            suppressedLieSamples = 0
+        }
+        lastAppliedPositionMs = newPos ?? lastAppliedPositionMs
         status = state.status
     }
 
+    @ObservationIgnored private var staleSeekCount = 0
+    @ObservationIgnored private var suppressedLieSamples = 0
+
     /// Album cover URL from the most recent poll (for the vinyl widget etc).
     private(set) var lastAlbumImageURL: String?
+
+    // MARK: Transport commands (remote command center / widget buttons)
+
+    /// Seeks Spotify playback to the given position. Returns true when the
+    /// request was accepted (204).
+    @discardableResult
+    func seek(to position: TimeInterval) async -> Bool {
+        await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/seek?position_ms=\(Int(position * 1000))")!)
+    }
+
+    /// Skips to the next track.
+    @discardableResult
+    func next() async -> Bool {
+        await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/next")!, method: "POST")
+    }
+
+    /// Skips back to the previous track.
+    @discardableResult
+    func previous() async -> Bool {
+        await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/previous")!, method: "POST")
+    }
+
+    private func transportCall(url: URL, method: String = "PUT") async -> Bool {
+        guard let token = try? await auth.validAccessToken() else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            if (200...299).contains(http.statusCode) {
+                burst()
+                return true
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
 
     /// Toggles play/pause via the Spotify Web API. Returns true when a request
     /// went out and got accepted (204); false when there was nothing to control.
