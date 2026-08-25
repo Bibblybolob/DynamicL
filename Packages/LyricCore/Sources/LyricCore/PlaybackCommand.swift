@@ -3,6 +3,8 @@ import Foundation
 /// A remote-control command sent from the widget extension to the main app.
 public enum PlaybackCommand: String, Codable, Sendable, Equatable {
     case togglePlayPause
+    /// User tapped the stall-reveal refresh button on the Live Activity.
+    case refresh
 }
 
 /// Tiny mailbox in the shared app-group UserDefaults: the widget's App Intent

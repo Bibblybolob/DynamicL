@@ -45,6 +45,7 @@ struct RootView: View {
 
             if model.lyrics.document != nil {
                 lockScreenToggle
+                appearanceLink
                 offsetControl
             }
 
@@ -60,6 +61,18 @@ struct RootView: View {
             set: { model.lockScreenLyricsEnabled = $0 }
         )) {
             Label("Lock Screen & Island lyrics", systemImage: "lock.iphone")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 4)
+    }
+
+    private var appearanceLink: some View {
+        NavigationLink {
+            AppearanceView()
+        } label: {
+            Label("Live Activity Style", systemImage: "paintpalette")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

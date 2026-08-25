@@ -64,7 +64,7 @@ final class LiveActivityController {
                 // Stale-date honesty: mark playing content stale well past the
                 // worst-case poll gap (12s timeout + margin). Living permanently
                 // inside an 8s stale window made the system deprioritize renders.
-                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(30) : nil)
+                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(18) : nil)
             )
             isRunning = true
             lastErrorText = nil
@@ -88,7 +88,7 @@ final class LiveActivityController {
         // the worst-case poll gap (12s request ceiling + margin) so a stalled
         // feed decays visibly instead of freezing on a lie. Paused content
         // never goes stale.
-        let staleDate: Date? = state.isPlaying ? .now.addingTimeInterval(30) : nil
+        let staleDate: Date? = state.isPlaying ? .now.addingTimeInterval(18) : nil
         nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: staleDate)
         let summary = "\(state.trackTitle) play=\(state.isPlaying) anchors=\(state.progressStart != nil && state.progressEnd != nil) frozen=\(state.frozenProgress.map { String(format: "%.2f", $0) } ?? "-")"
         Task { @MainActor in

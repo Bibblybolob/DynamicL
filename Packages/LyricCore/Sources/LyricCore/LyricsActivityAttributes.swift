@@ -15,11 +15,14 @@ public struct LyricsActivityAttributes: ActivityAttributes {
         public var progressEnd: Date?
         /// Static bar fraction used while paused (intervals would keep advancing).
         public var frozenProgress: Double?
+        /// Dominant album-art color as [r, g, b] in 0...1 — drives Album-mode
+        /// theming. Nil-safe so legacy states keep decoding.
+        public var albumDominantRGB: [Double]?
 
         public init(trackTitle: String, artistName: String, currentLine: String,
                     nextLine: String? = nil, isPlaying: Bool,
                     progressStart: Date? = nil, progressEnd: Date? = nil,
-                    frozenProgress: Double? = nil) {
+                    frozenProgress: Double? = nil, albumDominantRGB: [Double]? = nil) {
             self.trackTitle = trackTitle
             self.artistName = artistName
             self.currentLine = currentLine
@@ -28,6 +31,7 @@ public struct LyricsActivityAttributes: ActivityAttributes {
             self.progressStart = progressStart
             self.progressEnd = progressEnd
             self.frozenProgress = frozenProgress
+            self.albumDominantRGB = albumDominantRGB
         }
     }
 

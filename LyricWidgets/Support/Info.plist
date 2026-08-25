@@ -25,5 +25,14 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Bungee-Regular.ttf</string>
+		<string>BebasNeue-Regular.ttf</string>
+		<string>Baloo2.ttf</string>
+		<string>Pacifico-Regular.ttf</string>
+		<string>PlayfairDisplay.ttf</string>
+		<string>SpaceGrotesk.ttf</string>
+	</array>
 </dict>
 </plist>

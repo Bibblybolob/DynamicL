@@ -213,17 +213,24 @@ final class AppModel {
         consumeWidgetCommand()
     }
 
-    /// Picks up play/pause requests made from widgets / Live Activity buttons.
+    /// Picks up play/pause + refresh requests made from widgets / Live Activity buttons.
     private func consumeWidgetCommand() {
-        guard PlaybackCommandBus.consume() == .togglePlayPause else { return }
-        Task { [weak self] in
-            guard let self else { return }
-            let accepted = await provider?.togglePlayPause() ?? false
-            if !accepted {
-                // The real state never changed; drop the optimistic flip.
-                SharedNowPlaying.setPlayingOverride(nil)
-                WidgetCenter.shared.reloadAllTimelines()
+        switch PlaybackCommandBus.consume() {
+        case .togglePlayPause:
+            Task { [weak self] in
+                guard let self else { return }
+                let accepted = await provider?.togglePlayPause() ?? false
+                if !accepted {
+                    // The real state never changed; drop the optimistic flip.
+                    SharedNowPlaying.setPlayingOverride(nil)
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
             }
+        case .refresh:
+            DiagnosticsLog.append("cmd: refresh")
+            provider?.burst(count: 8)
+        case nil:
+            break
         }
     }
 
@@ -434,6 +441,9 @@ final class AppModel {
         }
         stoppedStreak = 0
 
+        let style = loadLAStyle()
+        let styleKey = "\(style.prefs.theme.rawValue)|\(style.prefs.fontStyle.rawValue)"
+
         guard let signature else {
             if liveActivity.isRunning { liveActivity.end() }
             return
@@ -450,8 +460,8 @@ final class AppModel {
             if liveActivity.isRunning, placeholderKey != lastLAPlaceholderKey {
                 lastLAPlaceholderKey = placeholderKey
                 let placeholderState: LyricsActivityAttributes.ContentState = {
-                    // Anchors included so the progress bar never vanishes for
-                    // the ~1s a track's lyrics are still loading.
+                    // Anchors + accent included so neither the progress bar
+                    // nor the theme flickers for the ~1s lyrics are loading.
                     let anchors = status.map { PlaybackAnchors(status: $0, duration: signature.duration) }
                     return LyricsActivityAttributes.ContentState(
                         trackTitle: signature.title,
@@ -460,12 +470,16 @@ final class AppModel {
                         isPlaying: status?.state == .playing,
                         progressStart: anchors?.startDate,
                         progressEnd: anchors?.endDate,
-                        frozenProgress: anchors?.frozenFraction
+                        frozenProgress: anchors?.frozenFraction,
+                        albumDominantRGB: style.prefs.theme == .album
+                            ? style.accent.map { [$0.r, $0.g, $0.b] } : nil
                     )
                 }()
                 liveActivity.update(state: placeholderState)
                 lastSentLAHash = laContentHash(placeholderState)
                 lastLAUpdateAt = .now
+                lastAppliedStyleKey = styleKey
+                lastSentAccent = placeholderState.albumDominantRGB
             }
             return
         }
@@ -474,10 +488,13 @@ final class AppModel {
             // Recovery: try adoption AND fresh creation on every tick. iOS
             // rejects what isn't allowed (background creation); attempting is
             // free and self-heals faster than gating on scenePhase guesses.
-            liveActivity.start(state: contentState(document: document))
+            let startState = contentState(document: document, style: style.prefs, albumAccent: style.accent)
+            liveActivity.start(state: startState)
             lastLineIndex = lyrics.currentIndex
             lastLAUpdateAt = .now
-            lastSentLAHash = laContentHash(contentState(document: document))
+            lastSentLAHash = laContentHash(startState)
+            lastAppliedStyleKey = styleKey
+            lastSentAccent = startState.albumDominantRGB
             return
         }
 
@@ -485,13 +502,17 @@ final class AppModel {
         // line updates at most every 4s. Every update spends from the same
         // small ActivityKit background budget — spending it all on per-line
         // refresh is exactly what made track changes render ~10s late.
-        let targetState = contentState(document: document)
+        let targetState = contentState(document: document, style: style.prefs, albumAccent: style.accent)
         let trackKey = "\(targetState.trackTitle)|\(document.lines.count)"
         let trackChanged = trackKey != lastLASentTrack
         let lineChanged = lyrics.currentIndex != lastLineIndex
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
         let now = Date.now
-        let urgent = trackChanged || playChanged
+        // A style or album-color change re-renders immediately so in-app
+        // appearance picks land within one tick.
+        let accentChanged = targetState.albumDominantRGB != lastSentAccent
+        let styleChanged = styleKey != lastAppliedStyleKey
+        let urgent = trackChanged || playChanged || accentChanged || styleChanged
         // Adaptive cadence: a line that will be visible ≥5s goes out
         // immediately; rapid-fire sub-5s lines fold into the next urgent
         // update instead of burning two background-update slots back-to-back.
@@ -516,6 +537,8 @@ final class AppModel {
             lastLASentIsPlaying = targetState.isPlaying
             lastLASentTrack = trackKey
             lastSentLAHash = laContentHash(targetState)
+            lastAppliedStyleKey = styleKey
+            lastSentAccent = targetState.albumDominantRGB
         }
     }
 
@@ -524,6 +547,13 @@ final class AppModel {
     /// Hash of the last ContentState we actually handed to ActivityKit —
     /// compared against current truth by the reconciliation self-heal.
     @ObservationIgnored private var lastSentLAHash: String?
+    /// Style prefs as of the last LA render — a mismatch forces an immediate
+    /// re-render so in-app appearance changes land on the activity instantly.
+    @ObservationIgnored private var lastAppliedStyleKey: String?
+    /// Extracted album dominant color (Album mode) + the artwork URL it came from.
+    @ObservationIgnored private var albumAccent: RGB?
+    @ObservationIgnored private var albumAccentForURL: String?
+    @ObservationIgnored private var lastSentAccent: [Double]?
 
     /// Stable fingerprint of a ContentState. Anchor dates are second-rounded:
     /// during steady playback startDate/endDate are constant anyway, so any
@@ -533,6 +563,24 @@ final class AppModel {
             + "|\(s.progressStart.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.progressEnd.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.frozenProgress.map { Int(($0 * 100).rounded()) } ?? -1)"
+            + "|\(s.albumDominantRGB.map { $0.map { Int($0 * 255) } } ?? [])"
+    }
+
+    /// Loads current appearance prefs and keeps the album dominant color fresh
+    /// when Album mode is active. Called once per tick before LA work.
+    private func loadLAStyle() -> (prefs: LAStylePrefs, accent: RGB?) {
+        let prefs = LAStyleStore.load()
+        guard prefs.theme == .album else { return (prefs, nil) }
+        if let art = provider?.lastAlbumImageURL, art != albumAccentForURL {
+            albumAccentForURL = art
+            Task { [weak self] in
+                let color = await DominantColorExtractor.extract(from: art)
+                guard let self, color != self.albumAccent else { return }
+                self.albumAccent = color
+                DiagnosticsLog.append("album accent extracted")
+            }
+        }
+        return (prefs, albumAccent)
     }
     private var scenePhase: ScenePhase = .inactive
     @ObservationIgnored private var lastLASentIsPlaying = false
@@ -550,11 +598,16 @@ final class AppModel {
         return nextLineTime - projected >= 5
     }
 
-    private func contentState(document: LyricsDocument) -> LyricsActivityAttributes.ContentState {
+    private func contentState(document: LyricsDocument,
+                              style: LAStylePrefs,
+                              albumAccent: RGB?) -> LyricsActivityAttributes.ContentState {
         let index = lyrics.currentIndex
         let current = index.map { document.lines[$0].text } ?? "♪"
         let next = index.map { $0 + 1 < document.lines.count ? document.lines[$0 + 1].text : nil } ?? nil
         let anchors = status.map { PlaybackAnchors(status: $0, duration: signature?.duration) }
+        let dominant: [Double]? = style.theme == .album
+            ? albumAccent.map { [$0.r, $0.g, $0.b] }
+            : nil
         return .init(
             trackTitle: signature?.title ?? document.track.title,
             artistName: signature?.artist ?? document.track.artist,
@@ -563,7 +616,8 @@ final class AppModel {
             isPlaying: status?.state == .playing,
             progressStart: anchors?.startDate,
             progressEnd: anchors?.endDate,
-            frozenProgress: anchors?.frozenFraction
+            frozenProgress: anchors?.frozenFraction,
+            albumDominantRGB: dominant
         )
     }
 }

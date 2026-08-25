@@ -49,6 +49,13 @@ targets:
         NSAppleMusicUsageDescription: "Dynamicallyrics reads the currently playing track to show synced lyrics."
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
+        UIAppFonts:
+          - Bungee-Regular.ttf
+          - BebasNeue-Regular.ttf
+          - Baloo2.ttf
+          - Pacifico-Regular.ttf
+          - PlayfairDisplay.ttf
+          - SpaceGrotesk.ttf
         CFBundleURLTypes:
           - CFBundleURLName: com.jonathantran.dynamicallyrics
             CFBundleURLSchemes:
@@ -78,6 +85,13 @@ targets:
       path: LyricWidgets/Support/Info.plist
       properties:
         CFBundleDisplayName: LyricWidgets
+        UIAppFonts:
+          - Bungee-Regular.ttf
+          - BebasNeue-Regular.ttf
+          - Baloo2.ttf
+          - Pacifico-Regular.ttf
+          - PlayfairDisplay.ttf
+          - SpaceGrotesk.ttf
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:

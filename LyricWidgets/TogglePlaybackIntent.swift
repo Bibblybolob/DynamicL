@@ -35,5 +35,8 @@ struct TogglePlaybackButton: View {
                 .fontWeight(.semibold)
         }
         .buttonStyle(.plain)
+        // Sub-44pt targets silently swallow taps on Live Activities.
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
     }
 }
