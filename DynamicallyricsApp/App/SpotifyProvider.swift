@@ -37,6 +37,8 @@ final class SpotifyProvider {
     /// never stall the scheduling loop — the group cancels it after 12s and
     /// the loop moves on regardless of the outcome.
     private func pollCycle() async {
+        // Heartbeat for liveness checks: a fresh stamp at each iteration start.
+        lastLoopActivityAt = .now
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in await self?.poll() }
             group.addTask {
@@ -45,6 +47,23 @@ final class SpotifyProvider {
             await group.next()
             group.cancelAll()
         }
+    }
+
+    /// When the polling loop last showed life. Requests are capped at 12s and
+    /// backoffs at 15s, so a heartbeat older than this means the loop is
+    /// genuinely dead or hung — not merely waiting on a slow request.
+    private(set) var lastLoopActivityAt: Date?
+    static let loopStaleThreshold: TimeInterval = 20
+
+    var isLoopLikelyAlive: Bool {
+        guard let last = lastLoopActivityAt else { return false }
+        return Date.now.timeIntervalSince(last) < Self.loopStaleThreshold
+    }
+
+    /// Immediate poll: restarts the scheduling loop so the next request fires
+    /// now instead of after the current inter-poll sleep. Safe to call freely.
+    func kick() {
+        start()
     }
 
     private(set) var usesRapidProbe = false
@@ -162,7 +181,9 @@ final class SpotifyProvider {
                 lastError = nil
             case 429:
                 let retryAfter = TimeInterval(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 30
-                try? await Task.sleep(for: .seconds(min(retryAfter, 60)))
+                // Capped: a long server-side nap must never deafen the loop to
+                // kicks/bursts — 15s still respects the server's signal.
+                try? await Task.sleep(for: .seconds(min(retryAfter, 15)))
             default:
                 throw LyricsLookupError(kind: .network("HTTP \(http.statusCode)"))
             }

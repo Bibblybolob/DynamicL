@@ -10,6 +10,11 @@ struct RefreshLyricsActivityIntent: AppIntent {
     static let title: LocalizedStringResource = "Refresh"
     static let description = IntentDescription("Forces an immediate playback poll so lyrics catch up.")
 
+    // The stall scenarios this button exists for are exactly the ones where
+    // the main app may be dead — and a mailbox write can't wake a dead app.
+    // Foregrounding the app guarantees the queued command gets consumed.
+    nonisolated(unsafe) static var openAppWhenRun: Bool = true
+
     @MainActor
     func perform() async throws -> some IntentResult {
         // Mailbox command for the app's tick loop…

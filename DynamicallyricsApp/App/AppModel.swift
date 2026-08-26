@@ -204,6 +204,7 @@ final class AppModel {
         }
 
         lyrics.tick()
+        markRecoveredIfSilenceBroken()
         revivePollerIfNeeded()
         manageKeepAlive()
         publishNowPlayingIfDue()
@@ -211,6 +212,23 @@ final class AppModel {
         syncWidgetSnapshot()
         syncWatchSnapshot()
         consumeWidgetCommand()
+    }
+
+    /// A successful poll after >20s of silence means the feed just recovered
+    /// (stall, network blip). Flush the card this tick even if nothing else
+    /// changed, so the stale dim + ↻ clear immediately.
+    @ObservationIgnored private var lastSeenPollSuccess: Date?
+    private func markRecoveredIfSilenceBroken() {
+        guard let provider else { return }
+        defer { lastSeenPollSuccess = provider.lastSuccessfulPollAt }
+        guard let current = provider.lastSuccessfulPollAt,
+              let previous = lastSeenPollSuccess,
+              current != previous else { return }
+        let gap = Date.now.timeIntervalSince(previous)
+        if gap > 20 {
+            DiagnosticsLog.append("poll silence broken after \(Int(gap))s — forcing LA un-dim")
+            lastLAUpdateAt = .distantPast
+        }
     }
 
     /// Picks up play/pause + refresh requests made from widgets / Live Activity buttons.
@@ -228,6 +246,7 @@ final class AppModel {
             }
         case .refresh:
             DiagnosticsLog.append("cmd: refresh")
+            provider?.kick()
             provider?.burst(count: 8)
         case nil:
             break
@@ -375,6 +394,12 @@ final class AppModel {
             && (status?.state == .playing || withinPauseGrace || stalled)
         if shouldRun {
             keeper.start()
+            // Self-heal: interruptions, route changes, or media-server resets
+            // can stop audio while isKeepingAlive still reads true. Without
+            // this guard the process gets suspended and everything freezes.
+            if !keeper.isPlayerAlive {
+                keeper.resurrect()
+            }
         } else {
             keeper.stop()
         }
@@ -382,13 +407,21 @@ final class AppModel {
     }
 
     /// Status says playing but data went quiet: something killed polling
-    /// (revoked audio session, hung socket past the 12s ceiling). Re-arm.
+    /// (revoked audio session, hung socket). Revive only when the loop is
+    /// genuinely dead/hung — restarting a live loop cancels its in-flight
+    /// request and, at tick frequency, starves recovery forever.
+    @ObservationIgnored private var lastReviveAt: Date?
     private func revivePollerIfNeeded() {
-        guard status?.state == .playing,
-              let last = provider?.lastSuccessfulPollAt,
-              Date.now.timeIntervalSince(last) > 6 else { return }
-        provider?.start()
+        guard status?.state == .playing, let provider else { return }
+        guard provider.isPolling else { return } // signed out: stay stopped
+        guard !provider.isLoopLikelyAlive else { return }
+        guard let last = provider.lastSuccessfulPollAt,
+              Date.now.timeIntervalSince(last) > 8 else { return }
+        if let lastRevive = lastReviveAt,
+           Date.now.timeIntervalSince(lastRevive) < 3 { return }
+        lastReviveAt = .now
         DiagnosticsLog.append("watchdog: revive")
+        provider.kick()
     }
 
     @ObservationIgnored private var lastPublishedNowPlaying: String?
@@ -498,10 +531,12 @@ final class AppModel {
             return
         }
 
-        // Update cadence: track changes and play/pause go out immediately;
-        // line updates at most every 4s. Every update spends from the same
-        // small ActivityKit background budget — spending it all on per-line
-        // refresh is exactly what made track changes render ~10s late.
+        // Update diet + honest staleness: send when content the user READS
+        // changes (line, track, play state, style/accent), plus a slow
+        // keep-alive pulse so the card's staleDate never expires mid-gap —
+        // otherwise lyric gaps fake-stale the card and ↻ stops meaning
+        // anything. The progress bar advances itself via TimelineView on the
+        // widget's own clock.
         let targetState = contentState(document: document, style: style.prefs, albumAccent: style.accent)
         let trackKey = "\(targetState.trackTitle)|\(document.lines.count)"
         let trackChanged = trackKey != lastLASentTrack
@@ -513,24 +548,23 @@ final class AppModel {
         let accentChanged = targetState.albumDominantRGB != lastSentAccent
         let styleChanged = styleKey != lastAppliedStyleKey
         let urgent = trackChanged || playChanged || accentChanged || styleChanged
-        // Adaptive cadence: a line that will be visible ≥5s goes out
-        // immediately; rapid-fire sub-5s lines fold into the next urgent
-        // update instead of burning two background-update slots back-to-back.
-        let lineDwells = lineWillBeVisibleAtLeast5s(document: document)
-        let cooledDown = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast) >= 4
-        let cadenceSend = lineChanged && (lineDwells || cooledDown)
-        // Reconciliation self-heal: ActivityKit silently throttles/drops
-        // back-to-back background updates, which froze renders while our
-        // bookkeeping believed everything was delivered. If what we last
-        // actually sent differs from current truth for >6s, resend — any
-        // lost update heals itself within one window.
-        let reconciling = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast) >= 6
+        let sinceLastSend = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast)
+        let minGapPassed = sinceLastSend >= 4
+        let lineSend = lineChanged && minGapPassed && !throttleCapped(now: now)
+        // Keep-alive pulse: refresh staleness at most ~4/min during playback
+        // so isStale (and therefore ↻) only ever means a genuinely dead feed.
+        let keepAliveSend = status?.state == .playing && !urgent && sinceLastSend >= 15
+        // Reconciliation self-heal: ActivityKit silently drops background
+        // updates now and then. If what we last sent differs from current
+        // truth for >45s, resend. Generous window — frequent reconciles were
+        // part of the update spam that invited throttling in the first place.
+        let reconciling = sinceLastSend >= 45
             && lastSentLAHash != nil
             && lastSentLAHash != laContentHash(targetState)
-        if reconciling && !(urgent || cadenceSend) {
+        if reconciling && !(urgent || lineSend || keepAliveSend) {
             DiagnosticsLog.append("la reconcile: resending drifted state")
         }
-        if urgent || cadenceSend || reconciling {
+        if urgent || lineSend || keepAliveSend || reconciling {
             liveActivity.update(state: targetState)
             lastLAUpdateAt = now
             lastLineIndex = lyrics.currentIndex
@@ -539,7 +573,33 @@ final class AppModel {
             lastSentLAHash = laContentHash(targetState)
             lastAppliedStyleKey = styleKey
             lastSentAccent = targetState.albumDominantRGB
+            recordLASendRate()
         }
+    }
+
+    // MARK: LA update-rate telemetry + hard throttle cap
+
+    @ObservationIgnored private var recentLASends: [Date] = []
+    @ObservationIgnored private var lastRateWarningAt: Date?
+
+    /// Warns when we approach ActivityKit's throttling territory — every past
+    /// "frozen card" investigation has ended at this cliff.
+    private func recordLASendRate() {
+        let now = Date.now
+        recentLASends.append(now)
+        recentLASends.removeAll { now.timeIntervalSince($0) > 60 }
+        if recentLASends.count > 10,
+           now.timeIntervalSince(lastRateWarningAt ?? .distantPast) > 60 {
+            lastRateWarningAt = now
+            DiagnosticsLog.append("la rate warning: \(recentLASends.count) sends/min — throttle risk")
+        }
+    }
+
+    /// Hard cap: skip storms and dense lyrics can't park the activity. While
+    /// over 8 sends/min, only urgent changes (track/play/style/accent) go out.
+    private func throttleCapped(now: Date) -> Bool {
+        recentLASends.removeAll { now.timeIntervalSince($0) > 60 }
+        return recentLASends.count >= 8
     }
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
@@ -587,16 +647,6 @@ final class AppModel {
     @ObservationIgnored private var lastLASentTrack: String?
     /// Consecutive stopped/no-device observations (blip immunity for LA teardown).
     @ObservationIgnored private var stoppedStreak = 0
-
-    /// True when the current lyric line (at the projected playback position)
-    /// stays active for ≥5 more seconds — safe to spend an LA update on it now.
-    private func lineWillBeVisibleAtLeast5s(document: LyricsDocument) -> Bool {
-        guard let index = lyrics.currentIndex,
-              index + 1 < document.lines.count else { return true }
-        let projected = status?.position(at: .now) ?? 0
-        let nextLineTime = document.lines[index + 1].time
-        return nextLineTime - projected >= 5
-    }
 
     private func contentState(document: LyricsDocument,
                               style: LAStylePrefs,

@@ -44,7 +44,7 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
 
 /// Reads/writes the widget snapshot through the shared app-group container.
 public enum SharedNowPlaying {
-    public static let appGroupID = "group.com.jonathantran.dynamicallyrics"
+    public static let appGroupID = "group.com.jonathantran.dynamicallyrics.la"
     private static let storageKey = "widgetLyricSnapshot"
 
     public static func save(_ snapshot: WidgetLyricSnapshot) {

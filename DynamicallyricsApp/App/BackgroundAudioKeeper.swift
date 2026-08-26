@@ -12,8 +12,19 @@ final class BackgroundAudioKeeper {
     private(set) var isKeepingAlive = false
 
     private var interruptionObserver: (any NSObjectProtocol)?
+    private var routeChangeObserver: (any NSObjectProtocol)?
+    private var mediaServerResetObserver: (any NSObjectProtocol)?
     /// Called when an audio interruption ends and playback resumes.
     var onInterruptionEnded: (() -> Void)?
+
+    private var lastResurrectAt: Date = .distantPast
+
+    /// Ground truth: is audio actually flowing right now? `isKeepingAlive`
+    /// records intent; iOS can still silently stop the player underneath us
+    /// (media server resets, some route changes) — this catches that gap.
+    var isPlayerAlive: Bool {
+        player?.isPlaying == true
+    }
 
     /// Audible-guard volumes: loud while playing, near-silent while paused/idle.
     private static let loudVolume: Float = 0.01
@@ -40,19 +51,28 @@ final class BackgroundAudioKeeper {
             Self.log.info("keep-alive started, playing=\(self.player?.isPlaying ?? false)")
             DiagnosticsLog.append("keep-alive started, playing=\(player?.isPlaying ?? false)")
 
-            if interruptionObserver == nil {
-                interruptionObserver = NotificationCenter.default.addObserver(
-                    forName: AVAudioSession.interruptionNotification,
-                    object: nil,
-                    queue: .main
-                ) { [weak self] notification in
-                    self?.handleInterruption(notification)
-                }
-            }
+            installObservers()
         } catch {
             Self.log.error("keep-alive audio failed: \(error.localizedDescription)")
             isKeepingAlive = false
         }
+    }
+
+    /// Rebuilds the player from scratch. Called by the tick guard whenever the
+    /// app should be keeping alive but audio has silently stopped (media
+    /// server reset, unresumed interruption, route-change kill). Rate-limited
+    /// so a hostile environment can't spin us into a restart loop.
+    func resurrect() {
+        guard Date.now.timeIntervalSince(lastResurrectAt) > 5 else { return }
+        lastResurrectAt = .now
+        Self.log.info("keeper: resurrect")
+        DiagnosticsLog.append("keeper: resurrect")
+        if isKeepingAlive {
+            player?.stop()
+            player = nil
+            isKeepingAlive = false
+        }
+        start()
     }
 
     func stop() {
@@ -62,6 +82,49 @@ final class BackgroundAudioKeeper {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    private func installObservers() {
+        let center = NotificationCenter.default
+        if interruptionObserver == nil {
+            interruptionObserver = center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                self?.handleInterruption(notification)
+            }
+        }
+        if routeChangeObserver == nil {
+            // Route changes (headphones yanked, BT drop) can tear the session
+            // down without an interruption event — rebuild on the next tick.
+            routeChangeObserver = center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self, self.isKeepingAlive,
+                      let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                      let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
+                      reason == .oldDeviceUnavailable || reason == .newDeviceAvailable
+                else { return }
+                DiagnosticsLog.append("keeper: route change (\(reason.rawValue))")
+                self.resurrect()
+            }
+        }
+        if mediaServerResetObserver == nil {
+            // The nuclear case: the media server restarted and every session
+            // config/player handle is invalid. Full rebuild required.
+            mediaServerResetObserver = center.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self, self.isKeepingAlive else { return }
+                DiagnosticsLog.append("keeper: media services reset")
+                self.resurrect()
+            }
+        }
+    }
+
     private func handleInterruption(_ notification: Notification) {
         guard let info = notification.userInfo,
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
@@ -69,12 +132,14 @@ final class BackgroundAudioKeeper {
 
         switch type {
         case .began:
+            DiagnosticsLog.append("keeper: interruption began")
             player?.pause()
         case .ended:
             // Resume whenever we're supposed to be keeping the app alive,
             // even if iOS didn't set .shouldResume (e.g. short interruptions),
             // otherwise the keep-alive silently dies mid-session.
             if isKeepingAlive {
+                DiagnosticsLog.append("keeper: interruption ended, resuming")
                 player?.play()
                 onInterruptionEnded?()
             }

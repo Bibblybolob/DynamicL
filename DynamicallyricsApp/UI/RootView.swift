@@ -46,6 +46,7 @@ struct RootView: View {
             if model.lyrics.document != nil {
                 lockScreenToggle
                 appearanceLink
+                SyncServerRow()
                 offsetControl
             }
 

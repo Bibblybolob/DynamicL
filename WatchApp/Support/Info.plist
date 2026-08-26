@@ -23,6 +23,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.jonathantran.dynamicallyrics</string>
+	<string>com.jonathantran.dynamicallyrics.la</string>
 </dict>
 </plist>

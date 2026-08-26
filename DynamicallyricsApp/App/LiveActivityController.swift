@@ -17,6 +17,12 @@ final class LiveActivityController {
     private(set) var lastErrorText: String?
     nonisolated(unsafe) private var activity: Activity<LyricsActivityAttributes>?
 
+    @ObservationIgnored private var pushTokenTask: Task<Void, Never>?
+    @ObservationIgnored private var pushToStartTask: Task<Void, Never>?
+    /// Push-to-start tokens are per-attributes-type, not per-activity — one
+    /// stream for the whole process lifetime.
+    nonisolated(unsafe) private static var pushToStartStreamStarted = false
+
     var isEnabled: Bool {
         ActivityAuthorizationInfo().areActivitiesEnabled
     }
@@ -52,6 +58,7 @@ final class LiveActivityController {
         }
         if adopted {
             update(state: state)
+            beginPushTokenStreaming()
             return
         }
 
@@ -64,12 +71,16 @@ final class LiveActivityController {
                 // Stale-date honesty: mark playing content stale well past the
                 // worst-case poll gap (12s timeout + margin). Living permanently
                 // inside an 8s stale window made the system deprioritize renders.
-                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(18) : nil)
+                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(18) : nil),
+                // Server-push upgrade path: with a token, our sync server can
+                // update this activity over APNs even when the app is dead.
+                pushType: .token
             )
             isRunning = true
             lastErrorText = nil
             Self.log.info("activity started ok")
             DiagnosticsLog.append("LA started: \(state.trackTitle) play=\(state.isPlaying)")
+            beginPushTokenStreaming()
         } catch {
             lastErrorText = "request failed: \(error.localizedDescription)"
             Self.log.error("request failed: \(error.localizedDescription)")
@@ -98,6 +109,39 @@ final class LiveActivityController {
             await ref.update(content)
             DiagnosticsLog.append("LA sent: \(summary)")
         }
+    }
+
+    /// Streams per-activity update tokens + the global push-to-start token
+    /// into the sync server. Tokens arrive once shortly after request and
+    /// again on any rotation; each change is logged (so the raw APNs pipeline
+    /// can be exercised manually) and uploaded when a server URL is set.
+    private func beginPushTokenStreaming() {
+        guard let activity else { return }
+        pushTokenTask?.cancel()
+        nonisolated(unsafe) let current = activity
+        pushTokenTask = Task { [weak self] in
+            for await data in current.pushTokenUpdates {
+                let hex = data.map { String(format: "%02x", $0) }.joined()
+                await self?.record(updateToken: hex)
+            }
+        }
+
+        if !Self.pushToStartStreamStarted, #available(iOS 17.2, *) {
+            Self.pushToStartStreamStarted = true
+            pushToStartTask = Task { [weak self] in
+                for await data in Activity<LyricsActivityAttributes>.pushToStartTokenUpdates {
+                    let hex = data.map { String(format: "%02x", $0) }.joined()
+                    await self?.record(pushToStartToken: hex)
+                }
+            }
+        }
+    }
+
+    private func record(updateToken: String? = nil, pushToStartToken: String? = nil) async {
+        await SyncServerClient.shared.record(
+            updateToken: updateToken,
+            pushToStartToken: pushToStartToken
+        )
     }
 
     func end() {
