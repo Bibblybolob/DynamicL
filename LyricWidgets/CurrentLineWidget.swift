@@ -6,12 +6,14 @@ struct LyricEntry: TimelineEntry {
     let date: Date
     let trackTitle: String
     let currentLine: String
+    let albumImageURL: String?
     let isPlaying: Bool
 
     static let sample = LyricEntry(
         date: .now,
         trackTitle: "Sample Track",
         currentLine: "Waiting for music…",
+        albumImageURL: nil,
         isPlaying: true
     )
 
@@ -19,6 +21,7 @@ struct LyricEntry: TimelineEntry {
         date: .now,
         trackTitle: "No music",
         currentLine: "Play something to see lyrics here.",
+        albumImageURL: nil,
         isPlaying: false
     )
 }
@@ -30,6 +33,32 @@ func effectiveIsPlaying(_ snapshot: WidgetLyricSnapshot) -> Bool {
         return override
     }
     return snapshot.isPlaying
+}
+
+struct WidgetStyle {
+    let prefs: LAStylePrefs
+    let palette: LAPalette
+
+    init() {
+        prefs = LAStyleStore.load()
+        palette = LAStyleStore.resolve(prefs: prefs, albumDominant: nil)
+    }
+
+    var showsArtwork: Bool {
+        prefs.layout == .player && prefs.artworkStyle != .hidden
+    }
+
+    var showsTrackInfo: Bool {
+        prefs.layout != .minimal && prefs.showTrackInfo
+    }
+
+    var showsControls: Bool {
+        prefs.layout != .minimal && prefs.showControls
+    }
+
+    var textAlignment: SwiftUI.TextAlignment {
+        prefs.textAlignment == .center ? .center : .leading
+    }
 }
 
 struct CurrentLineProvider: TimelineProvider {
@@ -64,7 +93,13 @@ struct CurrentLineProvider: TimelineProvider {
 
 private extension LyricEntry {
     init(snapshot: WidgetLyricSnapshot, date: Date, line: String) {
-        self.init(date: date, trackTitle: snapshot.trackTitle, currentLine: line, isPlaying: effectiveIsPlaying(snapshot))
+        self.init(
+            date: date,
+            trackTitle: snapshot.trackTitle,
+            currentLine: line,
+            albumImageURL: snapshot.albumImageURL,
+            isPlaying: effectiveIsPlaying(snapshot)
+        )
     }
 }
 
@@ -75,35 +110,61 @@ struct HomeScreenLyricView: View {
     let entry: LyricEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Text(entry.trackTitle)
-                    .font(family == .systemSmall ? .caption2 : .footnote)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                if !entry.isPlaying {
-                    Image(systemName: "pause.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+        let style = WidgetStyle()
+        HStack(alignment: .center, spacing: family == .systemSmall ? 8 : 12) {
+            VStack(alignment: style.prefs.textAlignment.horizontal, spacing: 5) {
+                if style.showsTrackInfo {
+                    HStack(spacing: 4) {
+                        Image(systemName: entry.isPlaying ? "waveform" : "pause.fill")
+                            .font(.caption2.bold())
+                            .foregroundStyle(style.palette.accent.color)
+                        Text(entry.trackTitle)
+                            .font(family == .systemSmall ? .caption2 : .footnote)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(style.palette.text.color.opacity(0.78))
+                            .lineLimit(1)
+                    }
                 }
-                Spacer(minLength: 0)
-                TogglePlaybackButton(isPlaying: entry.isPlaying, font: family == .systemSmall ? .footnote : .title3)
-                    .tint(.pink)
+                Text(entry.currentLine)
+                    .font(family == .systemSmall ? .caption : .body)
+                    .fontWeight(.medium)
+                    .foregroundStyle(style.palette.text.color)
+                    .lineLimit(lineLimit)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(family == .systemSmall ? 0.7 : 0.75)
+                    .multilineTextAlignment(style.textAlignment)
+                    .frame(maxWidth: .infinity,
+                           alignment: style.prefs.textAlignment.alignment)
+                    .clipped()
+                if style.showsControls {
+                    HStack(spacing: 0) {
+                        SkipTrackButton(direction: .previous, font: .caption2)
+                        TogglePlaybackButton(isPlaying: entry.isPlaying, font: .caption2)
+                            .tint(style.palette.text.color)
+                        SkipTrackButton(direction: .next, font: .caption2)
+                    }
+                    .frame(height: 24, alignment: style.prefs.textAlignment.alignment)
+                }
             }
-            Text(entry.currentLine)
-                .font(family == .systemSmall ? .caption : .body)
-                .fontWeight(.medium)
-                .lineLimit(lineLimit)
-                .allowsTightening(true)
-                .minimumScaleFactor(family == .systemSmall ? 0.7 : 0.75)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            if style.showsArtwork {
+                LAAlbumDisc(
+                    urlString: entry.albumImageURL,
+                    size: family == .systemSmall ? 62 : 82,
+                    style: style.prefs.artworkStyle
+                )
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(family == .systemSmall ? 8 : 12)
         .containerBackground(for: .widget) {
-            LinearGradient(colors: [.pink.opacity(0.25), .purple.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(
+                colors: [style.palette.backgroundTop.color,
+                         style.palette.backgroundBottom.color],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
@@ -122,23 +183,33 @@ struct AccessoryRectangularLyricView: View {
     let entry: LyricEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let style = WidgetStyle()
+        VStack(alignment: style.prefs.textAlignment.horizontal, spacing: 2) {
             HStack(spacing: 3) {
                 Image(systemName: "music.quarternote.3")
                     .font(.caption2)
-                    .foregroundStyle(.pink)
+                    .foregroundStyle(style.palette.accent.color)
                     .symbolRenderingMode(.monochrome)
-                Text(entry.trackTitle)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if style.showsTrackInfo {
+                    Text(entry.trackTitle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(style.palette.text.color.opacity(0.75))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if style.showsControls {
+                    TogglePlaybackButton(isPlaying: entry.isPlaying, font: .caption2)
+                        .tint(style.palette.text.color)
+                }
             }
             Text(entry.currentLine)
                 .font(.footnote.weight(.medium))
+                .foregroundStyle(style.palette.text.color)
                 .lineLimit(3)
                 .allowsTightening(true)
                 .minimumScaleFactor(0.75)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(style.textAlignment)
+                .frame(maxWidth: .infinity, alignment: style.prefs.textAlignment.alignment)
                 .clipped()
             if !entry.isPlaying {
                 Label("Paused", systemImage: "pause.fill")
@@ -157,16 +228,17 @@ struct AccessoryCircularLyricView: View {
     let entry: LyricEntry
 
     var body: some View {
+        let style = WidgetStyle()
         ZStack {
             AccessoryWidgetBackground()
             VStack(spacing: 0) {
                 Image(systemName: entry.isPlaying ? "music.quarternote.3" : "pause.fill")
                     .font(.title3)
-                    .foregroundStyle(entry.isPlaying ? .pink : .secondary)
+                    .foregroundStyle(entry.isPlaying ? style.palette.accent.color : style.palette.text.color.opacity(0.55))
                     .symbolRenderingMode(.monochrome)
                 Text(entry.trackTitle)
                     .font(.system(size: 8))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(style.palette.text.color.opacity(0.75))
                     .lineLimit(1)
                     .padding(.horizontal, 2)
             }
@@ -181,8 +253,10 @@ struct AccessoryInlineLyricView: View {
     let entry: LyricEntry
 
     var body: some View {
+        let style = WidgetStyle()
         Text(entry.isPlaying ? "♪ \(entry.currentLine)" : "❙❙ \(entry.currentLine)")
             .font(.headline)
+            .foregroundStyle(style.palette.text.color)
             .lineLimit(1)
             .allowsTightening(true)
             .minimumScaleFactor(0.55)

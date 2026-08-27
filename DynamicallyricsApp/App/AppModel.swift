@@ -141,9 +141,9 @@ final class AppModel {
             "It shows up on your Lock Screen",
             "And inside the Dynamic Island",
             "Synced line by line",
-            "Dynamicallyrics",
+            "OpenLyrics",
         ]
-        let track = TrackSignature(title: "Demo Song", artist: "Dynamicallyrics")
+        let track = TrackSignature(title: "Demo Song", artist: "OpenLyrics")
         let doc = LyricsDocument(
             track: track,
             lines: lines.enumerated().map { LyricLine(time: Double($0.offset) * 2.5, text: $0.element) }
@@ -246,6 +246,10 @@ final class AppModel {
                     WidgetCenter.shared.reloadAllTimelines()
                 }
             }
+        case .next:
+            Task { await provider?.next() }
+        case .previous:
+            Task { await provider?.previous() }
         case .refresh:
             DiagnosticsLog.append("cmd: refresh")
             provider?.kick()
@@ -300,24 +304,13 @@ final class AppModel {
 
         let isPlaying = status?.state == .playing
         let index = lyrics.currentIndex ?? -1
-        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)"
+        let offsetKey = String(format: "%.3f", lyrics.userOffset)
+        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(offsetKey)"
         guard key != lastPublishedWidgetKey else { return }
         lastPublishedWidgetKey = key
         widgetIdlePublished = false
 
-        var scheduled: [WidgetLyricSnapshot.ScheduledLine] = []
-        if isPlaying {
-            let base = lyrics.displayPosition
-            let now = Date.now
-            scheduled = document.lines.compactMap { line in
-                let delta = line.time - base
-                guard delta > 0.05 else { return nil }
-                return .init(date: now.addingTimeInterval(delta), text: line.text)
-            }
-            if scheduled.count > 40 {
-                scheduled = Array(scheduled.prefix(40))
-            }
-        }
+        let scheduled = scheduledLines(for: document, limit: 40)
 
         let current = index >= 0 && index < document.lines.count ? document.lines[index].text : "♪"
         SharedNowPlaying.save(
@@ -480,7 +473,7 @@ final class AppModel {
         stoppedStreak = 0
 
         let style = loadLAStyle()
-        let styleKey = "\(style.prefs.theme.rawValue)|\(style.prefs.fontStyle.rawValue)|\(style.prefs.animationsEnabled)"
+        let styleKey = "\(style.prefs.theme.rawValue)|\(style.prefs.layout.rawValue)|\(style.prefs.artworkStyle.rawValue)|\(style.prefs.textAlignment.rawValue)|\(style.prefs.fontStyle.rawValue)|\(style.prefs.lyricScale.rawValue)|\(style.prefs.showTrackInfo)|\(style.prefs.showControls)|\(style.prefs.showNextLine)|\(style.prefs.showProgressBar)|\(style.prefs.animationsEnabled)|\(style.prefs.karaokeEnabled)"
 
         guard let signature else {
             if liveActivity.isRunning { liveActivity.end() }
@@ -504,6 +497,7 @@ final class AppModel {
                     return LyricsActivityAttributes.ContentState(
                         trackTitle: signature.title,
                         artistName: signature.artist,
+                        albumImageURL: provider?.lastAlbumImageURL,
                         currentLine: lyrics.isAwaitingLyrics ? "Finding lyrics…" : "No lyrics for this track",
                         isPlaying: status?.state == .playing,
                         progressStart: anchors?.startDate,
@@ -535,6 +529,7 @@ final class AppModel {
             lastSentLAHash = laContentHash(startState)
             lastAppliedStyleKey = styleKey
             lastSentAccent = startState.albumDominantRGB
+            lastAppliedLAOffset = lyrics.userOffset
             return
         }
 
@@ -554,18 +549,26 @@ final class AppModel {
         // appearance picks land within one tick.
         let accentChanged = targetState.albumDominantRGB != lastSentAccent
         let styleChanged = styleKey != lastAppliedStyleKey
-        let urgent = trackChanged || playChanged || accentChanged || styleChanged
+        let offsetChanged = lastAppliedLAOffset.map {
+            abs($0 - lyrics.userOffset) > 0.001
+        } ?? false
+        let urgent = trackChanged || playChanged || accentChanged || styleChanged || offsetChanged
         let sinceLastSend = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast)
-        let minGapPassed = sinceLastSend >= 4
+        // The in-app scroller advances on a 250ms clock. ActivityKit still
+        // applies its own device-level budget, but a four-second app-side gate
+        // made normal lyric changes visibly stale. Coalescing in the controller
+        // prevents overlapping sends, so this can be responsive without a
+        // request storm.
+        let minGapPassed = sinceLastSend >= 1.5
         let lineSend = lineChanged && minGapPassed && !throttleCapped(now: now)
-        // Keep-alive pulse: refresh staleness at most ~4/min during playback
+        // Keep-alive pulse: refresh staleness at most ~2/min during playback
         // so isStale (and therefore ↻) only ever means a genuinely dead feed.
-        let keepAliveSend = status?.state == .playing && !urgent && sinceLastSend >= 15
+        let keepAliveSend = status?.state == .playing && !urgent && sinceLastSend >= 30
         // Reconciliation self-heal: ActivityKit silently drops background
         // updates now and then. If what we last sent differs from current
         // truth for >45s, resend. Generous window — frequent reconciles were
         // part of the update spam that invited throttling in the first place.
-        let reconciling = sinceLastSend >= 45
+        let reconciling = sinceLastSend >= 60
             && lastSentLAHash != nil
             && lastSentLAHash != laContentHash(targetState)
         if reconciling && !(urgent || lineSend || keepAliveSend) {
@@ -580,6 +583,7 @@ final class AppModel {
             lastSentLAHash = laContentHash(targetState)
             lastAppliedStyleKey = styleKey
             lastSentAccent = targetState.albumDominantRGB
+            lastAppliedLAOffset = lyrics.userOffset
             recordLASendRate()
         }
     }
@@ -595,18 +599,18 @@ final class AppModel {
         let now = Date.now
         recentLASends.append(now)
         recentLASends.removeAll { now.timeIntervalSince($0) > 60 }
-        if recentLASends.count > 10,
+        if recentLASends.count > 16,
            now.timeIntervalSince(lastRateWarningAt ?? .distantPast) > 60 {
             lastRateWarningAt = now
             DiagnosticsLog.append("la rate warning: \(recentLASends.count) sends/min — throttle risk")
         }
     }
 
-    /// Hard cap: skip storms and dense lyrics can't park the activity. While
-    /// over 8 sends/min, only urgent changes (track/play/style/accent) go out.
+    /// Soft app-side cap: skip storms and dense lyrics cannot park the
+    /// activity. ActivityKit still owns the final device-level budget.
     private func throttleCapped(now: Date) -> Bool {
         recentLASends.removeAll { now.timeIntervalSince($0) > 60 }
-        return recentLASends.count >= 8
+        return recentLASends.count >= 20
     }
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
@@ -617,6 +621,8 @@ final class AppModel {
     /// Style prefs as of the last LA render — a mismatch forces an immediate
     /// re-render so in-app appearance changes land on the activity instantly.
     @ObservationIgnored private var lastAppliedStyleKey: String?
+    /// User lyric offset as of the last Live Activity schedule refresh.
+    @ObservationIgnored private var lastAppliedLAOffset: TimeInterval?
     /// Extracted album dominant color (Album mode) + the artwork URL it came from.
     @ObservationIgnored private var albumAccent: RGB?
     @ObservationIgnored private var albumAccentForURL: String?
@@ -630,6 +636,9 @@ final class AppModel {
             + "|\(s.progressStart.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.progressEnd.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.frozenProgress.map { Int(($0 * 100).rounded()) } ?? -1)"
+            + "|\(s.karaokeStartDate.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
+            + "|\(s.karaokeEndDate.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
+            + "|\(s.frozenKaraokeProgress.map { Int(($0 * 100).rounded()) } ?? -1)"
             + "|\(s.albumDominantRGB.map { $0.map { Int($0 * 255) } } ?? [])"
     }
 
@@ -662,19 +671,81 @@ final class AppModel {
         let current = index.map { document.lines[$0].text } ?? "♪"
         let next = index.map { $0 + 1 < document.lines.count ? document.lines[$0 + 1].text : nil } ?? nil
         let anchors = status.map { PlaybackAnchors(status: $0, duration: signature?.duration) }
+        let karaoke = karaokeTiming(for: document)
         let dominant: [Double]? = style.theme == .album
             ? albumAccent.map { [$0.r, $0.g, $0.b] }
             : nil
+        // Twelve future lines keep the Live Activity payload compact while
+        // covering normal lyric gaps. ActivityKit updates refresh the window
+        // before it runs out, and the widget advances locally at each date.
+        let scheduled = scheduledLines(for: document, limit: 12)
         return .init(
             trackTitle: signature?.title ?? document.track.title,
             artistName: signature?.artist ?? document.track.artist,
+            albumImageURL: provider?.lastAlbumImageURL,
             currentLine: current,
             nextLine: next,
             isPlaying: status?.state == .playing,
             progressStart: anchors?.startDate,
             progressEnd: anchors?.endDate,
             frozenProgress: anchors?.frozenFraction,
+            scheduledLines: scheduled.isEmpty ? nil : scheduled,
+            karaokeStartDate: karaoke.start,
+            karaokeEndDate: karaoke.end,
+            frozenKaraokeProgress: karaoke.frozen,
             albumDominantRGB: dominant
         )
+    }
+
+    /// Maps the active LRC line onto the same playback clock used by the main
+    /// lyrics view. While playing, the extension receives a wall-clock
+    /// interval; while paused, it receives a frozen fraction instead.
+    private func karaokeTiming(for document: LyricsDocument)
+        -> (start: Date?, end: Date?, frozen: Double?) {
+        guard let index = lyrics.currentIndex,
+              document.lines.indices.contains(index),
+              let status else {
+            return (nil, nil, nil)
+        }
+
+        let lineStart = document.lines[index].time + lyrics.userOffset
+        let lineEnd = index + 1 < document.lines.count
+            ? document.lines[index + 1].time + lyrics.userOffset
+            : lineStart + 4
+        let end = max(lineStart + 0.25, lineEnd)
+        let position = lyrics.displayPosition
+        let fraction = min(max((position - lineStart) / (end - lineStart), 0), 1)
+
+        guard status.state == .playing else {
+            return (nil, nil, fraction)
+        }
+
+        let rate = max(status.rate, 0.001)
+        let now = Date.now
+        return (
+            now.addingTimeInterval((lineStart - position) / rate),
+            now.addingTimeInterval((end - position) / rate),
+            nil
+        )
+    }
+
+    /// Converts the same playback position used by the in-app lyric scroller
+    /// into absolute dates. Widgets, the watch complication, and the Live
+    /// Activity can then advance independently without polling the app every
+    /// frame or consuming ActivityKit's update budget.
+    private func scheduledLines(for document: LyricsDocument,
+                                limit: Int) -> [WidgetLyricSnapshot.ScheduledLine] {
+        guard status?.state == .playing else { return [] }
+        let base = lyrics.displayPosition
+        let now = Date.now
+        return Array(document.lines.compactMap { line in
+            // SyncEngine applies the user's offset to playback position when
+            // selecting the active line. Apply the equivalent inverse shift
+            // to the wall-clock schedule so the app and Live Activity remain
+            // aligned after an offset adjustment too.
+            let delta = line.time + lyrics.userOffset - base
+            guard delta > 0.05 else { return nil }
+            return .init(date: now.addingTimeInterval(delta), text: line.text)
+        }.prefix(limit))
     }
 }

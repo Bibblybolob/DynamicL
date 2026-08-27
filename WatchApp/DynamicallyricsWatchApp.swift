@@ -15,7 +15,7 @@ struct DynamicallyricsWatchApp: App {
 @MainActor
 @Observable
 final class WatchModel {
-    var trackTitle: String = "Dynamicallyrics"
+    var trackTitle: String = "OpenLyrics"
     var artistName: String = ""
     var currentLine: String = "Waiting for your iPhone…"
     var isPlaying: Bool = false
@@ -48,7 +48,7 @@ final class WatchModel {
 
     private func reset() {
         hasContent = false
-        trackTitle = "Dynamicallyrics"
+        trackTitle = "OpenLyrics"
         artistName = ""
         currentLine = "Waiting for your iPhone…"
         isPlaying = false

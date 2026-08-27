@@ -215,7 +215,7 @@ public struct LRCLIBClient: Sendable {
     private func send(_ url: URL) async throws -> (Data, URLResponse?) {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.timeoutInterval = 15
-        request.setValue("Dynamicallyrics/0.1 (personal)", forHTTPHeaderField: "User-Agent")
+        request.setValue("OpenLyrics/1.0 (personal)", forHTTPHeaderField: "User-Agent")
         do {
             let (data, response) = try await session.data(for: request)
             return (data, response)

@@ -1,13 +1,13 @@
-# DynamicL
+# OpenLyrics
 
 # VIBE-CODED
 
-**Dynamicallyrics** — an iOS app that displays time-synced lyrics for the currently playing track, on your Lock Screen, home screen, Dynamic Island, and Apple Watch.
+**OpenLyrics** — an iOS app that displays time-synced lyrics for the currently playing track, on your Lock Screen, home screen, Dynamic Island, and Apple Watch.
 
 ## Status
 
 Work in progress. The lyric engine, Spotify integration, and widget surfaces are in place.
-Build 5 (`0.1.0 (5)`) has been uploaded to TestFlight and is processing in App Store Connect.
+Build 5 (`0.1.0 (5)`) has been uploaded to TestFlight and is processing in App Store Connect. Build 7 (`1.1.1`) is the current local release candidate with the OpenLyrics name and selected option 4 artwork.
 
 | Feature | Status |
 |---|---|
@@ -20,7 +20,16 @@ Build 5 (`0.1.0 (5)`) has been uploaded to TestFlight and is processing in App S
 | Apple Watch app + complications | ✅ Done |
 | Persistent lyric cache across launches | ✅ Done |
 | Optional server-backed Live Activity updates | ✅ Done |
+| Live Activity layout, artwork, alignment, and control customization | ✅ Done |
 | Apple Music integration | Roadmap |
+
+## Build 6 highlights
+
+- Live Activity lyric cards now fit long lines inside bounded, readable layouts instead of allowing oversized text to escape the card.
+- Live Activity updates are coalesced and serialized, with a shorter lyric-change interval to reduce stale lines and silent update drops.
+- Live Activity appearance now includes compact/balanced/large lyric sizing plus next-line and progress-bar toggles.
+- The album-art vinyl widget now supports both Lock Screen circular and Home Screen small layouts with lighter timeline-driven spinning.
+- The main app now presents album art, clearer playback state, and grouped settings in a more polished Now Playing surface.
 
 ## Build 5 highlights
 
@@ -39,7 +48,17 @@ shared `group.com.jonathantran.dynamicallyrics.la` app group, so they never talk
 |---|---|---|
 | **Current Line** (`CurrentLineWidget`) | Home screen small/medium/large · Lock Screen circular/rectangular/inline | Live lyric line with scheduled per-line timeline entries; tap ⏯ to toggle playback in place |
 | **Lock Screen Lyrics** (`LockscreenLyricWidget`) | Lock Screen only (circular/rectangular/inline) | Standalone serif-italic "lyric card" styling that follows the Lock Screen tint |
+| **Vinyl Player** (`VinylWidget`) | Home screen small · Lock Screen circular | Album-art record that rotates while playback is active |
 | **Lyrics Live Activity** (`LyricsLiveActivity`) | Lock Screen card · Dynamic Island | Synced current + next line; includes a play/pause button |
+
+### Appearance customization
+
+The **Live Activity Style** screen supports Player, Lyrics Focus, and Minimal
+layouts; vinyl, square, or hidden artwork; left or centered lyrics; multiple
+fonts, themes, lyric sizes, karaoke sweep, next-line/progress visibility, and
+optional playback controls or track details. The same choices are reflected in
+the home-screen and Lock Screen widgets, while the vinyl widget can be static
+when animations are disabled.
 
 ### Interactive playback
 

@@ -48,4 +48,20 @@ public extension LAStylePrefs.FontStyle {
         return .system(size: fixedSize, weight: weight, design: design)
     }
 }
+
+public extension LAStylePrefs.TextAlignment {
+    var horizontal: HorizontalAlignment {
+        switch self {
+        case .leading: return .leading
+        case .center: return .center
+        }
+    }
+
+    var alignment: Alignment {
+        switch self {
+        case .leading: return .leading
+        case .center: return .center
+        }
+    }
+}
 #endif

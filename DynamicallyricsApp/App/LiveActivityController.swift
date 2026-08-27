@@ -20,6 +20,11 @@ final class LiveActivityController {
     @ObservationIgnored private var pushTokenTask: Task<Void, Never>?
     @ObservationIgnored private var activityStateTask: Task<Void, Never>?
     @ObservationIgnored private var pushToStartTask: Task<Void, Never>?
+    /// ActivityKit updates are asynchronous. Coalesce a short burst and send
+    /// one latest-state update at a time; overlapping update tasks were a
+    /// source of silent drops that looked like a frozen Live Activity.
+    @ObservationIgnored private var pendingUpdateState: LyricsActivityAttributes.ContentState?
+    @ObservationIgnored private var pendingUpdateTask: Task<Void, Never>?
     /// Push-to-start tokens are per-attributes-type, not per-activity — one
     /// stream for the whole process lifetime.
     nonisolated(unsafe) private static var pushToStartStreamStarted = false
@@ -80,7 +85,7 @@ final class LiveActivityController {
                 // Stale-date honesty: mark playing content stale well past the
                 // worst-case poll gap (12s timeout + margin). Living permanently
                 // inside an 8s stale window made the system deprioritize renders.
-                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(18) : nil),
+                content: .init(state: state, staleDate: state.isPlaying ? .now.addingTimeInterval(25) : nil),
                 // Server-push path: with a token, our sync server can update
                 // or end this activity over APNs even when the app is dead.
                 pushType: .token
@@ -101,24 +106,46 @@ final class LiveActivityController {
     }
 
     func update(state: LyricsActivityAttributes.ContentState) {
-        guard let activity else {
+        guard activity != nil else {
             start(state: state)
             return
         }
-        nonisolated(unsafe) let ref = activity
+        pendingUpdateState = state
+        guard pendingUpdateTask == nil else { return }
+
+        // A tiny debounce lets a track/playing/style transition settle into
+        // one payload while keeping ordinary lyric changes effectively
+        // immediate. The controller never has more than one ActivityKit call
+        // in flight.
+        pendingUpdateTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled else { return }
+            await self?.flushPendingUpdate()
+        }
+    }
+
+    private func flushPendingUpdate() async {
+        guard let state = pendingUpdateState, let activity else {
+            pendingUpdateState = nil
+            pendingUpdateTask = nil
+            return
+        }
+        pendingUpdateState = nil
+
         // Stale-date honesty: while playing, mark the content stale well past
         // the worst-case poll gap (12s request ceiling + margin) so a stalled
         // feed decays visibly instead of freezing on a lie. Paused content
         // never goes stale.
-        let staleDate: Date? = state.isPlaying ? .now.addingTimeInterval(18) : nil
+        let staleDate: Date? = state.isPlaying ? .now.addingTimeInterval(25) : nil
+        nonisolated(unsafe) let ref = activity
         nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: staleDate)
         let summary = "\(state.trackTitle) play=\(state.isPlaying) anchors=\(state.progressStart != nil && state.progressEnd != nil) frozen=\(state.frozenProgress.map { String(format: "%.2f", $0) } ?? "-")"
-        Task { @MainActor in
-            // NOTE: this update(_:) overload cannot throw — ActivityKit swallows
-            // throttling/drop failures silently, which is exactly why the
-            // reconciliation self-heal exists.
-            await ref.update(content)
-            DiagnosticsLog.append("LA sent: \(summary)")
+        await ref.update(content)
+        DiagnosticsLog.append("LA sent: \(summary)")
+
+        pendingUpdateTask = nil
+        if let pending = pendingUpdateState {
+            update(state: pending)
         }
     }
 
@@ -157,6 +184,9 @@ final class LiveActivityController {
         pushTokenTask?.cancel()
         pushTokenTask = nil
         activityStateTask = nil
+        pendingUpdateTask?.cancel()
+        pendingUpdateTask = nil
+        pendingUpdateState = nil
         activity = nil
         isRunning = false
         DiagnosticsLog.append("LA ended externally")
@@ -187,6 +217,9 @@ final class LiveActivityController {
         pushTokenTask = nil
         activityStateTask?.cancel()
         activityStateTask = nil
+        pendingUpdateTask?.cancel()
+        pendingUpdateTask = nil
+        pendingUpdateState = nil
         Task { @MainActor in
             await ending.end(nil, dismissalPolicy: .immediate)
         }

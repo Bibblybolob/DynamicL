@@ -1,4 +1,4 @@
-# Dynamicallyrics sync server (Cloudflare Worker)
+# OpenLyrics sync server (Cloudflare Worker)
 
 Polls Spotify every ~5s while music plays, computes the current lyric line
 (LRCLIB), and pushes Live Activity updates over APNs — independent of the app.

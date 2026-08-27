@@ -33,7 +33,7 @@ struct NowPlayingWatchView: View {
                         Image(systemName: "music.note")
                             .font(.title3)
                             .foregroundStyle(.pink)
-                        Text("Open Dynamicallyrics on your iPhone and start playing a song.")
+                        Text("Open OpenLyrics on your iPhone and start playing a song.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

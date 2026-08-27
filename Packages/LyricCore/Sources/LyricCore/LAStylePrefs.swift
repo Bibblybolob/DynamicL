@@ -23,6 +23,26 @@ public struct LAStylePrefs: Codable, Equatable, Sendable {
         case album
     }
 
+    /// Presets that change the information density of the Live Activity and
+    /// the larger home-screen widgets.
+    public enum Layout: String, Codable, CaseIterable, Sendable {
+        case player
+        case lyricsFocus
+        case minimal
+    }
+
+    /// How artwork is presented when the selected layout includes it.
+    public enum ArtworkStyle: String, Codable, CaseIterable, Sendable {
+        case vinyl
+        case square
+        case hidden
+    }
+
+    public enum TextAlignment: String, Codable, CaseIterable, Sendable {
+        case leading
+        case center
+    }
+
     public enum FontStyle: String, Codable, CaseIterable, Sendable {
         case rounded
         case serif
@@ -37,16 +57,84 @@ public struct LAStylePrefs: Codable, Equatable, Sendable {
         case grotesk
     }
 
+    /// Controls how much vertical space the hero lyric can use. Balanced and
+    /// large allow a second line, which is safer than letting a long lyric
+    /// escape the Live Activity's width.
+    public enum LyricScale: String, Codable, CaseIterable, Sendable {
+        case compact
+        case balanced
+        case large
+
+        public var pointSize: Double {
+            switch self {
+            case .compact: return 20
+            case .balanced: return 23
+            case .large: return 27
+            }
+        }
+
+        public var minimumScale: Double {
+            switch self {
+            case .compact: return 0.46
+            case .balanced: return 0.42
+            case .large: return 0.38
+            }
+        }
+
+        public var maximumLines: Int {
+            self == .compact ? 1 : 2
+        }
+
+        /// Total height reserved for the hero, not the height of each line.
+        public var totalHeight: Double {
+            self == .compact ? 29 : (self == .balanced ? 52 : 60)
+        }
+    }
+
     public var theme: Theme
+    public var layout: Layout
+    public var artworkStyle: ArtworkStyle
+    public var textAlignment: TextAlignment
     public var fontStyle: FontStyle
+    public var lyricScale: LyricScale
+    /// Shows the title and artist row above the active lyric.
+    public var showTrackInfo: Bool
+    /// Shows transport buttons wherever the surface supports them.
+    public var showControls: Bool
+    /// Optional secondary context under the current lyric.
+    public var showNextLine: Bool
+    /// Optional self-advancing playback progress capsule.
+    public var showProgressBar: Bool
     /// Stepped widget animations (equalizer bars, marquee, shimmer, pulse).
     public var animationsEnabled: Bool
+    /// Proportionally highlights the active lyric in the main lyrics view.
+    /// LRC supplies line timestamps, so the app sweeps across each line.
+    public var karaokeEnabled: Bool
 
-    public init(theme: Theme = .hotPink, fontStyle: FontStyle = .rounded,
-                animationsEnabled: Bool = true) {
+    public init(theme: Theme = .hotPink,
+                layout: Layout = .player,
+                artworkStyle: ArtworkStyle = .vinyl,
+                textAlignment: TextAlignment = .leading,
+                fontStyle: FontStyle = .rounded,
+                lyricScale: LyricScale = .balanced,
+                showTrackInfo: Bool = true,
+                showControls: Bool = true,
+                showNextLine: Bool = true,
+                showProgressBar: Bool = true,
+                animationsEnabled: Bool = true,
+                karaokeEnabled: Bool = true) {
         self.theme = theme
+        self.layout = layout
+        self.artworkStyle = artworkStyle
+        self.textAlignment = textAlignment
         self.fontStyle = fontStyle
+        self.lyricScale = lyricScale
+        self.showTrackInfo = showTrackInfo
+        self.showControls = showControls
+        self.showNextLine = showNextLine
+        self.showProgressBar = showProgressBar
         self.animationsEnabled = animationsEnabled
+        self.karaokeEnabled = karaokeEnabled
     }
 
     public static let `default` = LAStylePrefs()
@@ -56,8 +144,17 @@ public struct LAStylePrefs: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = try c.decodeIfPresent(Theme.self, forKey: .theme) ?? .hotPink
+        layout = try c.decodeIfPresent(Layout.self, forKey: .layout) ?? .player
+        artworkStyle = try c.decodeIfPresent(ArtworkStyle.self, forKey: .artworkStyle) ?? .vinyl
+        textAlignment = try c.decodeIfPresent(TextAlignment.self, forKey: .textAlignment) ?? .leading
         fontStyle = try c.decodeIfPresent(FontStyle.self, forKey: .fontStyle) ?? .rounded
+        lyricScale = try c.decodeIfPresent(LyricScale.self, forKey: .lyricScale) ?? .balanced
+        showTrackInfo = try c.decodeIfPresent(Bool.self, forKey: .showTrackInfo) ?? true
+        showControls = try c.decodeIfPresent(Bool.self, forKey: .showControls) ?? true
+        showNextLine = try c.decodeIfPresent(Bool.self, forKey: .showNextLine) ?? true
+        showProgressBar = try c.decodeIfPresent(Bool.self, forKey: .showProgressBar) ?? true
         animationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .animationsEnabled) ?? true
+        karaokeEnabled = try c.decodeIfPresent(Bool.self, forKey: .karaokeEnabled) ?? true
     }
 }
 

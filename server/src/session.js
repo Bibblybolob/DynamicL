@@ -259,7 +259,7 @@ export class PlaybackSessionV2 {
     if (durationSec > 0) url.searchParams.set("duration", String(durationSec));
 
     const res = await fetch(url, {
-      headers: { "user-agent": "Dynamicallyrics/0.1 (personal sync server)" },
+      headers: { "user-agent": "OpenLyrics/0.1 (personal sync server)" },
     });
     let lines = [];
     if (res.ok) {

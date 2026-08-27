@@ -6,7 +6,7 @@ import LyricCore
 /// button on a home-screen widget or the Lock Screen Live Activity.
 struct ToggleLyricPlaybackIntent: AppIntent {
     static let title: LocalizedStringResource = "Play / Pause"
-    static let description = IntentDescription("Toggles playback of the song shown in the Dynamicallyrics widget.")
+    static let description = IntentDescription("Toggles playback of the song shown in the OpenLyrics widget.")
 
     @MainActor
     func perform() async throws -> some IntentResult {
@@ -36,6 +36,58 @@ struct TogglePlaybackButton: View {
         }
         .buttonStyle(.plain)
         // Sub-44pt targets silently swallow taps on Live Activities.
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+}
+
+/// Shared transport buttons for the mini-player layout. The intent only
+/// writes to the app-group mailbox; the main app performs the Spotify call.
+struct NextTrackIntent: AppIntent {
+    static let title: LocalizedStringResource = "Next Track"
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        PlaybackCommandBus.send(.next)
+        return .result()
+    }
+}
+
+struct PreviousTrackIntent: AppIntent {
+    static let title: LocalizedStringResource = "Previous Track"
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        PlaybackCommandBus.send(.previous)
+        return .result()
+    }
+}
+
+struct SkipTrackButton: View {
+    enum Direction {
+        case previous
+        case next
+    }
+
+    let direction: Direction
+    var font: Font = .footnote
+
+    var body: some View {
+        Group {
+            switch direction {
+            case .previous:
+                Button(intent: PreviousTrackIntent()) {
+                    Image(systemName: "backward.fill")
+                        .font(font)
+                }
+            case .next:
+                Button(intent: NextTrackIntent()) {
+                    Image(systemName: "forward.fill")
+                        .font(font)
+                }
+            }
+        }
+        .buttonStyle(.plain)
         .frame(minWidth: 44, minHeight: 44)
         .contentShape(Rectangle())
     }

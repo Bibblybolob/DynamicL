@@ -14,6 +14,41 @@ struct AppearanceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 previewCard
+                section(title: "Layout", icon: "rectangle.3.group") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Picker("Layout preset", selection: Binding(
+                            get: { prefs.layout },
+                            set: { newValue in setStyle { $0.layout = newValue } }
+                        )) {
+                            ForEach(LAStylePrefs.Layout.allCases, id: \.self) { layout in
+                                Text(layout.label).tag(layout)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        Picker("Artwork", selection: Binding(
+                            get: { prefs.artworkStyle },
+                            set: { newValue in setStyle { $0.artworkStyle = newValue } }
+                        )) {
+                            ForEach(LAStylePrefs.ArtworkStyle.allCases, id: \.self) { artwork in
+                                Text(artwork.label).tag(artwork)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        Picker("Lyric alignment", selection: Binding(
+                            get: { prefs.textAlignment },
+                            set: { newValue in setStyle { $0.textAlignment = newValue } }
+                        )) {
+                            ForEach(LAStylePrefs.TextAlignment.allCases, id: \.self) { alignment in
+                                Text(alignment.label).tag(alignment)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .padding(12)
+                    .background(.tertiary.opacity(0.35), in: .rect(cornerRadius: 14))
+                }
                 section(title: "Theme", icon: "paintpalette") {
                     LazyVGrid(columns: swatchColumns, spacing: 10) {
                         ForEach(LAStylePrefs.Theme.allCases, id: \.self) { theme in
@@ -35,6 +70,69 @@ struct AppearanceView: View {
                         }
                     }
                 }
+                section(title: "Lyric layout", icon: "text.alignleft") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle(isOn: Binding(
+                            get: { prefs.showTrackInfo },
+                            set: { newValue in setStyle { $0.showTrackInfo = newValue } }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show track details")
+                                Text("Displays the song title and artist above the lyric.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Toggle(isOn: Binding(
+                            get: { prefs.showControls },
+                            set: { newValue in setStyle { $0.showControls = newValue } }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show playback controls")
+                                Text("Adds play/pause and skip buttons to supported surfaces.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Picker("Lyric size", selection: Binding(
+                            get: { prefs.lyricScale },
+                            set: { newValue in setStyle { $0.lyricScale = newValue } }
+                        )) {
+                            ForEach(LAStylePrefs.LyricScale.allCases, id: \.self) { scale in
+                                Text(scale.label).tag(scale)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        Toggle(isOn: Binding(
+                            get: { prefs.showNextLine },
+                            set: { newValue in setStyle { $0.showNextLine = newValue } }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show next line")
+                                Text("Keeps the upcoming lyric visible under the hero.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Toggle(isOn: Binding(
+                            get: { prefs.showProgressBar },
+                            set: { newValue in setStyle { $0.showProgressBar = newValue } }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show progress")
+                                Text("Uses the system clock so playback stays smooth.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(.tertiary.opacity(0.35), in: .rect(cornerRadius: 14))
+                }
                 section(title: "Motion", icon: "waveform.path.ecg") {
                     Toggle(isOn: Binding(
                         get: { prefs.animationsEnabled },
@@ -49,10 +147,30 @@ struct AppearanceView: View {
                         }
                     }
                     .tint(Color.accentColor)
+
+                    Toggle(isOn: Binding(
+                        get: { prefs.karaokeEnabled },
+                        set: { newValue in setStyle { $0.karaokeEnabled = newValue } }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Karaoke sweep")
+                                .font(.subheadline.weight(.medium))
+                            Text("Highlights the active lyric as the song plays.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .tint(Color.accentColor)
                 }
                 Text("Changes apply to the Live Activity instantly — no need to restart playback.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button("Reset appearance") {
+                    prefs = .default
+                    LAStyleStore.save(.default)
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
+                .font(.caption.weight(.semibold))
             }
             .padding()
         }
@@ -70,37 +188,74 @@ struct AppearanceView: View {
     private var previewCard: some View {
         let palette = previewPalette
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "music.note")
-                    .font(.caption2.bold())
-                    .foregroundStyle(palette.accent.color)
-                if prefs.animationsEnabled {
-                    LAPulseDot(color: palette.accent.color, animate: false)
+            if prefs.layout == .player && prefs.artworkStyle != .hidden {
+                HStack {
+                    Spacer()
+                    LAAlbumDisc(
+                        urlString: model.provider?.lastAlbumImageURL,
+                        size: 54,
+                        style: prefs.artworkStyle
+                    )
                 }
-                Text("Track Title — Artist")
-                    .font(prefs.fontStyle.laFont(.caption2, weight: .semibold))
-                    .foregroundStyle(palette.text.color.opacity(0.7))
+            }
+            if prefs.showTrackInfo && prefs.layout != .minimal {
+                HStack(spacing: 6) {
+                    Image(systemName: "music.note")
+                        .font(.caption2.bold())
+                        .foregroundStyle(palette.accent.color)
+                    if prefs.animationsEnabled {
+                        LAPulseDot(color: palette.accent.color, animate: false)
+                    }
+                    Text("Track Title — Artist")
+                        .font(prefs.fontStyle.laFont(.caption2, weight: .semibold))
+                        .foregroundStyle(palette.text.color.opacity(0.7))
+                        .lineLimit(1)
+                    Spacer()
+                }
+            }
+            LAMarquee(
+                text: "This is how your lyrics will look",
+                font: prefs.fontStyle.laFont(
+                    fixedSize: CGFloat(prefs.lyricScale.pointSize),
+                    weight: .bold
+                ),
+                color: palette.text.color,
+                animations: false,
+                pointSize: CGFloat(prefs.lyricScale.pointSize),
+                minScale: CGFloat(prefs.lyricScale.minimumScale),
+                lineHeight: CGFloat(prefs.lyricScale.totalHeight),
+                maxLines: prefs.lyricScale.maximumLines,
+                textAlignment: prefs.textAlignment == .center ? .center : .leading
+            )
+            if prefs.showProgressBar && prefs.layout != .minimal {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(palette.text.color.opacity(0.25))
+                        Capsule().fill(palette.accent.color).frame(width: geo.size.width * 0.62)
+                    }
+                }
+                .frame(height: 8)
+            }
+            if prefs.showNextLine && prefs.layout != .minimal {
+                Text("and the next line follows right here")
+                    .font(prefs.fontStyle.laFont(.footnote))
+                    .foregroundStyle(palette.text.color.opacity(0.5))
                     .lineLimit(1)
-                Spacer()
-                Image(systemName: "pause.fill")
-                    .font(.footnote)
-                    .foregroundStyle(palette.text.color)
+                    .minimumScaleFactor(0.7)
+                    .multilineTextAlignment(prefs.textAlignment == .center ? .center : .leading)
             }
-            Text("This is how your lyrics will look")
-                .font(prefs.fontStyle.laFont(fixedSize: 22, weight: .bold))
-                .foregroundStyle(palette.text.color)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(palette.text.color.opacity(0.25))
-                    Capsule().fill(palette.accent.color).frame(width: geo.size.width * 0.62)
+            if prefs.showControls && prefs.layout != .minimal {
+                HStack(spacing: 0) {
+                    Image(systemName: "backward.fill")
+                    Image(systemName: "pause.fill")
+                        .padding(.horizontal, 16)
+                    Image(systemName: "forward.fill")
                 }
+                .font(.caption)
+                .foregroundStyle(palette.text.color)
+                .frame(maxWidth: .infinity,
+                       alignment: prefs.textAlignment == .center ? .center : .leading)
             }
-            .frame(height: 8)
-            Text("and the next line follows right here")
-                .font(prefs.fontStyle.laFont(.footnote))
-                .foregroundStyle(palette.text.color.opacity(0.5))
         }
         .padding(16)
         .background(
@@ -225,6 +380,35 @@ extension LAStylePrefs.Theme {
     }
 }
 
+extension LAStylePrefs.Layout {
+    var label: String {
+        switch self {
+        case .player: return "Player"
+        case .lyricsFocus: return "Lyrics"
+        case .minimal: return "Minimal"
+        }
+    }
+}
+
+extension LAStylePrefs.ArtworkStyle {
+    var label: String {
+        switch self {
+        case .vinyl: return "Vinyl"
+        case .square: return "Square"
+        case .hidden: return "None"
+        }
+    }
+}
+
+extension LAStylePrefs.TextAlignment {
+    var label: String {
+        switch self {
+        case .leading: return "Left"
+        case .center: return "Center"
+        }
+    }
+}
+
 extension LAStylePrefs.FontStyle {
     var label: String {
         switch self {
@@ -238,6 +422,16 @@ extension LAStylePrefs.FontStyle {
         case .pacifico: return "Pacifico"
         case .playfair: return "Playfair"
         case .grotesk: return "Grotesk"
+        }
+    }
+}
+
+extension LAStylePrefs.LyricScale {
+    var label: String {
+        switch self {
+        case .compact: return "Compact"
+        case .balanced: return "Balanced"
+        case .large: return "Large"
         }
     }
 }

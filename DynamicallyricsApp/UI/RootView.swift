@@ -8,7 +8,7 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Now Playing")
+                .navigationTitle("OpenLyrics")
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
@@ -37,16 +37,18 @@ struct RootView: View {
                 setupCard
             } else if let signature = model.signature, let document = model.lyrics.document {
                 nowPlayingBar(signature: signature)
-                SyncedLyricsView(document: document, currentIndex: model.lyrics.currentIndex)
+                SyncedLyricsView(
+                    document: document,
+                    currentIndex: model.lyrics.currentIndex,
+                    lyricPosition: model.lyrics.displayPosition - model.offset
+                )
                     .ignoresSafeArea(edges: .bottom)
             } else {
                 placeholder
             }
 
             if model.lyrics.document != nil {
-                lockScreenToggle
-                appearanceLink
-                offsetControl
+                settingsCard
             }
 
             // Server setup is independent of whether the current track has
@@ -72,6 +74,23 @@ struct RootView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 4)
+    }
+
+    private var settingsCard: some View {
+        VStack(spacing: 0) {
+            lockScreenToggle
+            Divider().padding(.leading, 48)
+            appearanceLink
+            Divider().padding(.leading, 48)
+            offsetControl
+        }
+        .background(.background, in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(.quaternary, lineWidth: 1)
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     private var appearanceLink: some View {
@@ -113,7 +132,7 @@ struct RootView: View {
             HStack(spacing: 10) {
                 Image(systemName: "circle.grid.cross")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color(red: 0.11, green: 0.86, blue: 0.36))
+                    .foregroundStyle(model.auth.isConnected ? .green : .pink)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.auth.isConnected ? "Connected to Spotify" : "Not connected")
                         .font(.subheadline.weight(.semibold))
@@ -150,7 +169,11 @@ struct RootView: View {
             }
         }
         .padding()
-        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 16))
+        .background(.background, in: .rect(cornerRadius: 20))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(.quaternary, lineWidth: 1)
+        }
         .padding([.horizontal, .top])
     }
 
@@ -176,9 +199,7 @@ struct RootView: View {
     private func nowPlayingBar(signature: TrackSignature) -> some View {
         VStack(spacing: 8) {
             HStack(spacing: 12) {
-                Image(systemName: "music.note.list")
-                    .font(.title3)
-                    .foregroundStyle(.pink)
+                albumArtwork
                 VStack(alignment: .leading, spacing: 2) {
                     Text(signature.title)
                         .font(.headline)
@@ -189,10 +210,15 @@ struct RootView: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                if model.status?.state == .playing {
-                    EqualizerBars()
-                } else {
-                    Image(systemName: "pause.fill")
+                VStack(alignment: .trailing, spacing: 4) {
+                    if model.status?.state == .playing {
+                        EqualizerBars()
+                    } else {
+                        Image(systemName: "pause.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(model.status?.state == .playing ? "PLAYING" : "PAUSED")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -209,8 +235,41 @@ struct RootView: View {
                 .frame(height: 4)
             }
         }
-        .padding()
-        .padding(.top, 4)
+        .padding(14)
+        .background(.background, in: .rect(cornerRadius: 20))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(.quaternary, lineWidth: 1)
+        }
+        .padding(.horizontal)
+        .padding(.top, 6)
+    }
+
+    private var albumArtwork: some View {
+        Group {
+            if let urlString = model.provider?.lastAlbumImageURL,
+               let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        artworkPlaceholder
+                    }
+                }
+            } else {
+                artworkPlaceholder
+            }
+        }
+        .frame(width: 52, height: 52)
+        .background(.pink.opacity(0.12), in: .rect(cornerRadius: 13))
+        .clipShape(.rect(cornerRadius: 13))
+    }
+
+    private var artworkPlaceholder: some View {
+        Image(systemName: "music.note.list")
+            .font(.title3)
+            .foregroundStyle(.pink)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var progressFraction: Double {
