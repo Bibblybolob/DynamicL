@@ -7,9 +7,9 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current local release candidate is version 1.1.1, build 8.
+- The current local release candidate is version 1.1.1, build 9.
 - TestFlight contains version 0.1.0, build 5.
-- Build 8 is uploaded to TestFlight and is processing in App Store Connect.
+- Build 9 is uploaded to TestFlight and is processing in App Store Connect.
 
 | Feature | Status |
 |---|---|
@@ -27,7 +27,7 @@ Development continues.
 
 ## Current release candidate
 
-Build 8, version 1.1.1, includes these changes:
+Build 9, version 1.1.1, includes these changes:
 
 - The app uses the OpenLyrics name.
 - The app uses the selected OpenLyrics artwork.
@@ -38,6 +38,9 @@ Build 8, version 1.1.1, includes these changes:
 - The Live Activity supports layout, artwork, alignment, and control settings.
 - The vinyl widget can show static artwork when animation is off.
 - The Now Playing screen shows album artwork and playback state.
+- The app downloads a reduced album image in the app process.
+- Widgets and Live Activities use the cached image for the current track.
+- The artwork cache rejects an image from a different track.
 
 ## Widgets
 

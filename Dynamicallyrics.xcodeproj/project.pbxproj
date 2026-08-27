@@ -11,6 +11,7 @@
 		02D4DB5F0F6BED7F120994ED /* BackgroundAudioKeeper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */; };
 		0BFE9F9A2D88A9FF686B6B0D /* LyricsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */; };
 		0D78D2406231B09E9DEAB5C0 /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */; };
+		11A8B7C6D5E4432190F8A7B6 /* AlbumArtworkPrefetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A8B7C6D5E4432190F8A7B5 /* AlbumArtworkPrefetcher.swift */; };
 		16DEEF986C634B5BF7712AB4 /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4059FBA00502BEBFF30974 /* AppearanceView.swift */; };
 		171B99FA086F55B7BF5416C4 /* SpaceGrotesk.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 75C1C3843E1DD1B92BCF8BA4 /* SpaceGrotesk.ttf */; };
 		2895FA41E6A80212D032CE71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C1BBBCD17E2B33ABAAEBC64A /* Assets.xcassets */; };
@@ -153,6 +154,7 @@
 		8064C257A318E778B7E2B0F6 /* Bungee-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Bungee-Regular.ttf"; sourceTree = "<group>"; };
 		85F8C9BDCFB2621159C1AA83 /* LyricWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LyricWidgets.entitlements; sourceTree = "<group>"; };
 		8A7C09312579956357A942BA /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		11A8B7C6D5E4432190F8A7B5 /* AlbumArtworkPrefetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumArtworkPrefetcher.swift; sourceTree = "<group>"; };
 		8AC22968C10EA0DA1D7CBE6D /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
 		8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConfig.swift; sourceTree = "<group>"; };
 		946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncManager.swift; sourceTree = "<group>"; };
@@ -253,6 +255,7 @@
 			isa = PBXGroup;
 			children = (
 				8A7C09312579956357A942BA /* AppModel.swift */,
+				11A8B7C6D5E4432190F8A7B5 /* AlbumArtworkPrefetcher.swift */,
 				9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */,
 				D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */,
 				B6E4D01DA0CCA1E2BB9A4B54 /* DominantColorExtractor.swift */,
@@ -606,6 +609,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7BB6E571255EC8ADD3980380 /* AppModel.swift in Sources */,
+				11A8B7C6D5E4432190F8A7B6 /* AlbumArtworkPrefetcher.swift in Sources */,
 				16DEEF986C634B5BF7712AB4 /* AppearanceView.swift in Sources */,
 				02D4DB5F0F6BED7F120994ED /* BackgroundAudioKeeper.swift in Sources */,
 				0D78D2406231B09E9DEAB5C0 /* DiagnosticsLog.swift in Sources */,
@@ -805,7 +809,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -871,7 +875,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_NS_ASSERTIONS = NO;

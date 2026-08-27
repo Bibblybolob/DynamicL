@@ -7,6 +7,7 @@ struct LyricEntry: TimelineEntry {
     let trackTitle: String
     let currentLine: String
     let albumImageURL: String?
+    let albumImageData: Data?
     let isPlaying: Bool
 
     static let sample = LyricEntry(
@@ -14,6 +15,7 @@ struct LyricEntry: TimelineEntry {
         trackTitle: "Sample Track",
         currentLine: "Waiting for music…",
         albumImageURL: nil,
+        albumImageData: nil,
         isPlaying: true
     )
 
@@ -22,6 +24,7 @@ struct LyricEntry: TimelineEntry {
         trackTitle: "No music",
         currentLine: "Play something to see lyrics here.",
         albumImageURL: nil,
+        albumImageData: nil,
         isPlaying: false
     )
 }
@@ -98,6 +101,7 @@ private extension LyricEntry {
             trackTitle: snapshot.trackTitle,
             currentLine: line,
             albumImageURL: snapshot.albumImageURL,
+            albumImageData: SharedNowPlaying.cachedArtwork(for: snapshot.albumImageURL),
             isPlaying: effectiveIsPlaying(snapshot)
         )
     }
@@ -152,6 +156,7 @@ struct HomeScreenLyricView: View {
                 LAAlbumDisc(
                     urlString: entry.albumImageURL,
                     size: family == .systemSmall ? 62 : 82,
+                    imageData: entry.albumImageData,
                     style: style.prefs.artworkStyle
                 )
             }

@@ -1,5 +1,8 @@
 #if canImport(SwiftUI)
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // Shared Live Activity chrome components. Motion here is deliberately
 // minimal: Live Activities render discrete snapshots, so anything stepped by
@@ -146,12 +149,15 @@ public struct LAMarquee: View {
 /// has a local record fallback, so missing artwork never breaks layout.
 public struct LAAlbumDisc: View {
     let url: URL?
+    let imageData: Data?
     let size: CGFloat
     let style: LAStylePrefs.ArtworkStyle
 
     public init(urlString: String?, size: CGFloat,
+                imageData: Data? = nil,
                 style: LAStylePrefs.ArtworkStyle = .vinyl) {
         self.url = urlString.flatMap(URL.init(string:))
+        self.imageData = imageData
         self.size = size
         self.style = style
     }
@@ -175,7 +181,13 @@ public struct LAAlbumDisc: View {
             Circle()
                 .fill(Color.black.opacity(0.94))
 
-            if let url {
+            if let cachedArtworkImage {
+                cachedArtworkImage
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size * 0.55, height: size * 0.55)
+                    .clipShape(Circle())
+            } else if let url {
                 AsyncImage(url: url, transaction: Transaction(animation: nil)) { phase in
                     if let image = phase.image {
                         image
@@ -211,7 +223,11 @@ public struct LAAlbumDisc: View {
 
     private var square: some View {
         Group {
-            if let url {
+            if let cachedArtworkImage {
+                cachedArtworkImage
+                    .resizable()
+                    .scaledToFill()
+            } else if let url {
                 AsyncImage(url: url, transaction: Transaction(animation: nil)) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFill()
@@ -238,6 +254,15 @@ public struct LAAlbumDisc: View {
             .font(.system(size: size * 0.22, weight: .semibold))
             .foregroundStyle(.white.opacity(0.72))
     }
+
+    #if canImport(UIKit)
+    private var cachedArtworkImage: Image? {
+        guard let imageData, let image = UIImage(data: imageData) else { return nil }
+        return Image(uiImage: image)
+    }
+    #else
+    private var cachedArtworkImage: Image? { nil }
+    #endif
 }
 
 /// Renders a lyric line from a wall-clock schedule shared by the app and the

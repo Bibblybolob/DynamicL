@@ -12,6 +12,9 @@ final class AppModel {
     private(set) var provider: (any PlaybackProvider)?
     private let watchSync = WatchSyncManager.shared
     private let nowPlaying = NowPlayingBridge()
+    @ObservationIgnored private var albumArtworkPrefetchTask: Task<Void, Never>?
+    @ObservationIgnored private var lastArtworkPrefetchURL: String?
+    @ObservationIgnored private var lastArtworkPrefetchAt: Date?
 
     private(set) var connectError: String?
     var isConnecting = false
@@ -205,6 +208,7 @@ final class AppModel {
             lyrics.update(signature: signature, status: status)
         }
 
+        prefetchAlbumArtworkIfNeeded()
         lyrics.tick()
         markRecoveredIfSilenceBroken()
         revivePollerIfNeeded()
@@ -266,7 +270,8 @@ final class AppModel {
         // update. The full snapshot with scheduled lines follows once lyrics land.
         if let signature, status?.state == .playing,
            lyrics.document == nil || lyrics.document?.track != signature {
-            let key = "interim|\(signature.title)|\(signature.artist)"
+            let artworkURL = provider?.lastAlbumImageURL ?? ""
+            let key = "interim|\(signature.title)|\(signature.artist)|\(artworkURL)"
             guard key != lastPublishedWidgetKey else { return }
             lastPublishedWidgetKey = key
             widgetIdlePublished = false
@@ -305,7 +310,8 @@ final class AppModel {
         let isPlaying = status?.state == .playing
         let index = lyrics.currentIndex ?? -1
         let offsetKey = String(format: "%.3f", lyrics.userOffset)
-        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(offsetKey)"
+        let artworkURL = provider?.lastAlbumImageURL ?? ""
+        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(offsetKey)|\(artworkURL)"
         guard key != lastPublishedWidgetKey else { return }
         lastPublishedWidgetKey = key
         widgetIdlePublished = false
@@ -328,7 +334,7 @@ final class AppModel {
         // play state). The daily reload budget cannot sustain per-line reloads;
         // between reloads the widget steps through its precomputed timeline
         // locally without talking to us.
-        let reloadKey = "\(signature.title)|\(signature.artist)|\(isPlaying)|\(scheduled.isEmpty ? "nosched" : "sched")"
+        let reloadKey = "\(signature.title)|\(signature.artist)|\(isPlaying)|\(scheduled.isEmpty ? "nosched" : "sched")|\(artworkURL)"
         if reloadKey != lastReloadedWidgetKey {
             lastReloadedWidgetKey = reloadKey
             reloadWidgetTimelines()
@@ -336,6 +342,30 @@ final class AppModel {
     }
 
     @ObservationIgnored private var lastReloadedWidgetKey: String?
+
+    /// Downloads the current album image in the app process and stores a
+    /// reduced copy in the shared app group. Extensions can then render the
+    /// image without depending on a network request during a timeline refresh.
+    private func prefetchAlbumArtworkIfNeeded() {
+        guard let urlString = provider?.lastAlbumImageURL else { return }
+        guard SharedNowPlaying.cachedArtwork(for: urlString) == nil else { return }
+
+        let now = Date.now
+        if urlString == lastArtworkPrefetchURL,
+           now.timeIntervalSince(lastArtworkPrefetchAt ?? .distantPast) < 30 {
+            return
+        }
+        lastArtworkPrefetchURL = urlString
+        lastArtworkPrefetchAt = now
+        albumArtworkPrefetchTask?.cancel()
+        albumArtworkPrefetchTask = Task { [weak self] in
+            guard let data = await AlbumArtworkPrefetcher.fetch(urlString: urlString),
+                  !Task.isCancelled else { return }
+            SharedNowPlaying.saveArtwork(data, for: urlString)
+            guard let self, self.provider?.lastAlbumImageURL == urlString else { return }
+            self.reloadWidgetTimelines()
+        }
+    }
 
     private func reloadWidgetTimelines() {
         WidgetCenter.shared.reloadTimelines(ofKind: "CurrentLineWidget")
@@ -525,7 +555,7 @@ final class AppModel {
             lastLineIndex = lyrics.currentIndex
             lastLAUpdateAt = .now
             lastLASentIsPlaying = startState.isPlaying
-            lastLASentTrack = "\(startState.trackTitle)|\(startState.artistName)|\(document.lines.count)"
+            lastLASentTrack = "\(startState.trackTitle)|\(startState.artistName)|\(startState.albumImageURL ?? "-")|\(document.lines.count)"
             lastSentLAHash = laContentHash(startState)
             lastAppliedStyleKey = styleKey
             lastSentAccent = startState.albumDominantRGB
@@ -540,7 +570,7 @@ final class AppModel {
         // anything. The progress bar advances itself via TimelineView on the
         // widget's own clock.
         let targetState = contentState(document: document, style: style.prefs, albumAccent: style.accent)
-        let trackKey = "\(targetState.trackTitle)|\(targetState.artistName)|\(document.lines.count)"
+        let trackKey = "\(targetState.trackTitle)|\(targetState.artistName)|\(targetState.albumImageURL ?? "-")|\(document.lines.count)"
         let trackChanged = trackKey != lastLASentTrack
         let lineChanged = lyrics.currentIndex != lastLineIndex
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
@@ -632,7 +662,7 @@ final class AppModel {
     /// during steady playback startDate/endDate are constant anyway, so any
     /// hash drift means real content (title, line, play state, bar) moved.
     private func laContentHash(_ s: LyricsActivityAttributes.ContentState) -> String {
-        "\(s.trackTitle)|\(s.artistName)|\(s.currentLine)|\(s.nextLine ?? "-")|\(s.isPlaying)"
+        "\(s.trackTitle)|\(s.artistName)|\(s.albumImageURL ?? "-")|\(s.currentLine)|\(s.nextLine ?? "-")|\(s.isPlaying)"
             + "|\(s.progressStart.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.progressEnd.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.frozenProgress.map { Int(($0 * 100).rounded()) } ?? -1)"

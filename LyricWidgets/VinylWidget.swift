@@ -116,9 +116,7 @@ struct VinylProvider: TimelineProvider {
     /// timeline fetches at most once per album.
     private static func artData(for urlString: String?) async -> Data? {
         guard let urlString, let url = URL(string: urlString) else { return nil }
-        let defaults = UserDefaults(suiteName: SharedNowPlaying.appGroupID)
-        let key = "artCache|\(urlString)"
-        if let cached = defaults?.data(forKey: key) { return cached }
+        if let cached = SharedNowPlaying.cachedArtwork(for: urlString) { return cached }
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
@@ -133,7 +131,7 @@ struct VinylProvider: TimelineProvider {
             image.draw(in: CGRect(origin: .zero, size: size))
         }
         let payload = small.jpegData(compressionQuality: 0.85)
-        if let payload { defaults?.set(payload, forKey: key) }
+        if let payload { SharedNowPlaying.saveArtwork(payload, for: urlString) }
         return payload
     }
 }

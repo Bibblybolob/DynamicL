@@ -29,6 +29,7 @@ final class SharedNowPlayingTests: XCTestCase {
 
     func testClearRemovesSnapshot() {
         SharedNowPlaying.setPlayingOverride(true, defaults: defaults)
+        SharedNowPlaying.saveArtwork(Data([1, 2, 3]), for: "https://example.com/album.jpg", defaults: defaults)
         let snapshot = WidgetLyricSnapshot(
             trackTitle: "Test Song",
             artistName: "Test Artist",
@@ -42,6 +43,18 @@ final class SharedNowPlayingTests: XCTestCase {
 
         XCTAssertNil(SharedNowPlaying.load(defaults: defaults))
         XCTAssertNil(SharedNowPlaying.playingOverride(defaults: defaults))
+        XCTAssertNil(SharedNowPlaying.cachedArtwork(for: "https://example.com/album.jpg", defaults: defaults))
+    }
+
+    func testArtworkCacheRejectsDifferentURL() {
+        let firstURL = "https://example.com/first.jpg"
+        let secondURL = "https://example.com/second.jpg"
+        let data = Data([1, 2, 3])
+
+        SharedNowPlaying.saveArtwork(data, for: firstURL, defaults: defaults)
+
+        XCTAssertEqual(SharedNowPlaying.cachedArtwork(for: firstURL, defaults: defaults), data)
+        XCTAssertNil(SharedNowPlaying.cachedArtwork(for: secondURL, defaults: defaults))
     }
 
     func testLoadWithNoDataReturnsNil() {

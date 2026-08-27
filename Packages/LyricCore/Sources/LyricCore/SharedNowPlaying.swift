@@ -46,6 +46,8 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
 public enum SharedNowPlaying {
     public static let appGroupID = "group.com.jonathantran.dynamicallyrics.la"
     private static let storageKey = "widgetLyricSnapshot"
+    private static let artworkURLKey = "currentAlbumArtworkURL"
+    private static let artworkDataKey = "currentAlbumArtworkData"
 
     public static func save(_ snapshot: WidgetLyricSnapshot) {
         save(snapshot, defaults: store())
@@ -59,9 +61,33 @@ public enum SharedNowPlaying {
         clear(defaults: store())
     }
 
+    /// Returns artwork only when it belongs to the requested URL.
+    /// This prevents a previous track's image from appearing for a new track.
+    public static func cachedArtwork(for urlString: String?) -> Data? {
+        cachedArtwork(for: urlString, defaults: store())
+    }
+
+    /// Stores one current artwork image in the shared app group.
+    /// The cache keeps one image so it does not grow across tracks.
+    public static func saveArtwork(_ data: Data, for urlString: String) {
+        saveArtwork(data, for: urlString, defaults: store())
+    }
+
     static func save(_ snapshot: WidgetLyricSnapshot, defaults: UserDefaults?) {
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults?.set(data, forKey: storageKey)
+    }
+
+    static func cachedArtwork(for urlString: String?, defaults: UserDefaults?) -> Data? {
+        guard let urlString,
+              defaults?.string(forKey: artworkURLKey) == urlString else { return nil }
+        return defaults?.data(forKey: artworkDataKey)
+    }
+
+    static func saveArtwork(_ data: Data, for urlString: String, defaults: UserDefaults?) {
+        guard !data.isEmpty else { return }
+        defaults?.set(urlString, forKey: artworkURLKey)
+        defaults?.set(data, forKey: artworkDataKey)
     }
 
     static func load(defaults: UserDefaults?) -> WidgetLyricSnapshot? {
@@ -71,6 +97,8 @@ public enum SharedNowPlaying {
 
     static func clear(defaults: UserDefaults?) {
         defaults?.removeObject(forKey: storageKey)
+        defaults?.removeObject(forKey: artworkURLKey)
+        defaults?.removeObject(forKey: artworkDataKey)
         // A command can fail while its optimistic override is still in the
         // app-group mailbox. Do not let that stale flip affect the next song.
         defaults?.removeObject(forKey: playingOverrideKey)
