@@ -6,6 +6,7 @@ const PLAYER_URL = "https://api.spotify.com/v1/me/player";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const LRCLIB_URL = "https://lrclib.net/api/get";
 const PUSH_HOST_PROD = "https://api.push.apple.com";
+const PUSH_HOST_SANDBOX = "https://api.sandbox.push.apple.com";
 const APNS_TOPIC = "com.jonathantran.dynamicallyrics.la.push-type.liveactivity";
 
 const FAST_POLL_MS = 5000;    // while playing
@@ -338,7 +339,7 @@ export class PlaybackSessionV2 {
       aps: {
         timestamp: Math.floor(Date.now() / 1000),
         event: "end",
-        dismissalDate: Math.floor(Date.now() / 1000),
+        "dismissal-date": Math.floor(Date.now() / 1000),
         "content-state": {
           trackTitle: "", artistName: "", currentLine: "",
           nextLine: null, isPlaying: false,
@@ -355,12 +356,14 @@ export class PlaybackSessionV2 {
 
   async apnsRequest(token, payload, priority) {
     const jwt = await this.pushJwt();
+    const pushHost = this.apnsHost();
     let res;
     // APNs occasionally serves 500s; retry with backoff before giving up.
     for (let attempt = 1; attempt <= 3; attempt++) {
-      res = await fetch(`${PUSH_HOST_PROD}/3/device/${token}`, {
+      res = await fetch(`${pushHost}/3/device/${token}`, {
         method: "POST",
         headers: {
+          "content-type": "application/json",
           "apns-topic": APNS_TOPIC,
           "apns-push-type": "liveactivity",
           "apns-priority": String(priority ?? 10),
@@ -383,6 +386,17 @@ export class PlaybackSessionV2 {
       await this.state.storage.put("lastErrorAt", new Date().toISOString());
     }
     return res.status;
+  }
+
+  apnsHost() {
+    const configured = typeof this.env.APNS_HOST === "string"
+      ? this.env.APNS_HOST.trim().replace(/\/+$/, "")
+      : "";
+    const host = configured || PUSH_HOST_PROD;
+    if (host !== PUSH_HOST_PROD && host !== PUSH_HOST_SANDBOX) {
+      throw new Error("APNS_HOST must be a supported Apple push host");
+    }
+    return host;
   }
 }
 

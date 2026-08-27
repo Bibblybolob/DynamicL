@@ -1,5 +1,6 @@
 # Local-only values for `npx wrangler dev`.
 # Never commit real values or the local `.dev.vars` file.
+APNS_HOST="https://api.sandbox.push.apple.com"
 APNS_KEY_P8="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 APNS_KEY_ID="your-apns-key-id"
 APNS_TEAM_ID="your-apple-team-id"

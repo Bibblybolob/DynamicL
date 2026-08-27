@@ -12,6 +12,11 @@ Polls Spotify every ~5s while music plays, computes the current lyric line
 
 ## Secrets
 
+`APNS_HOST` is configured as a non-secret Worker variable and defaults to the
+production APNs host. Development-device tokens must use
+`https://api.sandbox.push.apple.com`; TestFlight/App Store tokens use the
+production host.
+
     npx wrangler secret put APNS_KEY_P8       # paste the full .p8 file contents
     npx wrangler secret put APNS_KEY_ID       # 4G6T5TV7Y6
     npx wrangler secret put APNS_TEAM_ID      # 643P4Q6FLQ

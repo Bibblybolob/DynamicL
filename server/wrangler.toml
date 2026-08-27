@@ -2,6 +2,11 @@ name = "openlyrics-sync"
 main = "src/worker.js"
 compatibility_date = "2026-08-01"
 
+[vars]
+# Production/TestFlight APNs tokens use the production host. Local
+# development-device tokens should override this with the sandbox host.
+APNS_HOST = "https://api.push.apple.com"
+
 # Durable Object: one alarm-driven poller loop for the single-user session.
 [durable_objects]
 bindings = [
@@ -17,6 +22,7 @@ tag = "v2"
 renamed_classes = [{ from = "PlaybackSession", to = "PlaybackSessionV2" }]
 
 # Secrets (set via `wrangler secret put`):
+#   APNS_HOST is a non-secret var; use https://api.sandbox.push.apple.com for local development tokens.
 #   APNS_KEY_P8        raw contents of the Apple .p8 auth key
 #   APNS_KEY_ID        e.g. 4G6T5TV7Y6
 #   APNS_TEAM_ID       e.g. 643P4Q6FLQ  (also used as JWT `iss`)
