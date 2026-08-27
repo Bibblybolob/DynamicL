@@ -9,7 +9,7 @@ final class AppModel {
     let auth = SpotifyAuthManager()
     let lyrics = LyricsService()
     let liveActivity = LiveActivityController()
-    private(set) var provider: SpotifyProvider?
+    private(set) var provider: (any PlaybackProvider)?
     private let watchSync = WatchSyncManager.shared
     private let nowPlaying = NowPlayingBridge()
 

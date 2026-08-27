@@ -4,7 +4,7 @@ import LyricCore
 /// Polls Spotify's `/v1/me/player` and publishes the latest track + playback status.
 @MainActor
 @Observable
-final class SpotifyProvider {
+final class SpotifyProvider: PlaybackProvider {
     private(set) var signature: TrackSignature?
     private(set) var status: PlaybackStatus?
     private(set) var lastError: String?
@@ -475,6 +475,37 @@ final class SpotifyProvider {
             lastError = error.localizedDescription
             return false
         }
+    }
+}
+
+/// Playback capabilities consumed by the app's lyrics, widget, and Live
+/// Activity pipeline. Keeping this contract provider-neutral lets another
+/// service supply the same normalized track/status/transport data later.
+@MainActor
+protocol PlaybackProvider: AnyObject {
+    var signature: TrackSignature? { get }
+    var status: PlaybackStatus? { get }
+    var lastError: String? { get }
+    var lastPollSummary: String? { get }
+    var isPolling: Bool { get }
+    var lastSuccessfulPollAt: Date? { get }
+    var lastAlbumImageURL: String? { get }
+    var shouldHoldKeepAlive: Bool { get }
+    var isLoopLikelyAlive: Bool { get }
+
+    func start()
+    func stop()
+    func kick()
+    func burst(count: Int)
+    func next() async -> Bool
+    func previous() async -> Bool
+    func seek(to position: TimeInterval) async -> Bool
+    func togglePlayPause() async -> Bool
+}
+
+extension PlaybackProvider {
+    func burst() {
+        burst(count: 6)
     }
 }
 
