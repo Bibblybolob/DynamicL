@@ -2,6 +2,98 @@ import Foundation
 import LyricCore
 import os.log
 
+private struct CachedLyrics: Codable {
+    var document: LyricsDocument
+    var lastAccessedAt: Date
+}
+
+private struct PersistedLyricsEntry: Codable {
+    var signature: TrackSignature
+    var document: LyricsDocument
+    var lastAccessedAt: Date
+}
+
+private struct PersistedLyricsCache: Codable {
+    var version: Int
+    var entries: [PersistedLyricsEntry]
+}
+
+private enum LyricsCacheStore {
+    private static let version = 1
+    private static let maxEntries = 100
+    private static let maxBytes = 2_000_000
+    private static let maxAge: TimeInterval = 30 * 24 * 60 * 60
+
+    private static var fileURL: URL? {
+        guard let applicationSupport = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first else { return nil }
+
+        return applicationSupport
+            .appendingPathComponent("Dynamicallyrics", isDirectory: true)
+            .appendingPathComponent("lyrics-cache.json")
+    }
+
+    static func load() -> [TrackSignature: CachedLyrics] {
+        guard let fileURL else { return [:] }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let persisted = try decoder.decode(PersistedLyricsCache.self, from: data)
+            guard persisted.version == version else { return [:] }
+
+            let cutoff = Date().addingTimeInterval(-maxAge)
+            var cache: [TrackSignature: CachedLyrics] = [:]
+            for entry in persisted.entries {
+                guard entry.lastAccessedAt >= cutoff else { continue }
+                cache[entry.signature] = CachedLyrics(
+                    document: entry.document,
+                    lastAccessedAt: entry.lastAccessedAt
+                )
+            }
+            return cache
+        } catch {
+            // A corrupt cache should never prevent lyrics lookup from working.
+            return [:]
+        }
+    }
+
+    static func save(_ cache: [TrackSignature: CachedLyrics]) {
+        guard let fileURL else { return }
+
+        var entries = cache.map { signature, cached in
+            PersistedLyricsEntry(
+                signature: signature,
+                document: cached.document,
+                lastAccessedAt: cached.lastAccessedAt
+            )
+        }
+        entries.sort { $0.lastAccessedAt > $1.lastAccessedAt }
+        entries = Array(entries.prefix(maxEntries))
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+
+            var data = try encoder.encode(PersistedLyricsCache(version: version, entries: entries))
+            while data.count > maxBytes && entries.count > 1 {
+                entries.removeLast()
+                data = try encoder.encode(PersistedLyricsCache(version: version, entries: entries))
+            }
+
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            DiagnosticsLog.append("lyrics cache write failed")
+        }
+    }
+}
+
 /// Fetches and caches lyrics documents, feeding the sync engine on track changes.
 @MainActor
 @Observable
@@ -25,11 +117,15 @@ final class LyricsService {
 
     let engine = SyncEngine()
 
-    private var cache: [TrackSignature: LyricsDocument] = [:]
+    private var cache: [TrackSignature: CachedLyrics]
     private var failedSignatures: Set<TrackSignature> = []
     private var loadTask: Task<Void, Never>?
     private var currentSignature: TrackSignature?
     private var retryTask: Task<Void, Never>?
+
+    init() {
+        cache = LyricsCacheStore.load()
+    }
 
     func update(signature: TrackSignature?, status: PlaybackStatus?) {
         engine.update(status: status)
@@ -52,7 +148,8 @@ final class LyricsService {
         }
 
         if let cached = cache[signature] {
-            apply(cached)
+            cache[signature]?.lastAccessedAt = .now
+            apply(cached.document)
             return
         }
 
@@ -78,7 +175,8 @@ final class LyricsService {
         switch outcome {
         case .document(let fetched):
             Self.log.info("lookup ok: \(fetched.lines.count) lines")
-            cache[signature] = fetched
+            cache[signature] = CachedLyrics(document: fetched, lastAccessedAt: .now)
+            LyricsCacheStore.save(cache)
             if currentSignature == signature {
                 lookupStatus = nil
                 apply(fetched)
@@ -124,7 +222,7 @@ final class LyricsService {
     }
 
     func loadForDemo(_ doc: LyricsDocument) {
-        cache[doc.track] = doc
+        cache[doc.track] = CachedLyrics(document: doc, lastAccessedAt: .now)
         // loadForDemo bypasses update(signature:) but still changes the signature;
         // reset isLoading so an in-flight fetch can't leave it wedged true.
         isLoading = false
