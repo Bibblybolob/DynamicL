@@ -71,6 +71,9 @@ public enum SharedNowPlaying {
 
     static func clear(defaults: UserDefaults?) {
         defaults?.removeObject(forKey: storageKey)
+        // A command can fail while its optimistic override is still in the
+        // app-group mailbox. Do not let that stale flip affect the next song.
+        defaults?.removeObject(forKey: playingOverrideKey)
     }
 
     private static let playingOverrideKey = "widgetPlayingOverride"

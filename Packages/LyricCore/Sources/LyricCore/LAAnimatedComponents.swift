@@ -42,7 +42,11 @@ public struct LAPulseDot: View {
 /// Hero lyric text with an auto-fit ladder:
 ///   1. fits at base size → static,
 ///   2. fits scaled down (to `minScale`) → static smaller,
-///   3. still overflowing → gentle ticker scroll (rare fallback).
+///   3. still too long → gentle ticker scroll inside a hard width boundary.
+///
+/// The explicit width and clipping are intentional. Live Activity regions can
+/// propose an unbounded ideal width to nested views, which otherwise lets a
+/// long lyric escape the lock-screen card or Dynamic Island.
 public struct LAMarquee: View {
     let text: String
     let font: Font
@@ -71,20 +75,26 @@ public struct LAMarquee: View {
 
     public var body: some View {
         GeometryReader { geo in
+            let width = max(geo.size.width, 1)
             let estimated = CGFloat(text.count) * charWidth
-            if estimated <= geo.size.width || !animations {
-                // Always allow shrinking — the width estimate is heuristic,
-                // and SwiftUI only shrinks when actually needed.
-                fittedText()
-                    .minimumScaleFactor(minScale)
-            } else if estimated * minScale <= geo.size.width {
-                // Auto-shrink to fit; no motion needed.
-                fittedText().minimumScaleFactor(minScale)
-            } else {
-                ticker(travel: estimated - geo.size.width + 16)
+            Group {
+                if !animations || estimated * minScale <= width {
+                    // The estimate only chooses the rendering path. The fixed
+                    // proposal below is what actually prevents overflow when
+                    // a custom font is wider than the estimate.
+                    fittedText()
+                        .minimumScaleFactor(minScale)
+                        .frame(width: width, alignment: .leading)
+                } else {
+                    ticker(travel: max(estimated - width + 16, 16), width: width)
+                }
             }
+            .frame(width: width, height: lineHeight, alignment: .leading)
+            .clipped()
         }
+        .frame(maxWidth: .infinity)
         .frame(height: lineHeight)
+        .clipped()
     }
 
     private func fittedText() -> some View {
@@ -92,10 +102,11 @@ public struct LAMarquee: View {
             .font(font)
             .foregroundStyle(color)
             .lineLimit(1)
+            .allowsTightening(true)
     }
 
     /// Slow eased slide with dwell at both ends (~2s per pass).
-    private func ticker(travel: CGFloat) -> some View {
+    private func ticker(travel: CGFloat, width: CGFloat) -> some View {
         TimelineView(.periodic(from: .now, by: 0.6)) { timeline in
             let step = Int(timeline.date.timeIntervalSinceReferenceDate / 0.6)
             let cycleSteps = max(Int(travel / 24), 4) + 6 // includes end dwells
@@ -105,11 +116,13 @@ public struct LAMarquee: View {
                 .font(font)
                 .foregroundStyle(color)
                 .lineLimit(1)
-                .fixedSize()
+                .fixedSize(horizontal: true, vertical: false)
                 .offset(x: -travel * progress)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(width: width, alignment: .leading)
                 .clipped()
         }
+        .frame(width: width, height: lineHeight, alignment: .leading)
+        .clipped()
     }
 }
 

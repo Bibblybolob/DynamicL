@@ -43,7 +43,10 @@ struct LockscreenLyricView: View {
                 .font(.system(.footnote, design: .serif, weight: .medium))
                 .italic()
                 .lineLimit(3)
+                .allowsTightening(true)
+                .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .containerBackground(for: .widget) {
@@ -73,6 +76,10 @@ struct LockscreenLyricView: View {
             .font(.system(.headline, design: .serif))
             .italic()
             .lineLimit(1)
+            .allowsTightening(true)
+            .minimumScaleFactor(0.55)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
             .containerBackground(for: .widget) {
                 Color.clear
             }

@@ -68,7 +68,7 @@ final class SpotifyProvider {
 
     private(set) var usesRapidProbe = false
     private var rapidProbesLeft = 0
-    private var lastAppliedItemName: String?
+    private var lastAppliedItemKey: String?
     /// Last raw position Spotify reported, for frozen/backwards lie detection.
     private var lastAppliedPositionMs: Int?
     /// Timestamp of the last successful (HTTP 200) player-state fetch.
@@ -87,7 +87,7 @@ final class SpotifyProvider {
     // different item arrives, so it can't be rejected without risking real
     // pauses/scrubs. The stall probe + LA reconciliation self-heal cover the
     // common paused-echo variant and any resulting render freeze.
-    private var pendingSkipItemName: String?
+    private var pendingSkipItemKey: String?
     private var pendingSkipDeadline: Date?
     static let skipEchoWindow: TimeInterval = 25
 
@@ -223,12 +223,12 @@ final class SpotifyProvider {
         // Post-skip echo rejection runs before anything else: a poll that
         // still shows the pre-skip track carries zero information, so don't
         // let it touch stall bookkeeping, the lie guard, or status/signature.
-        if let pending = pendingSkipItemName {
+        if let pending = pendingSkipItemKey {
             let expired = Date.now >= (pendingSkipDeadline ?? .distantPast)
             // Repeat-one: same item, playing, restarted near 0 — real truth.
             let restart = state.isPlaying && (state.progressMs ?? 999_999) < 5_000
-            if expired || state.item?.name != pending || restart {
-                pendingSkipItemName = nil
+            if expired || itemKey(for: state.item) != pending || restart {
+                pendingSkipItemKey = nil
                 DiagnosticsLog.append("skip resolved: \(state.item?.name ?? "?")")
             } else {
                 rapidProbesLeft = max(rapidProbesLeft, 3)
@@ -245,22 +245,23 @@ final class SpotifyProvider {
         }
         let wasPlaying = status?.state == .playing
         let itemName = state.item?.name
+        let identityKey = itemKey(for: state.item)
         // Old track flips to "paused" right after it was playing → classic
         // stale-API skip transition; probe fast until real state arrives.
-        if wasPlaying, state.isPlaying == false, let itemName, itemName == lastAppliedItemName {
+        if wasPlaying, state.isPlaying == false, let identityKey, identityKey == lastAppliedItemKey {
             beginRapidProbe(staleItem: itemName)
         }
         defer {
-            lastAppliedItemName = itemName
+            lastAppliedItemKey = identityKey
             lastAlbumImageURL = state.albumImageURL
-            signature = state.signature ?? signature
+            signature = state.signature
         }
 
         // Position-lie guard: while playing on the SAME track, a frozen or
         // slightly-backwards position is a stale seek/scrub echo, not truth —
         // never let the displayed position regress because of it.
         let newPos = state.progressMs
-        if state.isPlaying, itemName == lastAppliedItemName,
+        if state.isPlaying, identityKey == lastAppliedItemKey,
            let newPos, let last = lastAppliedPositionMs,
            newPos <= last, abs(newPos - last) < 1500 {
             staleSeekCount += 1
@@ -318,8 +319,8 @@ final class SpotifyProvider {
     /// position immediately (the LA flips to its static bar via the urgent
     /// play-change path) and discard polls still echoing the pre-skip track.
     private func armPendingSkip() {
-        guard let preSkip = lastAppliedItemName else { return }
-        pendingSkipItemName = preSkip
+        guard let preSkip = lastAppliedItemKey else { return }
+        pendingSkipItemKey = preSkip
         pendingSkipDeadline = .now.addingTimeInterval(Self.skipEchoWindow)
         burst(count: 10)
         if let status, status.state == .playing {
@@ -354,7 +355,13 @@ final class SpotifyProvider {
               let newest = decoded.items.first else { return }
 
         guard let name = newest.track?.name else { return }
-        guard name != signature?.title else { return } // no skip happened
+        let recentlyPlayedKey = itemKey(
+            id: newest.track?.id,
+            name: name,
+            artist: newest.track?.artists?.first?.name ?? "",
+            album: newest.track?.album?.name
+        )
+        guard recentlyPlayedKey != lastAppliedItemKey else { return } // no skip happened
         // Only fresh plays count as skips; older history entries are noise.
         guard let playedAt = newest.playedAt,
               Date.now.timeIntervalSince(playedAt) < 60 else {
@@ -371,8 +378,8 @@ final class SpotifyProvider {
         guard let track = entry.track, let name = track.name else { return }
         let elapsed = max(0, Date.now.timeIntervalSince(entry.playedAt ?? .now))
         let duration = track.durationMs.map { TimeInterval($0) / 1000.0 }
-        if let dying = lastAppliedItemName {
-            pendingSkipItemName = dying
+        if let dying = lastAppliedItemKey {
+            pendingSkipItemKey = dying
             pendingSkipDeadline = .now.addingTimeInterval(Self.skipEchoWindow)
         }
         signature = TrackSignature(
@@ -389,7 +396,12 @@ final class SpotifyProvider {
         lastAlbumImageURL = track.album?.images?
             .last(where: { ($0.width ?? 0) >= 300 })?.url
             ?? track.album?.images?.last?.url
-        lastAppliedItemName = name
+        lastAppliedItemKey = itemKey(
+            id: track.id,
+            name: name,
+            artist: track.artists?.first?.name ?? "",
+            album: track.album?.name
+        )
         lastAppliedPositionMs = Int(min(elapsed, duration ?? elapsed) * 1000)
         stalledPauseCount = 0
         isStalledPause = false
@@ -397,6 +409,20 @@ final class SpotifyProvider {
         stalledSince = nil
         burst(count: 8)
         DiagnosticsLog.append("recently-played flip: \(name) est=\(Int(elapsed))s")
+    }
+
+    private func itemKey(for item: SpotifyPlayerState.Item?) -> String? {
+        guard let item else { return nil }
+        return itemKey(
+            id: item.id,
+            name: item.name,
+            artist: item.artists?.first?.name ?? "",
+            album: item.album?.name
+        )
+    }
+
+    private func itemKey(id: String?, name: String, artist: String, album: String?) -> String {
+        id ?? "\(name)|\(artist)|\(album ?? "")"
     }
 
     private func transportCall(url: URL, method: String = "PUT") async -> Bool {
@@ -456,6 +482,7 @@ final class SpotifyProvider {
 private struct RecentlyPlayedResponse: Codable, Sendable {
     struct Item: Codable, Sendable {
         struct Playable: Codable, Sendable {
+            var id: String?
             var name: String?
             var durationMs: Int?
             var artists: [Artist]?

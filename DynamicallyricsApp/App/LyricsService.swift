@@ -83,6 +83,7 @@ final class LyricsService {
                 lookupStatus = nil
                 apply(fetched)
                 isLoading = false
+                isAwaitingLyrics = false
             }
         case .notFound:
             Self.log.error("lookup notFound: \(signature.title) — \(signature.artist)")
@@ -90,6 +91,7 @@ final class LyricsService {
             if currentSignature == signature {
                 lookupStatus = "No lyrics found for this track"
                 isLoading = false
+                isAwaitingLyrics = false
             }
         case .failed(let reason):
             Self.log.error("lookup failed: \(reason, privacy: .public)")

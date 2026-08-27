@@ -1,15 +1,16 @@
-# Live Activity Push — the paid-tier upgrade path
+# Live Activity Push — the server-backed upgrade path
 
-Everything in this doc is blocked by exactly one thing: Apple requires a **paid
-Apple Developer Program membership ($99/yr)** to send APNs pushes, including
-Live Activity push. The moment you have that (plus a ~free Cloudflare Worker),
-you get Apple-Music/McDonald's-grade behavior: the Live Activity starts without
-the app ever running, updates bypass app liveness entirely, and "never stalls"
-becomes literal.
+APNs delivery to real devices requires a **paid Apple Developer Program
+membership**. The app and Worker path is now present, but bring-up also needs
+the APNs/Spotify secrets, a deployed Worker, and the matching sync access token.
+The current server updates and ends an existing Live Activity; remote activity
+start is still a follow-up.
 
 ## 1. Capabilities to add
 
-- App + widget extension: Push Notifications capability (`aps-environment: development`).
+- App + widget extension: the project already declares Live Activity support and
+  `aps-environment: production`; use a provisioning profile with the matching
+  environment when signing a device build.
 - `project.yml` → app target info properties already have `NSSupportsLiveActivities`
   and `NSSupportsLiveActivitiesFrequentUpdates` — nothing else needed there.
 
@@ -38,7 +39,7 @@ Upload target: any tiny HTTPS endpoint that stores `deviceID → tokens`
 
 ```bash
 curl -v \
-  --header "apns-topic: com.jonathantran.dynamicallyrics.push-type.liveactivity" \
+  --header "apns-topic: com.jonathantran.dynamicallyrics.la.push-type.liveactivity" \
   --header "apns-push-type: liveactivity" \
   --header "apns-priority: 10" \
   --header "authorization: bearer $APNS_JWT" \
@@ -51,11 +52,12 @@ curl -v \
 
 - Priority **5** = opportunistic/unmetered → use for lyric-line flips.
 - Priority **10** = immediate/budgeted → reserve for track changes & play/pause.
-- `event: start` with the **push-to-start token** starts the LA remotely —
-  this is the "pops up without me going to the app" mechanism.
+- The app captures the **push-to-start token**, but the current worker only
+  updates/ends an existing Live Activity. Remote `event: start` is still a
+  follow-up because it needs a complete server-side starting state.
 - APNs auth: JWT signed with your team's key (.p8) — standard stuff.
 
-Server side: a poller hitting Spotify's `/me/player` once per second per
+Server side: a poller hitting Spotify's `/me/player` every ~5 seconds per
 active user (or a Spotify webhook when they ship one) translates changes into
 the pushes above. ContentState shape is identical to what the app ships today,
 so `LyricsLiveActivity.swift` needs zero changes.
@@ -68,5 +70,6 @@ push, a suspended app no longer matters. Keep them as fallback anyway.
 
 ## 5. Effort estimate
 
-~30 minutes of code (token upload + Worker) given everything in this repo
-already speaks the right ContentState shape.
+The current bring-up includes token upload, an authenticated Worker, and the
+APNs update/end path. Remote activity start, multi-user storage, and production
+onboarding remain separate hardening work.

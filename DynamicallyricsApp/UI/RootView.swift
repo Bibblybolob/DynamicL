@@ -46,9 +46,14 @@ struct RootView: View {
             if model.lyrics.document != nil {
                 lockScreenToggle
                 appearanceLink
-                SyncServerRow()
                 offsetControl
             }
+
+            // Server setup is independent of whether the current track has
+            // lyrics. Keeping it outside the document-only controls means a
+            // user can configure push before the first successful lookup (or
+            // recover a server setup while the current song has no lyrics).
+            SyncServerRow()
 
             #if DEBUG
             demoControls
@@ -95,7 +100,7 @@ struct RootView: View {
                 }
             }
             .font(.footnote.bold())
-            Text("LA enabled=\(model.liveActivity.isEnabled) running=\(model.liveActivity.isRunning)")
+            Text(verbatim: "LA enabled=\(model.liveActivity.isEnabled) running=\(model.liveActivity.isRunning)")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
         }

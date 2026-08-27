@@ -71,17 +71,28 @@ struct LyricsLiveActivity: Widget {
                             .font(look.fontStyle.laFont(.caption2, weight: .semibold))
                             .foregroundStyle(look.text.opacity(0.7))
                             .lineLimit(1)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.7)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Text(context.state.currentLine)
                         .font(look.fontStyle.laFont(.headline, weight: .bold))
                         .foregroundStyle(look.text)
                         .opacity(context.isStale ? 0.35 : 1)
                         .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .allowsTightening(true)
+                        .minimumScaleFactor(0.65)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .clipped()
                     if let next = context.state.nextLine {
                         Text(next)
                             .font(look.fontStyle.laFont(.footnote))
                             .foregroundStyle(look.text.opacity(0.45))
                             .lineLimit(1)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.7)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     LAThickBar(
                         start: context.state.progressStart,
@@ -136,6 +147,9 @@ private struct LockScreenLyricsView: View {
                     .font(look.fontStyle.laFont(.caption2, weight: .semibold))
                     .foregroundStyle(look.text.opacity(0.78))
                     .lineLimit(1)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.65)
+                    .layoutPriority(1)
                 Spacer()
                 // Stall-reveal refresh: only exists once content has gone
                 // stale (system-computed), so healthy cards stay clean.
@@ -178,6 +192,9 @@ private struct LockScreenLyricsView: View {
                     .font(look.fontStyle.laFont(.subheadline, weight: .medium))
                     .foregroundStyle(look.text.opacity(0.5))
                     .lineLimit(1)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(16)

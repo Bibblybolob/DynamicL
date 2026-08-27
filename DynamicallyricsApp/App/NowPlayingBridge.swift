@@ -80,4 +80,8 @@ final class NowPlayingBridge {
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
+
+    func clear() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
 }

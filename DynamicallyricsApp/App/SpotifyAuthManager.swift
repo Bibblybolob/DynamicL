@@ -26,6 +26,8 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
     }
 
     func disconnect() {
+        refreshTask?.cancel()
+        refreshTask = nil
         accessToken = nil
         refreshToken = nil
         tokenExpiresAt = nil
@@ -165,7 +167,7 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
             throw SpotifyAuthError.tokenExchange("HTTP \(http.statusCode)")
         }
         let tokens = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
-        store(tokens: tokens, keepingRefreshToken: tokens.refreshToken == nil ? refreshToken : nil)
+        store(tokens: tokens, keepingRefreshToken: tokens.refreshToken == nil ? refresh : nil)
         return tokens.accessToken
     }
 
@@ -185,14 +187,11 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         .joined(separator: "&")
     }
 
-    nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        guard Thread.isMainThread else { return ASPresentationAnchor() }
-        return MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows)
-                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
-        }
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
     }
 }
 

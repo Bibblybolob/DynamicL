@@ -39,7 +39,7 @@ final class WatchSyncManager: NSObject {
     var isWatchReachable: Bool {
         WCSession.isSupported()
             && WCSession.default.activationState == .activated
-            && (WCSession.default.isPaired ?? false)
+            && WCSession.default.isPaired
     }
 
     func publish(_ snapshot: WidgetLyricSnapshot) {

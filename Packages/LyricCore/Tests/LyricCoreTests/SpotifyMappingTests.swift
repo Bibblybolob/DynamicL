@@ -11,6 +11,7 @@ final class SpotifyMappingTests: XCTestCase {
           "progress_ms": 45000,
           "is_playing": true,
           "item": {
+            "id": "track-123",
             "album": {"album_type": "album", "name": "Rumours"},
             "artists": [{"name": "Fleetwood Mac"}],
             "duration_ms": 271000,
@@ -21,6 +22,7 @@ final class SpotifyMappingTests: XCTestCase {
         let state = try JSONDecoder().decode(SpotifyPlayerState.self, from: Data(json.utf8))
 
         XCTAssertEqual(state.signature?.title, "The Chain")
+        XCTAssertEqual(state.item?.id, "track-123")
         XCTAssertEqual(state.signature?.artist, "Fleetwood Mac")
         XCTAssertEqual(state.signature?.album, "Rumours")
         XCTAssertEqual(state.signature?.duration ?? 0, 271.0, accuracy: 0.001)
@@ -30,12 +32,12 @@ final class SpotifyMappingTests: XCTestCase {
         XCTAssertEqual(status.position, 45.0, accuracy: 0.001)
     }
 
-    func testPausedStateMapsCorrectly() throws {
+    func testNoItemStateMapsToStopped() throws {
         let json = """
         {"progress_ms": 10000, "is_playing": false, "item": null}
         """
         let state = try JSONDecoder().decode(SpotifyPlayerState.self, from: Data(json.utf8))
-        XCTAssertEqual(state.status.state, .paused)
+        XCTAssertEqual(state.status.state, .stopped)
         XCTAssertNil(state.signature)
     }
 }

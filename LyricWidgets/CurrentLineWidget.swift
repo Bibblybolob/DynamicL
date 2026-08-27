@@ -95,6 +95,10 @@ struct HomeScreenLyricView: View {
                 .font(family == .systemSmall ? .caption : .body)
                 .fontWeight(.medium)
                 .lineLimit(lineLimit)
+                .allowsTightening(true)
+                .minimumScaleFactor(family == .systemSmall ? 0.7 : 0.75)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -132,6 +136,10 @@ struct AccessoryRectangularLyricView: View {
             Text(entry.currentLine)
                 .font(.footnote.weight(.medium))
                 .lineLimit(3)
+                .allowsTightening(true)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
             if !entry.isPlaying {
                 Label("Paused", systemImage: "pause.fill")
                     .font(.caption2)
@@ -176,6 +184,10 @@ struct AccessoryInlineLyricView: View {
         Text(entry.isPlaying ? "♪ \(entry.currentLine)" : "❙❙ \(entry.currentLine)")
             .font(.headline)
             .lineLimit(1)
+            .allowsTightening(true)
+            .minimumScaleFactor(0.55)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
             .containerBackground(for: .widget) {
                 Color.clear
             }

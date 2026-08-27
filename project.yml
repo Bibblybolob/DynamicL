@@ -13,7 +13,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "2"
+    CURRENT_PROJECT_VERSION: "4"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 643P4Q6FLQ
 
@@ -162,6 +162,7 @@ schemes:
         LyricWidgets: all
     run:
       config: Debug
+
   DynamicallyricsWatch:
     build:
       targets:
@@ -169,4 +170,3 @@ schemes:
         LyricWatchWidgets: all
     run:
       config: Debug
-

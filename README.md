@@ -21,7 +21,7 @@ Work in progress. The lyric engine, Spotify integration, and widget surfaces are
 ## Widgets
 
 All widgets read a precomputed snapshot (`WidgetLyricSnapshot`) published by the app into the
-shared `group.com.jonathantran.dynamicallyrics` app group, so they never talk to Spotify themselves.
+shared `group.com.jonathantran.dynamicallyrics.la` app group, so they never talk to Spotify themselves.
 
 | Widget | Surfaces | Notes |
 |---|---|---|
@@ -38,7 +38,8 @@ play/pause override for instant feedback and drops a command into a shared mailb
 
 > **Note:** playback control requires the `user-modify-playback-state` scope. If you
 > connected your Spotify account before this was added, sign out and back in inside the
-> app to grant it.
+> app to grant it. The app also requests `user-read-recently-played` so it can reject
+> stale track responses during skips.
 
 ## Apple Watch
 
@@ -61,6 +62,7 @@ play/pause override for instant feedback and drops a command into a shared mailb
 │   ├── SharedNowPlaying        # App-group snapshot store (+ optimistic override)
 │   ├── PlaybackCommand         # Widget → app remote-control command bus
 │   └── LyricsActivityAttributes # Live Activity payload
+├── server/                     # optional authenticated Cloudflare sync worker
 └── project.yml                 # XcodeGen project definition
 ```
 

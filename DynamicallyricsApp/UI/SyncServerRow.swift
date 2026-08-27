@@ -5,7 +5,7 @@ import LyricCore
 /// automatically once this is set; leave empty to run purely local.
 struct SyncServerRow: View {
     @State private var url: String = SyncServerClient.shared.serverURLString
-    @State private var tokenCount: Int = 0
+    @State private var authToken: String = SyncServerClient.shared.serverAuthTokenString
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -20,6 +20,14 @@ struct SyncServerRow: View {
                 .textFieldStyle(.roundedBorder)
                 .onChange(of: url) { _, newValue in
                     SyncServerClient.shared.setServerURL(newValue)
+                }
+            SecureField("Server access token", text: $authToken)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .font(.caption.monospaced())
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: authToken) { _, newValue in
+                    SyncServerClient.shared.setServerAuthToken(newValue)
                 }
             Text(statusText)
                 .font(.caption2)
@@ -38,12 +46,15 @@ struct SyncServerRow: View {
     }
 
     private var statusText: String {
-        let hasURL = !SyncServerClient.shared.serverURLString.isEmpty
-        let tokensKnown = SyncServerClient.shared.updateToken != nil
-        switch (hasURL, tokensKnown) {
-        case (true, true): return "Registered — server pushes enabled."
-        case (true, false): return "Waiting for an activity to start…"
-        case (false, true): return "Tokens captured locally; add a URL to enable server push."
+        let client = SyncServerClient.shared
+        let hasURL = !client.serverURLString.isEmpty
+        let hasAuth = !client.serverAuthTokenString.isEmpty
+        let tokensKnown = client.updateToken != nil
+        switch (hasURL, hasAuth, tokensKnown) {
+        case (true, true, true): return "Registered — server pushes enabled."
+        case (true, true, false): return "Waiting for an activity to start…"
+        case (true, false, _): return "Add the server access token to enable push."
+        case (false, _, true): return "Tokens captured locally; add the server URL."
         default: return "Optional — enables never-stall push updates."
         }
     }

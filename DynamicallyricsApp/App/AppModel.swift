@@ -111,6 +111,7 @@ final class AppModel {
         signature = nil
         status = nil
         lyrics.update(signature: nil, status: nil)
+        nowPlaying.clear()
         liveActivity.end()
         keeper.stop()
     }
@@ -157,6 +158,7 @@ final class AppModel {
         signature = nil
         status = nil
         lyrics.update(signature: nil, status: nil)
+        nowPlaying.clear()
         liveActivity.end()
         keeper.stop()
     }
@@ -429,7 +431,10 @@ final class AppModel {
     /// Mirrors playback into MPNowPlayingInfoCenter (throttled to 2s) so the
     /// system routes lock-screen transport events to us.
     private func publishNowPlayingIfDue() {
-        guard let signature else { return }
+        guard let signature, status?.state != .stopped else {
+            nowPlaying.clear()
+            return
+        }
         let state = status?.state
         let key = "\(signature.title)|\(state == .playing)"
         let now = Date.now
@@ -475,7 +480,7 @@ final class AppModel {
         stoppedStreak = 0
 
         let style = loadLAStyle()
-        let styleKey = "\(style.prefs.theme.rawValue)|\(style.prefs.fontStyle.rawValue)"
+        let styleKey = "\(style.prefs.theme.rawValue)|\(style.prefs.fontStyle.rawValue)|\(style.prefs.animationsEnabled)"
 
         guard let signature else {
             if liveActivity.isRunning { liveActivity.end() }
@@ -525,6 +530,8 @@ final class AppModel {
             liveActivity.start(state: startState)
             lastLineIndex = lyrics.currentIndex
             lastLAUpdateAt = .now
+            lastLASentIsPlaying = startState.isPlaying
+            lastLASentTrack = "\(startState.trackTitle)|\(startState.artistName)|\(document.lines.count)"
             lastSentLAHash = laContentHash(startState)
             lastAppliedStyleKey = styleKey
             lastSentAccent = startState.albumDominantRGB
@@ -538,7 +545,7 @@ final class AppModel {
         // anything. The progress bar advances itself via TimelineView on the
         // widget's own clock.
         let targetState = contentState(document: document, style: style.prefs, albumAccent: style.accent)
-        let trackKey = "\(targetState.trackTitle)|\(document.lines.count)"
+        let trackKey = "\(targetState.trackTitle)|\(targetState.artistName)|\(document.lines.count)"
         let trackChanged = trackKey != lastLASentTrack
         let lineChanged = lyrics.currentIndex != lastLineIndex
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
@@ -619,7 +626,7 @@ final class AppModel {
     /// during steady playback startDate/endDate are constant anyway, so any
     /// hash drift means real content (title, line, play state, bar) moved.
     private func laContentHash(_ s: LyricsActivityAttributes.ContentState) -> String {
-        "\(s.trackTitle)|\(s.currentLine)|\(s.isPlaying)"
+        "\(s.trackTitle)|\(s.artistName)|\(s.currentLine)|\(s.nextLine ?? "-")|\(s.isPlaying)"
             + "|\(s.progressStart.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.progressEnd.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.frozenProgress.map { Int(($0 * 100).rounded()) } ?? -1)"

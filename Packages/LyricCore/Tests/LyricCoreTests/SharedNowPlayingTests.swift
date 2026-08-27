@@ -28,6 +28,7 @@ final class SharedNowPlayingTests: XCTestCase {
     }
 
     func testClearRemovesSnapshot() {
+        SharedNowPlaying.setPlayingOverride(true, defaults: defaults)
         let snapshot = WidgetLyricSnapshot(
             trackTitle: "Test Song",
             artistName: "Test Artist",
@@ -40,6 +41,7 @@ final class SharedNowPlayingTests: XCTestCase {
         SharedNowPlaying.clear(defaults: defaults)
 
         XCTAssertNil(SharedNowPlaying.load(defaults: defaults))
+        XCTAssertNil(SharedNowPlaying.playingOverride(defaults: defaults))
     }
 
     func testLoadWithNoDataReturnsNil() {

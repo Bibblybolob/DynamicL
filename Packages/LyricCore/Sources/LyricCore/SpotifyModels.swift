@@ -28,13 +28,14 @@ public struct SpotifyPlayerState: Codable, Sendable, Equatable {
             public var images: [Image]?
         }
 
+        public var id: String?
         public var name: String
         public var artists: [Artist]?
         public var album: Album?
         public var durationMs: Int?
 
         enum CodingKeys: String, CodingKey {
-            case name, artists, album
+            case id, name, artists, album
             case durationMs = "duration_ms"
         }
     }
@@ -70,9 +71,12 @@ public struct SpotifyPlayerState: Codable, Sendable, Equatable {
 
     public var status: PlaybackStatus {
         PlaybackStatus(
-            state: isPlaying ? .playing : .paused,
+            // A 200 response with `item: null` means there is no current
+            // playback item. Treating it as a paused song leaves stale title
+            // and lyric UI alive until a later 204 response.
+            state: item == nil ? .stopped : (isPlaying ? .playing : .paused),
             position: TimeInterval(progressMs ?? 0) / 1000.0,
-            rate: isPlaying ? 1.0 : 0.0
+            rate: isPlaying && item != nil ? 1.0 : 0.0
         )
     }
 }

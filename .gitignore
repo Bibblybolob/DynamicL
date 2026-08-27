@@ -15,3 +15,8 @@ Package.resolved
 
 # macOS
 .DS_Store
+
+# Cloudflare Worker local state and secrets
+server/node_modules/
+server/.wrangler/
+server/.dev.vars

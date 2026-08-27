@@ -1,0 +1,7 @@
+# Local-only values for `npx wrangler dev`.
+# Never commit real values or the local `.dev.vars` file.
+APNS_KEY_P8="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+APNS_KEY_ID="your-apns-key-id"
+APNS_TEAM_ID="your-apple-team-id"
+SPOTIFY_CLIENT_ID="your-spotify-client-id"
+SYNC_AUTH_TOKEN="generate-a-long-random-token"

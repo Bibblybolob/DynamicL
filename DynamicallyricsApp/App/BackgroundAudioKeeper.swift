@@ -3,8 +3,9 @@ import Foundation
 import os.log
 
 /// Plays silent looping audio so the app can keep updating Live Activities while backgrounded.
+@MainActor
 final class BackgroundAudioKeeper {
-    nonisolated(unsafe) static let shared = BackgroundAudioKeeper()
+    static let shared = BackgroundAudioKeeper()
 
     private static let log = Logger(subsystem: "com.jonathantran.dynamicallyrics", category: "BackgroundAudio")
 
@@ -90,7 +91,10 @@ final class BackgroundAudioKeeper {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                self?.handleInterruption(notification)
+                let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                Task { @MainActor [weak self] in
+                    self?.handleInterruption(typeValue: typeValue)
+                }
             }
         }
         if routeChangeObserver == nil {
@@ -101,13 +105,15 @@ final class BackgroundAudioKeeper {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                guard let self, self.isKeepingAlive,
-                      let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-                      let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
-                      reason == .oldDeviceUnavailable || reason == .newDeviceAvailable
-                else { return }
-                DiagnosticsLog.append("keeper: route change (\(reason.rawValue))")
-                self.resurrect()
+                guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt else { return }
+                Task { @MainActor [weak self] in
+                    guard let self, self.isKeepingAlive,
+                          let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
+                          reason == .oldDeviceUnavailable || reason == .newDeviceAvailable
+                    else { return }
+                    DiagnosticsLog.append("keeper: route change (\(reason.rawValue))")
+                    self.resurrect()
+                }
             }
         }
         if mediaServerResetObserver == nil {
@@ -118,16 +124,17 @@ final class BackgroundAudioKeeper {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                guard let self, self.isKeepingAlive else { return }
-                DiagnosticsLog.append("keeper: media services reset")
-                self.resurrect()
+                Task { @MainActor [weak self] in
+                    guard let self, self.isKeepingAlive else { return }
+                    DiagnosticsLog.append("keeper: media services reset")
+                    self.resurrect()
+                }
             }
         }
     }
 
-    private func handleInterruption(_ notification: Notification) {
-        guard let info = notification.userInfo,
-              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+    private func handleInterruption(typeValue: UInt?) {
+        guard let typeValue,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
         switch type {
