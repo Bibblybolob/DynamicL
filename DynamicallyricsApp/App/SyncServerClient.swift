@@ -45,6 +45,41 @@ final class SyncServerClient {
         scheduleUpload()
     }
 
+    /// Verifies the configured Worker URL and access token without waiting for
+    /// ActivityKit to produce a token or for a registration upload to happen.
+    func checkConnection() async -> SyncServerCheckResult {
+        guard configuredBaseURL() != nil else { return .missingURL }
+        guard !serverAuthTokenString.isEmpty else { return .missingAccessToken }
+        guard let url = URL(string: endpoint(path: "status")) else { return .invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10
+        request.setValue("Bearer \(serverAuthTokenString)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            switch code {
+            case 200...299:
+                DiagnosticsLog.append("sync: connection check passed")
+                return .ready
+            case 401:
+                DiagnosticsLog.append("sync: connection check unauthorized")
+                return .unauthorized
+            case 503:
+                DiagnosticsLog.append("sync: connection check server not configured")
+                return .serverNotConfigured
+            default:
+                DiagnosticsLog.append("sync: connection check HTTP \(code)")
+                return .failed
+            }
+        } catch {
+            DiagnosticsLog.append("sync: connection check failed")
+            return .failed
+        }
+    }
+
     private func scheduleUpload() {
         // Debounce re-upload until typing settles.
         pendingUploadTask?.cancel()
@@ -72,7 +107,7 @@ final class SyncServerClient {
         // The current worker updates an existing activity. A push-to-start
         // token alone cannot be registered until an update token exists.
         guard let updateToken, !updateToken.isEmpty else { return }
-        guard let base = configuredBaseURL() else {
+        guard configuredBaseURL() != nil else {
             if force {
                 DiagnosticsLog.append("sync: no valid HTTPS server URL set")
             }
@@ -91,8 +126,7 @@ final class SyncServerClient {
             }
             return
         }
-        let registerURL = base.hasSuffix("/") ? base.appending("register") : base.appending("/register")
-        guard let url = URL(string: registerURL) else {
+        guard let url = URL(string: endpoint(path: "register")) else {
             DiagnosticsLog.append("sync: invalid server URL")
             return
         }
@@ -135,4 +169,19 @@ final class SyncServerClient {
               url.fragment == nil else { return nil }
         return raw.hasSuffix("/") ? String(raw.dropLast()) : raw
     }
+
+    private func endpoint(path: String) -> String {
+        guard let base = configuredBaseURL() else { return path }
+        return base.appending("/\(path)")
+    }
+}
+
+enum SyncServerCheckResult: Equatable {
+    case ready
+    case missingURL
+    case invalidURL
+    case missingAccessToken
+    case unauthorized
+    case serverNotConfigured
+    case failed
 }
