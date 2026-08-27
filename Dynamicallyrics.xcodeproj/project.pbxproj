@@ -21,6 +21,7 @@
 		40A0B0C78A59D5DB0095EA16 /* DynamicallyricsWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED59A6EB0239CFEE501B720 /* DynamicallyricsWatchApp.swift */; };
 		41E75F449CD0E115B148C31B /* WatchSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */; };
 		4538AD355238ACD4439364F6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 388982BB47D706DC2E5337F8 /* Assets.xcassets */; };
+		4681FD03C1170DA582F6F1C3 /* WatchWidgetStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A13679FF910F6ACFE50B30A /* WatchWidgetStyles.swift */; };
 		4DF3E591080D9A5B3D596161 /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = 296591B01A360C90D2243D26 /* LyricCore */; };
 		4F6F01B1809A65845D52A927 /* Pacifico-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9C8A92CCBCBBBBD7A0E18A9A /* Pacifico-Regular.ttf */; };
 		509CA8E44116D294131083BA /* LockscreenLyricWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA9C09E856EEE455AB2BDA2 /* LockscreenLyricWidget.swift */; };
@@ -158,6 +159,7 @@
 		8AC22968C10EA0DA1D7CBE6D /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
 		8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConfig.swift; sourceTree = "<group>"; };
 		946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncManager.swift; sourceTree = "<group>"; };
+		9A13679FF910F6ACFE50B30A /* WatchWidgetStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWidgetStyles.swift; sourceTree = "<group>"; };
 		9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundAudioKeeper.swift; sourceTree = "<group>"; };
 		9C07680DCE0CB34AE71DE2E4 /* WatchLyricComplicationWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLyricComplicationWidget.swift; sourceTree = "<group>"; };
 		9C8A92CCBCBBBBD7A0E18A9A /* Pacifico-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pacifico-Regular.ttf"; sourceTree = "<group>"; };
@@ -366,6 +368,7 @@
 				71606A970345C293848CDA8C /* LyricWatchWidgetsBundle.swift */,
 				9C07680DCE0CB34AE71DE2E4 /* WatchLyricComplicationWidget.swift */,
 				2643CFE43083020E2CFD9165 /* WatchLyricStackWidget.swift */,
+				9A13679FF910F6ACFE50B30A /* WatchWidgetStyles.swift */,
 				D65F31B7AF36FC8AEDF77123 /* Support */,
 			);
 			path = WatchWidgets;
@@ -592,6 +595,7 @@
 				E5259A459AEFB998837D5503 /* LyricWatchWidgetsBundle.swift in Sources */,
 				ACC6D884B80894C7AD640C1C /* WatchLyricComplicationWidget.swift in Sources */,
 				889A78B2FB3264300662E034 /* WatchLyricStackWidget.swift in Sources */,
+				4681FD03C1170DA582F6F1C3 /* WatchWidgetStyles.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -809,7 +813,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -875,7 +879,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_NS_ASSERTIONS = NO;

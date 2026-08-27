@@ -5,8 +5,29 @@ import LyricCore
 struct WatchLyricEntry: TimelineEntry {
     let date: Date
     let trackTitle: String
+    let artistName: String
     let currentLine: String
+    let nextLine: String?
+    let albumImageData: Data?
     let isPlaying: Bool
+
+    init(
+        date: Date,
+        trackTitle: String,
+        currentLine: String,
+        isPlaying: Bool,
+        artistName: String = "OpenLyrics",
+        nextLine: String? = nil,
+        albumImageData: Data? = nil
+    ) {
+        self.date = date
+        self.trackTitle = trackTitle
+        self.artistName = artistName
+        self.currentLine = currentLine
+        self.nextLine = nextLine
+        self.albumImageData = albumImageData
+        self.isPlaying = isPlaying
+    }
 
     static let idle = WatchLyricEntry(
         date: .now,
@@ -51,7 +72,11 @@ struct WatchLyricProvider: TimelineProvider {
             date: date,
             trackTitle: snapshot.trackTitle,
             currentLine: line ?? snapshot.currentLine,
-            isPlaying: snapshot.isPlaying
+            isPlaying: snapshot.isPlaying,
+            artistName: snapshot.artistName,
+            nextLine: snapshot.scheduledLines.first(where: { $0.date > date })?.text,
+            albumImageData: snapshot.albumImageData
+                ?? SharedNowPlaying.cachedArtwork(for: snapshot.albumImageURL)
         )
     }
 }

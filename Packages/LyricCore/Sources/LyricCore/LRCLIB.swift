@@ -190,10 +190,15 @@ public struct LRCLIBClient: Sendable {
     }
 
     private func bestMatch(in results: [LRCLibResult], for signature: TrackSignature) -> LRCLibResult? {
-        let synced = results.filter { ($0.syncedLyrics?.isEmpty == false) && !$0.instrumental }
-        guard !synced.isEmpty else { return nil }
-        guard let targetDuration = signature.duration else { return synced.first }
-        return synced.min {
+        let usable = results.filter {
+            !$0.instrumental
+                && ($0.syncedLyrics?.isEmpty == false || $0.plainLyrics?.isEmpty == false)
+        }
+        let synced = usable.filter { $0.syncedLyrics?.isEmpty == false }
+        let candidates = synced.isEmpty ? usable : synced
+        guard !candidates.isEmpty else { return nil }
+        guard let targetDuration = signature.duration else { return candidates.first }
+        return candidates.min {
             abs(($0.duration ?? .infinity) - targetDuration) < abs(($1.duration ?? .infinity) - targetDuration)
         }
     }

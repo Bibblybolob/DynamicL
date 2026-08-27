@@ -281,21 +281,34 @@ struct RootView: View {
     private var placeholder: some View {
         VStack(spacing: 14) {
             Spacer()
-            if model.lyrics.isLoading {
-                ProgressView("Fetching lyrics…")
+            if model.signature != nil {
+                if model.lyrics.isLoading {
+                    ProgressView("Finding lyrics…")
+                } else {
+                    Image(systemName: "text.quote")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+                    Text(model.lyrics.isAwaitingLyrics ? "Lyrics lookup is retrying" : "Lyrics are not available")
+                        .foregroundStyle(.secondary)
+                    if let status = model.lyrics.lookupStatus {
+                        Text(status)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+                    Button("Try again") {
+                        model.lyrics.retryCurrentLookup()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.pink)
+                }
             } else if model.auth.isConnected {
                 Image(systemName: "music.note")
                     .font(.system(size: 48))
                     .foregroundStyle(.tertiary)
                 Text("Play something on Spotify")
                     .foregroundStyle(.secondary)
-                if let status = model.lyrics.lookupStatus {
-                    Text(status)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                }
             } else if model.lyrics.document == nil {
                 Image(systemName: "waveform")
                     .font(.system(size: 48))

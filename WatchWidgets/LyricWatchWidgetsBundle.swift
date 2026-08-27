@@ -6,5 +6,7 @@ struct LyricWatchWidgetsBundle: WidgetBundle {
     var body: some Widget {
         WatchLyricComplication()
         WatchLyricStackWidget()
+        WatchKaraokeWidget()
+        WatchAlbumWidget()
     }
 }

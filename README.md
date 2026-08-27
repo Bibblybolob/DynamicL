@@ -7,9 +7,9 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current local release candidate is version 1.1.1, build 10.
-- TestFlight contains version 0.1.0, build 5.
-- Build 10 is uploaded to TestFlight and is processing in App Store Connect.
+- The current release candidate is version 1.1.1, build 11.
+- Build 10 is the previous TestFlight build.
+- Build 11 is ready for TestFlight upload.
 
 | Feature | Status |
 |---|---|
@@ -21,13 +21,14 @@ Development continues.
 | Play and pause from widgets | Complete |
 | Apple Watch app and complications | Complete |
 | Lyric cache across app launches | Complete |
+| Lyric lookup retry and recovery | Complete |
 | Optional server-based Live Activity updates | Complete |
 | Live Activity layout, artwork, alignment, and control settings | Complete |
 | Apple Music integration | Planned |
 
 ## Current release candidate
 
-Build 10, version 1.1.1, includes these changes:
+Build 11, version 1.1.1, includes these changes:
 
 - The app uses the OpenLyrics name.
 - The app uses the selected OpenLyrics artwork.
@@ -43,6 +44,9 @@ Build 10, version 1.1.1, includes these changes:
 - The artwork cache rejects an image from a different track.
 - Widget snapshots carry ready artwork bytes with the track update.
 - Live Activities refresh when pending artwork becomes ready.
+- The app can retry a failed lyric lookup.
+- The app provides Minimal Lyrics, Album Card, and Karaoke Focus widgets.
+- The watch extension provides Karaoke Lyrics and Album Player widgets.
 
 ## Widgets
 
@@ -57,6 +61,11 @@ The app group is `group.com.jonathantran.dynamicallyrics.la`.
 | **Current Line** (`CurrentLineWidget`) | Home Screen small, medium, and large; Lock Screen circular, rectangular, and inline | Shows the current lyric line. Uses one timeline entry for each line. Sends a play or pause command. |
 | **Lock Screen Lyrics** (`LockscreenLyricWidget`) | Lock Screen circular, rectangular, and inline | Shows the current lyric line with serif italic text. Uses the Lock Screen tint. |
 | **Vinyl Player** (`VinylWidget`) | Home Screen small and Lock Screen circular | Shows album artwork in a record image. Rotates the record during playback. |
+| **Album Player** (`AlbumPlayerWidget`) | Home Screen small and medium | Shows album art, track details, lyrics, and playback controls. |
+| **Lyric Focus** (`LyricFocusWidget`) | Home Screen medium and large | Shows the current and next lyric lines. |
+| **Minimal Lyrics** (`MinimalLyricsWidget`) | Home Screen small, medium, and large | Shows lyrics in a text-only layout. |
+| **Album Card** (`AlbumCardWidget`) | Home Screen small and medium | Shows album art with track details and lyrics. |
+| **Karaoke Focus** (`KaraokeFocusWidget`) | Home Screen medium and large | Highlights the current lyric and shows the next line. |
 | **Lyrics Live Activity** (`LyricsLiveActivity`) | Lock Screen and Dynamic Island | Shows the current and next lyric lines. Provides a play or pause button. |
 
 ### Appearance settings
@@ -95,6 +104,7 @@ This scope helps the app prevent stale track data after a skip.
 - The iPhone sends the lyric line through Connectivity.
 - Complications include circular, rectangular, inline, and corner layouts.
 - The Smart Stack includes a Current Line card.
+- Watch widgets include Karaoke Lyrics and Album Player styles.
 
 ## Project layout
 

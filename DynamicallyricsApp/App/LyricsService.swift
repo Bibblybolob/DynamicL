@@ -167,6 +167,22 @@ final class LyricsService {
         }
     }
 
+    /// Starts a fresh lookup for the active track. This clears the session-only
+    /// not-found marker so a temporary provider or network problem can recover.
+    func retryCurrentLookup() {
+        guard let signature = currentSignature else { return }
+        loadTask?.cancel()
+        retryTask?.cancel()
+        retryTask = nil
+        failedSignatures.remove(signature)
+        lookupStatus = nil
+        isLoading = true
+        isAwaitingLyrics = true
+        loadTask = Task { [weak self] in
+            await self?.loadAndApply(signature)
+        }
+    }
+
     private func loadAndApply(_ signature: TrackSignature) async {
         Self.log.info("lookup start: \(signature.title) — \(signature.artist)")
         let outcome = await LRCLIBClient.shared.fetchOutcome(for: signature)
@@ -209,6 +225,9 @@ final class LyricsService {
         retryTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(15))
             guard !Task.isCancelled, let self, self.currentSignature == signature else { return }
+            self.retryTask = nil
+            self.isLoading = true
+            self.lookupStatus = "Retrying lyrics…"
             await self.loadAndApply(signature)
         }
     }
