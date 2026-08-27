@@ -1,117 +1,135 @@
 # OpenLyrics
 
-# VIBE-CODED
-
-**OpenLyrics** — an iOS app that displays time-synced lyrics for the currently playing track, on your Lock Screen, home screen, Dynamic Island, and Apple Watch.
+OpenLyrics displays time-synced lyrics for the track that is playing.
+It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch.
 
 ## Status
 
-Work in progress. The lyric engine, Spotify integration, and widget surfaces are in place.
-Build 5 (`0.1.0 (5)`) has been uploaded to TestFlight and is processing in App Store Connect. Build 7 (`1.1.1`) is the current local release candidate with the OpenLyrics name and selected option 4 artwork.
+Development continues.
+
+- The current local release candidate is version 1.1.1, build 7.
+- TestFlight contains version 0.1.0, build 5.
+- Build 7 is not uploaded to TestFlight.
 
 | Feature | Status |
 |---|---|
-| LRC parsing + sync engine | ✅ Done |
-| Spotify integration (PKCE auth, polling) | ✅ Done |
-| Lock Screen Live Activity + Dynamic Island lyrics | ✅ Done |
-| Home screen & Lock Screen widgets | ✅ Done |
-| Adaptive lyric sizing and overflow protection | ✅ Done |
-| Interactive play/pause from widgets | ✅ Done |
-| Apple Watch app + complications | ✅ Done |
-| Persistent lyric cache across launches | ✅ Done |
-| Optional server-backed Live Activity updates | ✅ Done |
-| Live Activity layout, artwork, alignment, and control customization | ✅ Done |
-| Apple Music integration | Roadmap |
+| LRC parsing and lyric synchronization | Complete |
+| Spotify integration with PKCE authentication and polling | Complete |
+| Lock Screen Live Activity and Dynamic Island lyrics | Complete |
+| Home Screen and Lock Screen widgets | Complete |
+| Adaptive lyric size and overflow protection | Complete |
+| Play and pause from widgets | Complete |
+| Apple Watch app and complications | Complete |
+| Lyric cache across app launches | Complete |
+| Optional server-based Live Activity updates | Complete |
+| Live Activity layout, artwork, alignment, and control settings | Complete |
+| Apple Music integration | Planned |
 
-## Build 6 highlights
+## Current release candidate
 
-- Live Activity lyric cards now fit long lines inside bounded, readable layouts instead of allowing oversized text to escape the card.
-- Live Activity updates are coalesced and serialized, with a shorter lyric-change interval to reduce stale lines and silent update drops.
-- Live Activity appearance now includes compact/balanced/large lyric sizing plus next-line and progress-bar toggles.
-- The album-art vinyl widget now supports both Lock Screen circular and Home Screen small layouts with lighter timeline-driven spinning.
-- The main app now presents album art, clearer playback state, and grouped settings in a more polished Now Playing surface.
+Build 7, version 1.1.1, includes these changes:
 
-## Build 5 highlights
-
-- Long lyric lines now wrap, shrink, or marquee within a bounded area instead of escaping the app, widget, or Live Activity window.
-- Live Activities recover more reliably after relaunches, external dismissal, track changes, and background audio interruptions.
-- Fetched lyrics persist locally for faster reuse across launches, with age and size limits plus corrupt-cache protection.
-- Playback now uses a provider-neutral contract, keeping the app ready for additional music services beyond Spotify.
-- The optional sync server includes authenticated APNs update/end delivery and an in-app connection check. Remote Live Activity starting remains a follow-up.
+- The app uses the OpenLyrics name.
+- The app uses the selected OpenLyrics artwork.
+- The Live Activity uses a bounded lyric area.
+- Long lyric lines wrap or reduce in size inside the lyric area.
+- The app sends Live Activity updates in order.
+- The app uses a 1.5-second minimum gap between lyric updates.
+- The Live Activity supports layout, artwork, alignment, and control settings.
+- The vinyl widget can show static artwork when animation is off.
+- The Now Playing screen shows album artwork and playback state.
 
 ## Widgets
 
-All widgets read a precomputed snapshot (`WidgetLyricSnapshot`) published by the app into the
-shared `group.com.jonathantran.dynamicallyrics.la` app group, so they never talk to Spotify themselves.
+The app writes a `WidgetLyricSnapshot` to the shared app group.
+The widgets read this snapshot.
+The widgets do not connect to Spotify.
 
-| Widget | Surfaces | Notes |
+The app group is `group.com.jonathantran.dynamicallyrics.la`.
+
+| Widget | Locations | Function |
 |---|---|---|
-| **Current Line** (`CurrentLineWidget`) | Home screen small/medium/large · Lock Screen circular/rectangular/inline | Live lyric line with scheduled per-line timeline entries; tap ⏯ to toggle playback in place |
-| **Lock Screen Lyrics** (`LockscreenLyricWidget`) | Lock Screen only (circular/rectangular/inline) | Standalone serif-italic "lyric card" styling that follows the Lock Screen tint |
-| **Vinyl Player** (`VinylWidget`) | Home screen small · Lock Screen circular | Album-art record that rotates while playback is active |
-| **Lyrics Live Activity** (`LyricsLiveActivity`) | Lock Screen card · Dynamic Island | Synced current + next line; includes a play/pause button |
+| **Current Line** (`CurrentLineWidget`) | Home Screen small, medium, and large; Lock Screen circular, rectangular, and inline | Shows the current lyric line. Uses one timeline entry for each line. Sends a play or pause command. |
+| **Lock Screen Lyrics** (`LockscreenLyricWidget`) | Lock Screen circular, rectangular, and inline | Shows the current lyric line with serif italic text. Uses the Lock Screen tint. |
+| **Vinyl Player** (`VinylWidget`) | Home Screen small and Lock Screen circular | Shows album artwork in a record image. Rotates the record during playback. |
+| **Lyrics Live Activity** (`LyricsLiveActivity`) | Lock Screen and Dynamic Island | Shows the current and next lyric lines. Provides a play or pause button. |
 
-### Appearance customization
+### Appearance settings
 
-The **Live Activity Style** screen supports Player, Lyrics Focus, and Minimal
-layouts; vinyl, square, or hidden artwork; left or centered lyrics; multiple
-fonts, themes, lyric sizes, karaoke sweep, next-line/progress visibility, and
-optional playback controls or track details. The same choices are reflected in
-the home-screen and Lock Screen widgets, while the vinyl widget can be static
-when animations are disabled.
+The **Live Activity Style** screen provides these settings:
 
-### Interactive playback
+- Player, Lyrics Focus, or Minimal layout
+- Vinyl, square, or hidden artwork
+- Left or centered lyric text
+- Font and color theme
+- Lyric size
+- Karaoke sweep
+- Next-line and progress-bar visibility
+- Playback-control and track-detail visibility
 
-The ⏯ buttons use an App Intent (`ToggleLyricPlaybackIntent`) that flips an optimistic
-play/pause override for instant feedback and drops a command into a shared mailbox
-(`PlaybackCommandBus`). The app picks the command up within ~250 ms and calls
-`PUT /v1/me/player/play|pause`.
+The app uses these settings in the Live Activity and widgets.
+The vinyl widget uses a static image when animation is off.
 
-> **Note:** playback control requires the `user-modify-playback-state` scope. If you
-> connected your Spotify account before this was added, sign out and back in inside the
-> app to grant it. The app also requests `user-read-recently-played` so it can reject
-> stale track responses during skips.
+### Playback control
+
+The play and pause buttons use the `ToggleLyricPlaybackIntent` App Intent.
+The intent writes a command to the shared `PlaybackCommandBus`.
+The app reads the command within about 250 milliseconds.
+The app then calls `PUT /v1/me/player/play` or `PUT /v1/me/player/pause`.
+
+Playback control requires the Spotify `user-modify-playback-state` scope.
+If you connected Spotify before playback control was added, sign out in the app.
+Then sign in again and grant the scope.
+
+The app also requests the `user-read-recently-played` scope.
+This scope helps the app prevent stale track data after a skip.
 
 ## Apple Watch
 
-- **Watch app**: shows the synced lyric line mirrored from the iPhone over Connectivity.
-- **Complications**: circular / rectangular / inline / corner ("Current Line") plus a Smart Stack card.
+- The Watch app shows the synced lyric line from the iPhone.
+- The iPhone sends the lyric line through Connectivity.
+- Complications include circular, rectangular, inline, and corner layouts.
+- The Smart Stack includes a Current Line card.
 
 ## Project layout
 
-```
+```text
 ├── DynamicallyricsApp/         # Main SwiftUI app target
-│   ├── App/                    # AppModel, Spotify auth/provider, Live Activities, sync
+│   ├── App/                    # AppModel, Spotify, Live Activity, and sync code
 │   └── UI/
-├── LyricWidgets/               # iOS WidgetKit extension (widgets + Live Activity)
+├── LyricWidgets/               # iOS WidgetKit extension
 ├── WatchApp/                   # watchOS companion app
-├── WatchWidgets/               # watchOS widget extension (complications)
-├── Packages/LyricCore/         # Swift package shared by every target
-│   ├── LRCParser               # Parses .lrc files (multi-timestamp lines, [offset] tag)
-│   ├── LRCLIB                  # Lyrics lookup via lrclib.net
-│   ├── Models / SyncEngine     # Playback position → current lyric line
-│   ├── SharedNowPlaying        # App-group snapshot store (+ optimistic override)
-│   ├── PlaybackCommand         # Widget → app remote-control command bus
-│   └── LyricsActivityAttributes # Live Activity payload
-├── server/                     # optional authenticated Cloudflare sync worker
+├── WatchWidgets/               # watchOS widget extension
+├── Packages/LyricCore/         # Swift package shared by all targets
+│   ├── LRCParser               # Parses .lrc files and the offset tag
+│   ├── LRCLIB                  # Gets lyrics from lrclib.net
+│   ├── Models / SyncEngine     # Maps playback position to a lyric line
+│   ├── SharedNowPlaying        # App-group snapshot store and playback override
+│   ├── PlaybackCommand         # Widget-to-app playback command bus
+│   └── LyricsActivityAttributes # Live Activity data
+├── server/                     # Optional authenticated Cloudflare sync worker
 └── project.yml                 # XcodeGen project definition
 ```
 
-## Building
+## Build the app
 
-Requires **Xcode 16+** (Swift 6) and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+The build requires Xcode 16 or later, Swift 6, and XcodeGen.
 
 ```sh
-xcodegen generate   # regenerates Dynamicallyrics.xcodeproj from project.yml
+xcodegen generate   # Regenerates Dynamicallyrics.xcodeproj from project.yml
 open Dynamicallyrics.xcodeproj
 ```
 
-Targets iOS 17.0+ and watchOS 10+. Add your Spotify Client ID in
-`DynamicallyricsApp/App/SpotifyConfig.swift` (redirect URI: `dynamicallyrics://callback`).
+The iOS target requires iOS 17 or later.
+The watchOS target requires watchOS 10 or later.
 
-## Tests
+Set the Spotify client ID in
+`DynamicallyricsApp/App/SpotifyConfig.swift`.
+Use `dynamicallyrics://callback` as the redirect URI.
 
-LyricCore uses Swift Package Manager tests:
+## Run the tests
+
+LyricCore uses Swift Package Manager tests.
 
 ```sh
 swift test --package-path Packages/LyricCore
