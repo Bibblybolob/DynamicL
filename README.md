@@ -7,6 +7,7 @@
 ## Status
 
 Work in progress. The lyric engine, Spotify integration, and widget surfaces are in place.
+Build 5 (`0.1.0 (5)`) has been uploaded to TestFlight and is processing in App Store Connect.
 
 | Feature | Status |
 |---|---|
@@ -14,9 +15,20 @@ Work in progress. The lyric engine, Spotify integration, and widget surfaces are
 | Spotify integration (PKCE auth, polling) | ✅ Done |
 | Lock Screen Live Activity + Dynamic Island lyrics | ✅ Done |
 | Home screen & Lock Screen widgets | ✅ Done |
+| Adaptive lyric sizing and overflow protection | ✅ Done |
 | Interactive play/pause from widgets | ✅ Done |
 | Apple Watch app + complications | ✅ Done |
+| Persistent lyric cache across launches | ✅ Done |
+| Optional server-backed Live Activity updates | ✅ Done |
 | Apple Music integration | Roadmap |
+
+## Build 5 highlights
+
+- Long lyric lines now wrap, shrink, or marquee within a bounded area instead of escaping the app, widget, or Live Activity window.
+- Live Activities recover more reliably after relaunches, external dismissal, track changes, and background audio interruptions.
+- Fetched lyrics persist locally for faster reuse across launches, with age and size limits plus corrupt-cache protection.
+- Playback now uses a provider-neutral contract, keeping the app ready for additional music services beyond Spotify.
+- The optional sync server includes authenticated APNs update/end delivery and an in-app connection check. Remote Live Activity starting remains a follow-up.
 
 ## Widgets
 
