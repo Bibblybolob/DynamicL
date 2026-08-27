@@ -9,7 +9,7 @@ Development continues.
 
 - The current release candidate is version 1.1.1, build 11.
 - Build 10 is the previous TestFlight build.
-- Build 11 is ready for TestFlight upload.
+- Build 11 is uploaded to TestFlight and is processing in App Store Connect.
 
 | Feature | Status |
 |---|---|
