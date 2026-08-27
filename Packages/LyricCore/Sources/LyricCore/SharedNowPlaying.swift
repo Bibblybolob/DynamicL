@@ -18,6 +18,7 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
     public let trackTitle: String
     public let artistName: String
     public var albumImageURL: String?
+    public var albumImageData: Data?
     public let currentLine: String
     public let isPlaying: Bool
     public let updatedAt: Date
@@ -27,6 +28,7 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         trackTitle: String,
         artistName: String,
         albumImageURL: String? = nil,
+        albumImageData: Data? = nil,
         currentLine: String,
         isPlaying: Bool,
         updatedAt: Date = .now,
@@ -35,6 +37,7 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         self.trackTitle = trackTitle
         self.artistName = artistName
         self.albumImageURL = albumImageURL
+        self.albumImageData = albumImageData
         self.currentLine = currentLine
         self.isPlaying = isPlaying
         self.updatedAt = updatedAt
@@ -46,8 +49,16 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
 public enum SharedNowPlaying {
     public static let appGroupID = "group.com.jonathantran.dynamicallyrics.la"
     private static let storageKey = "widgetLyricSnapshot"
+    private static let artworkCacheKey = "currentAlbumArtwork"
+    // Read these keys for one release so users can migrate from the earlier
+    // two-value cache without showing a missing image.
     private static let artworkURLKey = "currentAlbumArtworkURL"
     private static let artworkDataKey = "currentAlbumArtworkData"
+
+    private struct ArtworkCache: Codable {
+        let url: String
+        let data: Data
+    }
 
     public static func save(_ snapshot: WidgetLyricSnapshot) {
         save(snapshot, defaults: store())
@@ -79,15 +90,25 @@ public enum SharedNowPlaying {
     }
 
     static func cachedArtwork(for urlString: String?, defaults: UserDefaults?) -> Data? {
-        guard let urlString,
-              defaults?.string(forKey: artworkURLKey) == urlString else { return nil }
+        guard let urlString else { return nil }
+        if let encoded = defaults?.data(forKey: artworkCacheKey),
+           let cache = try? JSONDecoder().decode(ArtworkCache.self, from: encoded),
+           cache.url == urlString,
+           !cache.data.isEmpty {
+            return cache.data
+        }
+        guard defaults?.string(forKey: artworkURLKey) == urlString else { return nil }
         return defaults?.data(forKey: artworkDataKey)
     }
 
     static func saveArtwork(_ data: Data, for urlString: String, defaults: UserDefaults?) {
         guard !data.isEmpty else { return }
-        defaults?.set(urlString, forKey: artworkURLKey)
-        defaults?.set(data, forKey: artworkDataKey)
+        guard let encoded = try? JSONEncoder().encode(ArtworkCache(url: urlString, data: data)) else { return }
+        // Write one value. A widget can never observe a new URL with old or
+        // missing bytes between two separate UserDefaults writes.
+        defaults?.set(encoded, forKey: artworkCacheKey)
+        defaults?.removeObject(forKey: artworkURLKey)
+        defaults?.removeObject(forKey: artworkDataKey)
     }
 
     static func load(defaults: UserDefaults?) -> WidgetLyricSnapshot? {
@@ -97,6 +118,7 @@ public enum SharedNowPlaying {
 
     static func clear(defaults: UserDefaults?) {
         defaults?.removeObject(forKey: storageKey)
+        defaults?.removeObject(forKey: artworkCacheKey)
         defaults?.removeObject(forKey: artworkURLKey)
         defaults?.removeObject(forKey: artworkDataKey)
         // A command can fail while its optimistic override is still in the

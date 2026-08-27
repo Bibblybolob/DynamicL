@@ -270,8 +270,10 @@ final class AppModel {
         // update. The full snapshot with scheduled lines follows once lyrics land.
         if let signature, status?.state == .playing,
            lyrics.document == nil || lyrics.document?.track != signature {
-            let artworkURL = provider?.lastAlbumImageURL ?? ""
-            let key = "interim|\(signature.title)|\(signature.artist)|\(artworkURL)"
+            let artworkURL = provider?.lastAlbumImageURL
+            let artworkData = SharedNowPlaying.cachedArtwork(for: artworkURL)
+            let artworkReady = artworkURL == nil || artworkData != nil
+            let key = "interim|\(signature.title)|\(signature.artist)|\(artworkURL ?? "")|\(artworkReady)"
             guard key != lastPublishedWidgetKey else { return }
             lastPublishedWidgetKey = key
             widgetIdlePublished = false
@@ -279,12 +281,13 @@ final class AppModel {
                 WidgetLyricSnapshot(
                     trackTitle: signature.title,
                     artistName: signature.artist,
-                    albumImageURL: provider?.lastAlbumImageURL,
+                    albumImageURL: artworkURL,
+                    albumImageData: artworkData,
                     currentLine: lyrics.isLoading ? "Loading lyrics…" : "♪",
                     isPlaying: true
                 )
             )
-            reloadWidgetTimelines()
+            if artworkReady { reloadWidgetTimelines() }
             return
         }
 
@@ -310,8 +313,10 @@ final class AppModel {
         let isPlaying = status?.state == .playing
         let index = lyrics.currentIndex ?? -1
         let offsetKey = String(format: "%.3f", lyrics.userOffset)
-        let artworkURL = provider?.lastAlbumImageURL ?? ""
-        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(offsetKey)|\(artworkURL)"
+        let artworkURL = provider?.lastAlbumImageURL
+        let artworkData = SharedNowPlaying.cachedArtwork(for: artworkURL)
+        let artworkReady = artworkURL == nil || artworkData != nil
+        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(offsetKey)|\(artworkURL ?? "")|\(artworkReady)"
         guard key != lastPublishedWidgetKey else { return }
         lastPublishedWidgetKey = key
         widgetIdlePublished = false
@@ -323,7 +328,8 @@ final class AppModel {
             WidgetLyricSnapshot(
                 trackTitle: signature.title,
                 artistName: signature.artist,
-                albumImageURL: provider?.lastAlbumImageURL,
+                albumImageURL: artworkURL,
+                albumImageData: artworkData,
                 currentLine: current,
                 isPlaying: isPlaying,
                 updatedAt: .now,
@@ -334,7 +340,7 @@ final class AppModel {
         // play state). The daily reload budget cannot sustain per-line reloads;
         // between reloads the widget steps through its precomputed timeline
         // locally without talking to us.
-        let reloadKey = "\(signature.title)|\(signature.artist)|\(isPlaying)|\(scheduled.isEmpty ? "nosched" : "sched")|\(artworkURL)"
+        let reloadKey = "\(signature.title)|\(signature.artist)|\(isPlaying)|\(scheduled.isEmpty ? "nosched" : "sched")|\(artworkURL ?? "")|\(artworkReady)"
         if reloadKey != lastReloadedWidgetKey {
             lastReloadedWidgetKey = reloadKey
             reloadWidgetTimelines()
@@ -363,7 +369,10 @@ final class AppModel {
                   !Task.isCancelled else { return }
             SharedNowPlaying.saveArtwork(data, for: urlString)
             guard let self, self.provider?.lastAlbumImageURL == urlString else { return }
-            self.reloadWidgetTimelines()
+            self.lastPublishedWidgetKey = nil
+            self.lastReloadedWidgetKey = nil
+            self.lastLAArtworkReady = nil
+            self.syncWidgetSnapshot()
         }
     }
 
@@ -509,6 +518,8 @@ final class AppModel {
             if liveActivity.isRunning { liveActivity.end() }
             return
         }
+        let artworkURL = provider?.lastAlbumImageURL
+        let artworkReady = artworkURL == nil || SharedNowPlaying.cachedArtwork(for: artworkURL) != nil
         // NOTE: never end the activity just because lyrics are momentarily
         // unavailable — starting a new one is impossible from the background,
         // so ending it here would kill lock-screen lyrics until the app is
@@ -517,7 +528,7 @@ final class AppModel {
             // Update the placeholder AT MOST once per state change — calling
             // update() every tick (4/s) trips ActivityKit's rate limiter and
             // gets the activity's updates parked by the system.
-            let placeholderKey = "\(signature.title)|\(lyrics.isAwaitingLyrics)"
+            let placeholderKey = "\(signature.title)|\(lyrics.isAwaitingLyrics)|\(artworkReady)"
             if liveActivity.isRunning, placeholderKey != lastLAPlaceholderKey {
                 lastLAPlaceholderKey = placeholderKey
                 let placeholderState: LyricsActivityAttributes.ContentState = {
@@ -540,6 +551,7 @@ final class AppModel {
                 liveActivity.update(state: placeholderState)
                 lastSentLAHash = laContentHash(placeholderState)
                 lastLAUpdateAt = .now
+                lastLAArtworkReady = artworkReady
                 lastAppliedStyleKey = styleKey
                 lastSentAccent = placeholderState.albumDominantRGB
             }
@@ -556,6 +568,7 @@ final class AppModel {
             lastLAUpdateAt = .now
             lastLASentIsPlaying = startState.isPlaying
             lastLASentTrack = "\(startState.trackTitle)|\(startState.artistName)|\(startState.albumImageURL ?? "-")|\(document.lines.count)"
+            lastLAArtworkReady = artworkReady
             lastSentLAHash = laContentHash(startState)
             lastAppliedStyleKey = styleKey
             lastSentAccent = startState.albumDominantRGB
@@ -574,6 +587,7 @@ final class AppModel {
         let trackChanged = trackKey != lastLASentTrack
         let lineChanged = lyrics.currentIndex != lastLineIndex
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
+        let artworkChanged = artworkReady != lastLAArtworkReady
         let now = Date.now
         // A style or album-color change re-renders immediately so in-app
         // appearance picks land within one tick.
@@ -582,7 +596,7 @@ final class AppModel {
         let offsetChanged = lastAppliedLAOffset.map {
             abs($0 - lyrics.userOffset) > 0.001
         } ?? false
-        let urgent = trackChanged || playChanged || accentChanged || styleChanged || offsetChanged
+        let urgent = trackChanged || playChanged || artworkChanged || accentChanged || styleChanged || offsetChanged
         let sinceLastSend = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast)
         // The in-app scroller advances on a 250ms clock. ActivityKit still
         // applies its own device-level budget, but a four-second app-side gate
@@ -610,6 +624,7 @@ final class AppModel {
             lastLineIndex = lyrics.currentIndex
             lastLASentIsPlaying = targetState.isPlaying
             lastLASentTrack = trackKey
+            lastLAArtworkReady = artworkReady
             lastSentLAHash = laContentHash(targetState)
             lastAppliedStyleKey = styleKey
             lastSentAccent = targetState.albumDominantRGB
@@ -645,6 +660,7 @@ final class AppModel {
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
     @ObservationIgnored private var lastLAUpdateAt: Date?
+    @ObservationIgnored private var lastLAArtworkReady: Bool?
     /// Hash of the last ContentState we actually handed to ActivityKit —
     /// compared against current truth by the reconciliation self-heal.
     @ObservationIgnored private var lastSentLAHash: String?

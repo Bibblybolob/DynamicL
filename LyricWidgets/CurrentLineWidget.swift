@@ -101,7 +101,8 @@ private extension LyricEntry {
             trackTitle: snapshot.trackTitle,
             currentLine: line,
             albumImageURL: snapshot.albumImageURL,
-            albumImageData: SharedNowPlaying.cachedArtwork(for: snapshot.albumImageURL),
+            albumImageData: snapshot.albumImageData
+                ?? SharedNowPlaying.cachedArtwork(for: snapshot.albumImageURL),
             isPlaying: effectiveIsPlaying(snapshot)
         )
     }

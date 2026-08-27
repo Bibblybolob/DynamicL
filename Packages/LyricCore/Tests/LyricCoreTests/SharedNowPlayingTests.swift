@@ -14,6 +14,8 @@ final class SharedNowPlayingTests: XCTestCase {
         let snapshot = WidgetLyricSnapshot(
             trackTitle: "Test Song",
             artistName: "Test Artist",
+            albumImageURL: "https://example.com/album.jpg",
+            albumImageData: Data([9, 8, 7]),
             currentLine: "Hello line",
             isPlaying: true,
             scheduledLines: [

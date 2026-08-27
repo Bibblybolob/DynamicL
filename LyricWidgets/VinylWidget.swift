@@ -101,7 +101,14 @@ struct VinylProvider: TimelineProvider {
 
     private func entry(from snapshot: WidgetLyricSnapshot, rotation: Double,
                        date: Date = .now, showArtwork: Bool = true) async -> VinylEntry? {
-        let data = await Self.artData(for: showArtwork ? snapshot.albumImageURL : nil)
+        let data: Data?
+        if !showArtwork {
+            data = nil
+        } else if let snapshotData = snapshot.albumImageData {
+            data = snapshotData
+        } else {
+            data = await Self.artData(for: snapshot.albumImageURL)
+        }
         return VinylEntry(
             date: date,
             rotation: rotation,
