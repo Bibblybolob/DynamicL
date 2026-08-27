@@ -7,9 +7,9 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current local release candidate is version 1.1.1, build 7.
+- The current local release candidate is version 1.1.1, build 8.
 - TestFlight contains version 0.1.0, build 5.
-- Build 7 is not uploaded to TestFlight.
+- Build 8 is uploaded to TestFlight and is processing in App Store Connect.
 
 | Feature | Status |
 |---|---|
@@ -27,7 +27,7 @@ Development continues.
 
 ## Current release candidate
 
-Build 7, version 1.1.1, includes these changes:
+Build 8, version 1.1.1, includes these changes:
 
 - The app uses the OpenLyrics name.
 - The app uses the selected OpenLyrics artwork.
