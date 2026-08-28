@@ -1,33 +1,68 @@
-# OpenLyrics sync server (Cloudflare Worker)
+# OpenLyrics sync server
 
-Polls Spotify every ~5s while music plays, computes the current lyric line
-(LRCLIB), and pushes Live Activity updates over APNs — independent of the app.
+This Cloudflare Worker polls Spotify and sends Live Activity updates through APNs.
+It is a fallback for the iPhone app.
 
-## One-time setup
+The phone sends a heartbeat every five seconds.
+The heartbeat gives the phone a 15-second update lease.
+The server polls Spotify during the lease, but it does not send Activity updates.
+The server becomes the update source after the lease ends.
 
-    cd server
-    npm install
-    npx wrangler login                      # browser popup -> Allow
-    npx wrangler deploy
+The server polls every five seconds during playback.
+It polls every 10 seconds when playback is stopped.
 
-## Secrets
+## Set up the server
 
-`APNS_HOST` is configured as a non-secret Worker variable and defaults to the
-production APNs host. Development-device tokens must use
-`https://api.sandbox.push.apple.com`; TestFlight/App Store tokens use the
-production host.
+```sh
+cd server
+npm install
+npx wrangler login
+npx wrangler deploy
+```
 
-    npx wrangler secret put APNS_KEY_P8       # paste the full .p8 file contents
-    npx wrangler secret put APNS_KEY_ID       # 4G6T5TV7Y6
-    npx wrangler secret put APNS_TEAM_ID      # 643P4Q6FLQ
-    npx wrangler secret put SPOTIFY_CLIENT_ID # 6401f24daeea4c2aa4e333778dff01a2
-    npx wrangler secret put SYNC_AUTH_TOKEN    # long random token shared with the app
+## Set the secrets
+
+Use these commands. Enter each value when Wrangler asks for it.
+
+```sh
+npx wrangler secret put APNS_KEY_P8
+npx wrangler secret put APNS_KEY_ID
+npx wrangler secret put APNS_TEAM_ID
+npx wrangler secret put SPOTIFY_CLIENT_ID
+npx wrangler secret put SYNC_AUTH_TOKEN
+```
+
+`APNS_HOST` uses the production APNs host by default.
+TestFlight and App Store builds use the production host.
+Local development builds can use `https://api.sandbox.push.apple.com`.
+
+Keep `SYNC_AUTH_TOKEN`, `APNS_KEY_P8`, and the Spotify refresh token private.
 
 ## Register the phone
 
-The app does this automatically once its "Live sync server" fields contain the
-deployed URL and the same access token (it POSTs the update token + Spotify
-refresh token to /register). Keep the access token private; registration,
-status, and reset are protected.
+Enter the Worker URL and server access token in OpenLyrics.
+The app sends `POST /register` with the Spotify refresh token and at least one
+Activity token. The first registration can contain only a push-to-start token.
 
-Watch it work: `npx wrangler tail`
+The app sends `POST /heartbeat` while its Spotify data is healthy.
+The request includes the Activity state, track ID, lyric offset, schema version,
+and phone revision.
+
+All service routes except `/health` require the server access token.
+
+## Check the service
+
+`GET /status` reports the current update source, phone lease, playback session,
+start result, payload size, lyric schedule, and artwork state.
+
+Use this command to view live logs:
+
+```sh
+npx wrangler tail
+```
+
+## Run tests
+
+```sh
+npm test
+```

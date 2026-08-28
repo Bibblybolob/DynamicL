@@ -49,8 +49,10 @@ struct WidgetStyle {
     let palette: LAPalette
 
     init() {
-        prefs = LAStyleStore.load()
-        palette = LAStyleStore.resolve(prefs: prefs, albumDominant: nil)
+        let loaded = LAStyleStore.load()
+        prefs = loaded
+        let base = LAStyleStore.resolve(prefs: loaded, albumDominant: nil)
+        palette = LAStyleStore.applySurface(loaded.surfaceStyle, to: base)
     }
 
     var showsArtwork: Bool {
@@ -67,6 +69,63 @@ struct WidgetStyle {
 
     var textAlignment: SwiftUI.TextAlignment {
         prefs.textAlignment == .center ? .center : .leading
+    }
+
+    @ViewBuilder
+    var background: some View {
+        switch prefs.surfaceStyle {
+        case .gradient:
+            LinearGradient(
+                colors: [palette.backgroundTop.color, palette.backgroundBottom.color],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .glass:
+            ZStack {
+                palette.backgroundBottom.color
+                LinearGradient(
+                    colors: [palette.backgroundTop.color.opacity(0.78),
+                             palette.backgroundBottom.color.opacity(0.92)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Color.white.opacity(0.08)
+            }
+        case .neon:
+            ZStack {
+                palette.backgroundBottom.color
+                RadialGradient(
+                    colors: [palette.accent.color.opacity(0.46), .clear],
+                    center: .topTrailing,
+                    startRadius: 4,
+                    endRadius: 210
+                )
+                LinearGradient(
+                    colors: [.clear, palette.accent.color.opacity(0.12)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        case .paper:
+            LinearGradient(
+                colors: [palette.backgroundTop.color, palette.backgroundBottom.color],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        case .outline:
+            ZStack {
+                palette.backgroundBottom.color
+                LinearGradient(
+                    colors: [palette.backgroundTop.color.opacity(0.65),
+                             palette.backgroundBottom.color],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(palette.accent.color.opacity(0.5), lineWidth: 1)
+                    .padding(1)
+            }
+        }
     }
 }
 
@@ -173,12 +232,7 @@ struct HomeScreenLyricView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(family == .systemSmall ? 8 : 12)
         .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [style.palette.backgroundTop.color,
-                         style.palette.backgroundBottom.color],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            style.background
         }
     }
 
@@ -380,12 +434,7 @@ struct AlbumPlayerWidgetView: View {
         }
         .padding(family == .systemSmall ? 9 : 12)
         .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [style.palette.backgroundTop.color,
-                         style.palette.backgroundBottom.color],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            style.background
         }
     }
 }
@@ -454,12 +503,7 @@ struct LyricFocusWidgetView: View {
         }
         .padding(12)
         .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [style.palette.backgroundTop.color,
-                         style.palette.backgroundBottom.color],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            style.background
         }
     }
 }
@@ -519,7 +563,7 @@ struct MinimalLyricsWidgetView: View {
         }
         .padding(12)
         .containerBackground(for: .widget) {
-            style.palette.backgroundBottom.color
+            style.background
         }
     }
 }
@@ -584,7 +628,7 @@ struct AlbumCardWidgetView: View {
         }
         .clipShape(.rect(cornerRadius: 16))
         .containerBackground(for: .widget) {
-            style.palette.backgroundBottom.color
+            style.background
         }
     }
 }
@@ -657,12 +701,389 @@ struct KaraokeFocusWidgetView: View {
         }
         .padding(12)
         .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [style.palette.backgroundTop.color,
-                         style.palette.backgroundBottom.color],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            style.background
+        }
+    }
+}
+
+// MARK: - More Home Screen styles
+
+/// An editorial lyric card. The large quote is useful when the widget is
+/// placed on a Home Screen without taking attention away from the song.
+struct LyricsPosterWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "LyricsPosterWidget", provider: CurrentLineProvider()) { entry in
+            LyricsPosterWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Lyrics Poster")
+        .description("Displays the current lyric as a bold poster-style card.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+struct LyricsPosterWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: LyricEntry
+
+    private var isCompact: Bool { family == .systemSmall }
+
+    var body: some View {
+        let style = WidgetStyle()
+        ZStack(alignment: .topLeading) {
+            style.background
+            VStack(alignment: style.prefs.textAlignment.horizontal, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("OPENLYRICS")
+                        .font(style.prefs.fontStyle.laFont(.caption2, weight: .bold))
+                        .foregroundStyle(style.palette.accent.color)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: entry.isPlaying ? "waveform" : "pause.fill")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(style.palette.text.color.opacity(0.72))
+                }
+
+                Spacer(minLength: 0)
+                Rectangle()
+                    .fill(style.palette.accent.color)
+                    .frame(width: isCompact ? 28 : 40, height: 3)
+                    .frame(maxWidth: .infinity, alignment: style.prefs.textAlignment.alignment)
+
+                Text("“\(entry.currentLine)”")
+                    .font(style.prefs.fontStyle.laFont(
+                        fixedSize: isCompact ? 21 : 29,
+                        weight: .bold
+                    ))
+                    .foregroundStyle(style.palette.text.color)
+                    .lineLimit(isCompact ? 4 : (family == .systemLarge ? 7 : 5))
+                    .allowsTightening(true)
+                    .minimumScaleFactor(isCompact ? 0.66 : 0.58)
+                    .multilineTextAlignment(style.textAlignment)
+                    .frame(maxWidth: .infinity, alignment: style.prefs.textAlignment.alignment)
+
+                if !isCompact, style.prefs.showNextLine, let nextLine = entry.nextLine {
+                    Text(nextLine)
+                        .font(style.prefs.fontStyle.laFont(.caption))
+                        .foregroundStyle(style.palette.text.color.opacity(0.55))
+                        .lineLimit(2)
+                        .allowsTightening(true)
+                        .multilineTextAlignment(style.textAlignment)
+                        .frame(maxWidth: .infinity, alignment: style.prefs.textAlignment.alignment)
+                }
+
+                Spacer(minLength: 0)
+                HStack(alignment: .bottom, spacing: 8) {
+                    VStack(alignment: style.prefs.textAlignment.horizontal, spacing: 1) {
+                        Text(entry.trackTitle)
+                            .font(style.prefs.fontStyle.laFont(.caption, weight: .semibold))
+                            .foregroundStyle(style.palette.text.color.opacity(0.8))
+                            .lineLimit(1)
+                        Text(entry.artistName)
+                            .font(style.prefs.fontStyle.laFont(.caption2))
+                            .foregroundStyle(style.palette.text.color.opacity(0.52))
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: style.prefs.textAlignment.alignment)
+
+                    if style.showsControls {
+                        TogglePlaybackButton(isPlaying: entry.isPlaying, font: .caption2)
+                            .tint(style.palette.text.color)
+                    }
+                }
+            }
+            .padding(isCompact ? 11 : 15)
+        }
+        .containerBackground(for: .widget) {
+            style.background
+        }
+    }
+}
+
+/// A compact player that uses a graphic equalizer as its visual identity.
+struct WaveformPlayerWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "WaveformPlayerWidget", provider: CurrentLineProvider()) { entry in
+            WaveformPlayerWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Waveform Player")
+        .description("Combines the current lyric with a compact music player.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+private struct WidgetWaveformBars: View {
+    let color: Color
+    let isPlaying: Bool
+
+    private let heights: [CGFloat] = [0.42, 0.76, 0.55, 0.94, 0.62, 0.84, 0.48, 0.72, 0.38]
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 3) {
+            ForEach(heights.indices, id: \.self) { index in
+                Capsule()
+                    .fill(color.opacity(isPlaying ? 0.92 : 0.34))
+                    .frame(width: 3, height: 23 * heights[index])
+            }
+        }
+        .frame(height: 25)
+        .accessibilityHidden(true)
+    }
+}
+
+struct WaveformPlayerWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: LyricEntry
+
+    private var isCompact: Bool { family == .systemSmall }
+
+    var body: some View {
+        let style = WidgetStyle()
+        VStack(alignment: .leading, spacing: isCompact ? 6 : 9) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.trackTitle)
+                        .font(style.prefs.fontStyle.laFont(isCompact ? .caption : .subheadline,
+                                                           weight: .bold))
+                        .foregroundStyle(style.palette.text.color)
+                        .lineLimit(1)
+                    Text(entry.artistName)
+                        .font(style.prefs.fontStyle.laFont(.caption2))
+                        .foregroundStyle(style.palette.text.color.opacity(0.58))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                WidgetWaveformBars(color: style.palette.accent.color, isPlaying: entry.isPlaying)
+            }
+
+            Text(entry.currentLine)
+                .font(style.prefs.fontStyle.laFont(
+                    fixedSize: isCompact ? 18 : (family == .systemLarge ? 27 : 23),
+                    weight: .heavy
+                ))
+                .foregroundStyle(style.palette.text.color)
+                .lineLimit(isCompact ? 3 : (family == .systemLarge ? 5 : 3))
+                .allowsTightening(true)
+                .minimumScaleFactor(0.58)
+                .multilineTextAlignment(style.textAlignment)
+                .frame(maxWidth: .infinity,
+                       alignment: style.prefs.textAlignment.alignment)
+
+            if !isCompact, style.prefs.showNextLine, let nextLine = entry.nextLine {
+                Text(nextLine)
+                    .font(style.prefs.fontStyle.laFont(.caption))
+                    .foregroundStyle(style.palette.text.color.opacity(0.5))
+                    .lineLimit(1)
+                    .allowsTightening(true)
+            }
+
+            Spacer(minLength: 0)
+            HStack(spacing: 0) {
+                SkipTrackButton(direction: .previous, font: .caption2)
+                TogglePlaybackButton(isPlaying: entry.isPlaying, font: .caption2)
+                    .tint(style.palette.text.color)
+                SkipTrackButton(direction: .next, font: .caption2)
+            }
+            .foregroundStyle(style.palette.text.color)
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .padding(isCompact ? 10 : 13)
+        .containerBackground(for: .widget) {
+            style.background
+        }
+    }
+}
+
+/// An album-first layout with layered cover cards and a lyric footer.
+struct AlbumStackWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "AlbumStackWidget", provider: CurrentLineProvider()) { entry in
+            AlbumStackWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Album Stack")
+        .description("Shows layered album artwork with the current lyric.")
+        .supportedFamilies([.systemMedium, .systemLarge])
+    }
+}
+
+struct AlbumStackWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: LyricEntry
+
+    var body: some View {
+        let style = WidgetStyle()
+        HStack(spacing: family == .systemLarge ? 18 : 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(style.palette.accent.color.opacity(0.22))
+                    .frame(width: family == .systemLarge ? 142 : 108,
+                           height: family == .systemLarge ? 142 : 108)
+                    .rotationEffect(.degrees(-8))
+                    .offset(x: -6, y: 2)
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(style.palette.text.color.opacity(0.18))
+                    .frame(width: family == .systemLarge ? 142 : 108,
+                           height: family == .systemLarge ? 142 : 108)
+                    .rotationEffect(.degrees(6))
+                    .offset(x: 5, y: -1)
+                LAAlbumDisc(
+                    urlString: entry.albumImageURL,
+                    size: family == .systemLarge ? 132 : 98,
+                    imageData: entry.albumImageData,
+                    style: .square
+                )
+            }
+            .frame(width: family == .systemLarge ? 150 : 116)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("ALBUM")
+                    .font(style.prefs.fontStyle.laFont(.caption2, weight: .bold))
+                    .foregroundStyle(style.palette.accent.color)
+                Text(entry.trackTitle)
+                    .font(style.prefs.fontStyle.laFont(
+                        fixedSize: family == .systemLarge ? 23 : 18,
+                        weight: .bold
+                    ))
+                    .foregroundStyle(style.palette.text.color)
+                    .lineLimit(2)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.65)
+                Text(entry.artistName)
+                    .font(style.prefs.fontStyle.laFont(.caption))
+                    .foregroundStyle(style.palette.text.color.opacity(0.58))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(entry.currentLine)
+                    .font(style.prefs.fontStyle.laFont(.footnote, weight: .semibold))
+                    .foregroundStyle(style.palette.text.color)
+                    .lineLimit(family == .systemLarge ? 3 : 2)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.68)
+                if style.showsControls {
+                    TogglePlaybackButton(isPlaying: entry.isPlaying, font: .caption2)
+                        .tint(style.palette.text.color)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(family == .systemLarge ? 14 : 11)
+        .containerBackground(for: .widget) {
+            style.background
+        }
+    }
+}
+
+// MARK: - More Lock Screen styles
+
+/// An album-art Lock Screen card for users who want the cover to identify the
+/// current song at a glance.
+struct LockscreenAlbumWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "LockscreenAlbumWidget", provider: CurrentLineProvider()) { entry in
+            LockscreenAlbumWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Lock Screen Album")
+        .description("Shows album artwork, track details, and the current lyric.")
+        .supportedFamilies([.accessoryRectangular, .accessoryCircular])
+        .disfavoredLocations([.homeScreen, .standBy], for: [.accessoryRectangular, .accessoryCircular])
+    }
+}
+
+struct LockscreenAlbumWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: LyricEntry
+
+    var body: some View {
+        let style = WidgetStyle()
+        switch family {
+        case .accessoryCircular:
+            ZStack {
+                AccessoryWidgetBackground()
+                LAAlbumDisc(
+                    urlString: entry.albumImageURL,
+                    size: 36,
+                    imageData: entry.albumImageData,
+                    style: .vinyl
+                )
+                .opacity(entry.isPlaying ? 1 : 0.62)
+            }
+            .containerBackground(for: .widget) { Color.clear }
+        default:
+            HStack(spacing: 7) {
+                LAAlbumDisc(
+                    urlString: entry.albumImageURL,
+                    size: 34,
+                    imageData: entry.albumImageData,
+                    style: .square
+                )
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.trackTitle)
+                        .font(style.prefs.fontStyle.laFont(.caption2, weight: .bold))
+                        .foregroundStyle(style.palette.text.color.opacity(0.78))
+                        .lineLimit(1)
+                    Text(entry.currentLine)
+                        .font(style.prefs.fontStyle.laFont(.footnote, weight: .semibold))
+                        .foregroundStyle(style.palette.text.color)
+                        .lineLimit(2)
+                        .allowsTightening(true)
+                        .minimumScaleFactor(0.68)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .containerBackground(for: .widget) { Color.clear }
+        }
+    }
+}
+
+/// A quiet quotation-style Lock Screen card. It follows the user's font and
+/// theme while keeping the system Lock Screen background visible.
+struct LockscreenQuoteWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "LockscreenQuoteWidget", provider: CurrentLineProvider()) { entry in
+            LockscreenQuoteWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Lock Screen Quote")
+        .description("Shows the current lyric as a compact quotation.")
+        .supportedFamilies([.accessoryRectangular, .accessoryInline])
+        .disfavoredLocations([.homeScreen, .standBy], for: [.accessoryRectangular, .accessoryInline])
+    }
+}
+
+struct LockscreenQuoteWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: LyricEntry
+
+    var body: some View {
+        let style = WidgetStyle()
+        switch family {
+        case .accessoryInline:
+            Text(entry.isPlaying ? "“\(entry.currentLine)”" : "❙❙ \(entry.currentLine)")
+                .font(style.prefs.fontStyle.laFont(.headline))
+                .foregroundStyle(style.palette.text.color)
+                .lineLimit(1)
+                .allowsTightening(true)
+                .minimumScaleFactor(0.52)
+                .containerBackground(for: .widget) { Color.clear }
+        default:
+            HStack(alignment: .top, spacing: 7) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(style.palette.accent.color)
+                    .frame(width: 3)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.trackTitle)
+                        .font(style.prefs.fontStyle.laFont(.caption2, weight: .semibold))
+                        .foregroundStyle(style.palette.text.color.opacity(0.62))
+                        .lineLimit(1)
+                    Text("“\(entry.currentLine)”")
+                        .font(style.prefs.fontStyle.laFont(.footnote, weight: .medium))
+                        .foregroundStyle(style.palette.text.color)
+                        .lineLimit(2)
+                        .allowsTightening(true)
+                        .minimumScaleFactor(0.68)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .containerBackground(for: .widget) { Color.clear }
         }
     }
 }
@@ -717,6 +1138,36 @@ struct KaraokeFocusWidgetView: View {
 
 #Preview(as: .accessoryInline) {
     CurrentLineWidget()
+} timeline: {
+    LyricEntry.sample
+}
+
+#Preview(as: .systemSmall) {
+    LyricsPosterWidget()
+} timeline: {
+    LyricEntry.sample
+}
+
+#Preview(as: .systemMedium) {
+    WaveformPlayerWidget()
+} timeline: {
+    LyricEntry.sample
+}
+
+#Preview(as: .systemMedium) {
+    AlbumStackWidget()
+} timeline: {
+    LyricEntry.sample
+}
+
+#Preview(as: .accessoryRectangular) {
+    LockscreenAlbumWidget()
+} timeline: {
+    LyricEntry.sample
+}
+
+#Preview(as: .accessoryRectangular) {
+    LockscreenQuoteWidget()
 } timeline: {
     LyricEntry.sample
 }

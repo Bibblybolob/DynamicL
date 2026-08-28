@@ -13,6 +13,7 @@ final class SpotifyProvider: PlaybackProvider {
 
     private let auth: SpotifyAuthManager
     private var pollTask: Task<Void, Never>?
+    private var metadata = NowPlayingMetadata()
 
     init(auth: SpotifyAuthManager) {
         self.auth = auth
@@ -177,6 +178,15 @@ final class SpotifyProvider: PlaybackProvider {
                 }
             case 204:
                 status = PlaybackStatus(state: .stopped, position: 0)
+                if isPlaybackConfirmedStopped || metadata.observeStopped() {
+                    isPlaybackConfirmedStopped = true
+                    signature = nil
+                    lastAlbumImageURL = nil
+                    lastTrackID = nil
+                    lastAppliedItemKey = nil
+                    lastAppliedPositionMs = nil
+                }
+                lastSuccessfulPollAt = .now
                 lastPollSummary = "no active Spotify device (204)"
                 lastError = nil
             case 429:
@@ -251,11 +261,20 @@ final class SpotifyProvider: PlaybackProvider {
         if wasPlaying, state.isPlaying == false, let identityKey, identityKey == lastAppliedItemKey {
             beginRapidProbe(staleItem: itemName)
         }
-        defer {
-            lastAppliedItemKey = identityKey
-            lastAlbumImageURL = state.albumImageURL
-            signature = state.signature
+        guard let identityKey, let item = state.item, let nextSignature = state.signature else {
+            status = state.status
+            if isPlaybackConfirmedStopped || metadata.observeStopped() {
+                isPlaybackConfirmedStopped = true
+                signature = nil
+                lastAlbumImageURL = nil
+                lastTrackID = nil
+                lastAppliedItemKey = nil
+                lastAppliedPositionMs = nil
+            }
+            return
         }
+
+        isPlaybackConfirmedStopped = false
 
         // Position-lie guard: while playing on the SAME track, a frozen or
         // slightly-backwards position is a stale seek/scrub echo, not truth —
@@ -282,6 +301,16 @@ final class SpotifyProvider: PlaybackProvider {
         }
         lastAppliedPositionMs = newPos ?? lastAppliedPositionMs
         status = state.status
+        metadata.accept(
+            trackKey: identityKey,
+            trackID: item.id,
+            signature: nextSignature,
+            albumImageURL: state.albumImageURL
+        )
+        lastAppliedItemKey = metadata.trackKey
+        lastTrackID = metadata.trackID
+        signature = metadata.signature
+        lastAlbumImageURL = metadata.albumImageURL
     }
 
     @ObservationIgnored private var staleSeekCount = 0
@@ -289,6 +318,11 @@ final class SpotifyProvider: PlaybackProvider {
 
     /// Album cover URL from the most recent poll (for the vinyl widget etc).
     private(set) var lastAlbumImageURL: String?
+    /// Stable Spotify item ID for state arbitration and server diagnostics.
+    private(set) var lastTrackID: String?
+    /// True only after two trustworthy stopped samples. Startup and a single
+    /// Spotify 204 response are not enough to end a playback session.
+    private(set) var isPlaybackConfirmedStopped = false
 
     // MARK: Transport commands (remote command center / widget buttons)
 
@@ -382,26 +416,37 @@ final class SpotifyProvider: PlaybackProvider {
             pendingSkipItemKey = dying
             pendingSkipDeadline = .now.addingTimeInterval(Self.skipEchoWindow)
         }
-        signature = TrackSignature(
+        let nextSignature = TrackSignature(
             title: name,
             artist: track.artists?.first?.name ?? "",
             album: track.album?.name,
             duration: duration
         )
+        signature = nextSignature
         status = PlaybackStatus(
             state: .playing,
             position: min(elapsed, duration ?? elapsed),
             rate: 1.0
         )
-        lastAlbumImageURL = track.album?.images?
+        let nextArtworkURL = track.album?.images?
             .last(where: { ($0.width ?? 0) >= 300 })?.url
             ?? track.album?.images?.last?.url
-        lastAppliedItemKey = itemKey(
+        let nextTrackKey = itemKey(
             id: track.id,
             name: name,
             artist: track.artists?.first?.name ?? "",
             album: track.album?.name
         )
+        metadata.replace(
+            trackKey: nextTrackKey,
+            trackID: track.id,
+            signature: nextSignature,
+            albumImageURL: nextArtworkURL
+        )
+        isPlaybackConfirmedStopped = false
+        lastAppliedItemKey = metadata.trackKey
+        lastTrackID = metadata.trackID
+        lastAlbumImageURL = metadata.albumImageURL
         lastAppliedPositionMs = Int(min(elapsed, duration ?? elapsed) * 1000)
         stalledPauseCount = 0
         isStalledPause = false
@@ -490,6 +535,8 @@ protocol PlaybackProvider: AnyObject {
     var isPolling: Bool { get }
     var lastSuccessfulPollAt: Date? { get }
     var lastAlbumImageURL: String? { get }
+    var lastTrackID: String? { get }
+    var isPlaybackConfirmedStopped: Bool { get }
     var shouldHoldKeepAlive: Bool { get }
     var isLoopLikelyAlive: Bool { get }
 

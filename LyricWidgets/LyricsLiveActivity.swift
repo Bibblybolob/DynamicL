@@ -8,6 +8,7 @@ import LyricCore
 /// changes restyle a running activity on its very next render.
 struct LALook {
     let palette: LAPalette
+    let surfaceStyle: LAStylePrefs.SurfaceStyle
     let layout: LAStylePrefs.Layout
     let artworkStyle: LAStylePrefs.ArtworkStyle
     let textAlignment: LAStylePrefs.TextAlignment
@@ -38,7 +39,9 @@ struct LALook {
             guard rgb.count == 3 else { return nil }
             return RGB(r: rgb[0], g: rgb[1], b: rgb[2])
         }
-        self.palette = LAStyleStore.resolve(prefs: prefs, albumDominant: dominant)
+        let basePalette = LAStyleStore.resolve(prefs: prefs, albumDominant: dominant)
+        self.palette = LAStyleStore.applySurface(prefs.surfaceStyle, to: basePalette)
+        self.surfaceStyle = prefs.surfaceStyle
         self.layout = prefs.layout
         self.artworkStyle = prefs.artworkStyle
         self.textAlignment = prefs.textAlignment
@@ -50,6 +53,63 @@ struct LALook {
         self.showProgressBar = prefs.showProgressBar
         self.animations = prefs.animationsEnabled
         self.karaokeEnabled = prefs.karaokeEnabled
+    }
+
+    @ViewBuilder
+    var background: some View {
+        switch surfaceStyle {
+        case .gradient:
+            LinearGradient(
+                colors: [palette.backgroundTop.color, palette.backgroundBottom.color],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        case .glass:
+            ZStack {
+                palette.backgroundBottom.color
+                LinearGradient(
+                    colors: [palette.backgroundTop.color.opacity(0.78),
+                             palette.backgroundBottom.color.opacity(0.94)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Color.white.opacity(0.08)
+            }
+        case .neon:
+            ZStack {
+                palette.backgroundBottom.color
+                RadialGradient(
+                    colors: [palette.accent.color.opacity(0.46), .clear],
+                    center: .topTrailing,
+                    startRadius: 4,
+                    endRadius: 220
+                )
+                LinearGradient(
+                    colors: [.clear, palette.accent.color.opacity(0.12)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        case .paper:
+            LinearGradient(
+                colors: [palette.backgroundTop.color, palette.backgroundBottom.color],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        case .outline:
+            ZStack {
+                palette.backgroundBottom.color
+                LinearGradient(
+                    colors: [palette.backgroundTop.color.opacity(0.65),
+                             palette.backgroundBottom.color],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(palette.accent.color.opacity(0.5), lineWidth: 1)
+                    .padding(1)
+            }
+        }
     }
 }
 
@@ -64,7 +124,7 @@ struct LyricsLiveActivity: Widget {
 
     private func island(context: ActivityViewContext<LyricsActivityAttributes>,
                         look: LALook) -> DynamicIsland {
-        let scheduledLines = context.state.scheduledLines ?? []
+        let scheduledLines = context.state.resolvedScheduledLines
         return DynamicIsland {
             DynamicIslandExpandedRegion(.leading) {
                 Image(systemName: "music.quarternote.3")
@@ -123,8 +183,8 @@ struct LyricsLiveActivity: Widget {
                         maxLines: look.lyricScale.maximumLines,
                         textAlignment: look.textAlignment == .center ? .center : .leading,
                         karaokeEnabled: look.karaokeEnabled,
-                        karaokeStartDate: context.state.karaokeStartDate,
-                        karaokeEndDate: context.state.karaokeEndDate,
+                        karaokeStartDate: context.state.resolvedKaraokeStart,
+                        karaokeEndDate: context.state.resolvedKaraokeEnd,
                         frozenKaraokeProgress: context.state.frozenKaraokeProgress,
                         highlightColor: look.accent
                     )
@@ -145,8 +205,8 @@ struct LyricsLiveActivity: Widget {
                     }
                     if look.showProgressBar, look.layout != .minimal {
                         LAThickBar(
-                            start: context.state.progressStart,
-                            end: context.state.progressEnd,
+                            start: context.state.resolvedProgressStart,
+                            end: context.state.resolvedProgressEnd,
                             frozen: context.state.frozenProgress,
                             accent: look.accent,
                             track: look.text.opacity(0.22)
@@ -197,7 +257,7 @@ private struct LockScreenLyricsView: View {
     let look: LALook
 
     var body: some View {
-        let scheduledLines = context.state.scheduledLines ?? []
+        let scheduledLines = context.state.resolvedScheduledLines
         Group {
             if look.showsArtwork {
                 HStack(alignment: .center, spacing: 14) {
@@ -217,22 +277,13 @@ private struct LockScreenLyricsView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(alignment: .top) {
-            // Inner two-tone depth within the card (the tint below is flat).
-            LinearGradient(
-                colors: [look.palette.backgroundTop.color, look.palette.backgroundBottom.color],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            look.background
         }
         // The API that actually colors the card on-device; containerBackground
         // alone is ignored by Live Activities on current iOS builds.
         .activityBackgroundTint(look.palette.backgroundTop.color)
         .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [look.palette.backgroundTop.color, look.palette.backgroundBottom.color],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            look.background
         }
     }
 
@@ -286,8 +337,8 @@ private struct LockScreenLyricsView: View {
                 maxLines: 2,
                 textAlignment: look.textAlignment == .center ? .center : .leading,
                 karaokeEnabled: look.karaokeEnabled,
-                karaokeStartDate: context.state.karaokeStartDate,
-                karaokeEndDate: context.state.karaokeEndDate,
+                karaokeStartDate: context.state.resolvedKaraokeStart,
+                karaokeEndDate: context.state.resolvedKaraokeEnd,
                 frozenKaraokeProgress: context.state.frozenKaraokeProgress,
                 highlightColor: look.accent
             )
@@ -306,8 +357,8 @@ private struct LockScreenLyricsView: View {
 
             if look.showProgressBar, look.layout != .minimal {
                 LAThickBar(
-                    start: context.state.progressStart,
-                    end: context.state.progressEnd,
+                    start: context.state.resolvedProgressStart,
+                    end: context.state.resolvedProgressEnd,
                     frozen: context.state.frozenProgress,
                     accent: look.accent,
                     track: look.text.opacity(0.25)

@@ -1,6 +1,6 @@
-// PlaybackSession — one alarm-driven loop that polls Spotify, computes the
-// current lyric line, and pushes Live Activity updates over APNs. Runs
-// entirely independent of the phone app: this is the never-stall guarantee.
+// The phone owns Live Activity updates while its heartbeat lease is valid.
+// This Durable Object polls Spotify and becomes the fallback writer only when
+// the phone stops reporting healthy data.
 
 const PLAYER_URL = "https://api.spotify.com/v1/me/player";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -8,210 +8,460 @@ const LRCLIB_URL = "https://lrclib.net/api/get";
 const PUSH_HOST_PROD = "https://api.push.apple.com";
 const PUSH_HOST_SANDBOX = "https://api.sandbox.push.apple.com";
 const APNS_TOPIC = "com.jonathantran.dynamicallyrics.la.push-type.liveactivity";
-
-const FAST_POLL_MS = 5000;    // while playing
-const IDLE_POLL_MS = 30000;   // while paused/stopped
-const RESUME_GRACE_MS = 10 * 60 * 1000; // idle longer than this -> end activity
+const FAST_POLL_MS = 5_000;
+const IDLE_POLL_MS = 10_000;
+const PHONE_LEASE_MS = 15_000;
+const PAUSE_SESSION_MS = 10 * 60 * 1_000;
+const KEEPALIVE_MS = 45_000;
+const PAYLOAD_LIMIT_BYTES = 3_500;
+const SWIFT_REFERENCE_EPOCH_OFFSET = 978_307_200;
 
 export class PlaybackSessionV2 {
   constructor(state, env) {
     this.state = state;
     this.env = env;
-    this.ctx = state; // storage via state.storage
   }
 
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/register") {
       const body = await request.json();
-      await this.state.storage.put({
-        updateToken: body.updateToken,
-        pushToStartToken: body.pushToStartToken ?? "",
+      const values = {
         refreshToken: body.spotifyRefreshToken,
+        clientSchemaVersion: numericVersion(body.clientSchemaVersion),
+        supportsRemoteStart: body.supportsRemoteStart !== false,
+        supportsInputPushToken: body.supportsInputPushToken === true,
+        lyricOffsetMs: finiteNumber(body.lyricOffsetMs, 0),
+        autoStartEnabled: body.autoStartEnabled !== false,
+        phoneLeaseExpiresAt: Date.now() + PHONE_LEASE_MS,
+        currentWriter: "phone",
+      };
+      if (body.updateToken) {
+        values.updateToken = body.updateToken;
+        values.phoneActivityState = "active";
+        values.forceServerUpdate = true;
+      }
+      if (body.pushToStartToken) values.pushToStartToken = body.pushToStartToken;
+      await this.state.storage.put(values);
+      await this.state.storage.setAlarm(Date.now() + 1_000);
+      return Response.json({
+        ok: true,
+        writer: await this.currentWriter(),
+        serverRevision: (await this.state.storage.get("serverRevision")) ?? 0,
+        playbackSessionDismissed:
+          (await this.state.storage.get("playbackSessionDismissed")) === true,
       });
-      // Kick the loop immediately.
-      await this.state.storage.setAlarm(Date.now() + 1000);
-      return Response.json({ ok: true });
     }
-    if (url.pathname === "/status") {
-      const s = await this.snapshot();
-      return Response.json(s);
+
+    if (request.method === "POST" && url.pathname === "/heartbeat") {
+      const body = await request.json();
+      const now = Date.now();
+      const values = {
+        phoneLeaseExpiresAt: now + PHONE_LEASE_MS,
+        currentWriter: "phone",
+        phoneActivityState: body.activityState,
+        phoneRevision: finiteNumber(body.localRevision, 0),
+        phoneGeneratedAtMs: finiteNumber(body.sentAtMs, now),
+        phoneTrackID: typeof body.trackID === "string" ? body.trackID : "",
+        clientSchemaVersion: numericVersion(body.clientSchemaVersion),
+        lyricOffsetMs: finiteNumber(body.lyricOffsetMs, 0),
+        autoStartEnabled: body.autoStartEnabled !== false,
+      };
+      if (body.updateToken) values.updateToken = body.updateToken;
+      if (body.activityState === "dismissed") {
+        values.updateToken = "";
+        values.playbackSessionDismissed = true;
+      } else if (body.activityState === "none" && !body.updateToken) {
+        values.updateToken = "";
+      }
+      await this.state.storage.put(values);
+      return Response.json({
+        ok: true,
+        writer: "phone",
+        leaseExpiresAt: now + PHONE_LEASE_MS,
+        serverRevision: (await this.state.storage.get("serverRevision")) ?? 0,
+        playbackSessionDismissed:
+          (await this.state.storage.get("playbackSessionDismissed")) === true,
+      });
     }
-    if (url.pathname === "/reset") {
+
+    if (request.method === "GET" && url.pathname === "/status") {
+      return Response.json(await this.snapshot());
+    }
+    if (request.method === "POST" && url.pathname === "/reset") {
       await this.state.storage.deleteAll();
-      await this.state.storage.setAlarm(Date.now() + 1000);
       return Response.json({ ok: true, reset: true });
     }
     return new Response("not found", { status: 404 });
   }
 
   async snapshot() {
-    const out = {};
+    const keys = [
+      "phoneLeaseExpiresAt", "pushToStartToken", "playbackSessionID",
+      "playbackSessionStartAttempted", "playbackSessionDismissed", "lastAPNsResult",
+      "clientSchemaVersion", "lastPayloadSize", "lastScheduleCount",
+      "lastScheduleHorizonEpoch", "lastArtworkStatus", "lastTrackTitle", "lastLine",
+      "isPlaying", "lastError", "lastErrorAt", "lastPushAt", "lastTickAt",
+      "serverRevision", "phoneRevision", "lyricOffsetMs", "autoStartEnabled",
+    ];
+    const stored = {};
+    for (const key of keys) stored[key] = (await this.state.storage.get(key)) ?? null;
+    const lease = stored.phoneLeaseExpiresAt ?? 0;
+    const out = {
+      updateOwner: lease > Date.now() ? "phone" : "server",
+      phoneLeaseExpiresAt: lease || null,
+      pushToStartAvailable: Boolean(stored.pushToStartToken) && stored.autoStartEnabled !== false,
+      playbackSessionID: stored.playbackSessionID,
+      startAttempted: stored.playbackSessionStartAttempted === true,
+      sessionDismissed: stored.playbackSessionDismissed === true,
+      lastAPNsResult: stored.lastAPNsResult,
+      payloadSchema: stored.clientSchemaVersion ?? 1,
+      payloadSize: stored.lastPayloadSize,
+      schedule: {
+        count: stored.lastScheduleCount ?? 0,
+        horizonEpoch: stored.lastScheduleHorizonEpoch,
+      },
+      artwork: stored.lastArtworkStatus,
+      trackTitle: stored.lastTrackTitle,
+      currentLine: stored.lastLine,
+      isPlaying: stored.isPlaying === true,
+      serverRevision: stored.serverRevision ?? 0,
+      phoneRevision: stored.phoneRevision ?? 0,
+      lyricOffsetMs: stored.lyricOffsetMs ?? 0,
+      lastPushAt: stored.lastPushAt,
+      lastTickAt: stored.lastTickAt,
+      lastError: stored.lastError,
+      lastErrorAt: stored.lastErrorAt,
+    };
     try {
-      const keys = [
-        "lastTrackTitle", "lastLine", "isPlaying", "lastError", "lastErrorAt",
-        "lastPushAt", "accessTokenExpiresAt", "lastTickAt",
-      ];
-      for (const k of keys) out[k] = (await this.state.storage.get(k)) ?? null;
-      const der = pemToBuffer(this.env.APNS_KEY_P8);
-      const digest = await crypto.subtle.digest("SHA-256", der);
-      out.keyFp = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).slice(0, 16).join("");
-    } catch (e) {
-      out.snapshotError = String(e && e.stack ? e.stack : e).slice(0, 300);
+      if (this.env.APNS_KEY_P8) {
+        const digest = await crypto.subtle.digest("SHA-256", pemToBuffer(this.env.APNS_KEY_P8));
+        out.keyFp = [...new Uint8Array(digest)]
+          .map(byte => byte.toString(16).padStart(2, "0"))
+          .slice(0, 16)
+          .join("");
+      }
+    } catch (error) {
+      out.keyError = String(error).slice(0, 160);
     }
     return out;
   }
 
-  // ---- alarm loop -------------------------------------------------------
-
   async alarm() {
-    // Bulletproof scheduling: ANY failure above must never break the alarm
-    // chain — a broken chain silently freezes the card forever.
-    let playing = false;
-    let registered = false;
+    let isPlaying = false;
     let retryDelayMs;
     try {
       await this.state.storage.put("lastTickAt", new Date().toISOString());
       const result = await this.tick();
       retryDelayMs = result?.retryDelayMs;
-      playing = (await this.state.storage.get("isPlaying")) === true;
-      registered = !!(await this.state.storage.get("updateToken"));
-    } catch (err) {
-      await this.state.storage.put("lastError", String(err).slice(0, 300));
-      await this.state.storage.put("lastErrorAt", new Date().toISOString());
-      registered = !!(await this.state.storage.get("updateToken").catch(() => null));
+      isPlaying = (await this.state.storage.get("isPlaying")) === true;
+    } catch (error) {
+      await this.recordError(error);
     }
-    if (!registered) return;
+    const refreshToken = await this.state.storage.get("refreshToken");
+    const updateToken = await this.state.storage.get("updateToken");
+    const startToken = await this.state.storage.get("pushToStartToken");
+    if (!refreshToken || (!updateToken && !startToken)) return;
     await this.state.storage.setAlarm(
-      Date.now() + (retryDelayMs ?? (playing ? FAST_POLL_MS : IDLE_POLL_MS))
+      Date.now() + (retryDelayMs ?? (isPlaying ? FAST_POLL_MS : IDLE_POLL_MS))
     );
   }
 
   async tick() {
-    const token = await this.accessToken();
-    let res = await fetch(PLAYER_URL, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (res.status === 401) {
-      // Force refresh once.
-      await this.state.storage.delete("accessToken");
-      const fresh = await this.accessToken();
-      res = await fetch(PLAYER_URL, { headers: { Authorization: `Bearer ${fresh}` } });
-    }
-    if (res.status === 429) {
-      const wait = Number(res.headers.get("Retry-After") ?? 5);
-      return { retryDelayMs: Math.max(1000, Math.min(wait, 30) * 1000) };
-    }
-    if (!res.ok && res.status !== 204) {
-      throw new Error(`player HTTP ${res.status}`);
+    const result = await this.fetchPlayer();
+    if (result.retryDelayMs) return result;
+    if (!result.player?.item) {
+      await this.onNoActiveItem();
+      return {};
     }
 
+    await this.state.storage.put("noItemSamples", 0);
+    const player = await this.normalizedPlayer(result.player);
     const wasPlaying = (await this.state.storage.get("isPlaying")) === true;
-    if (res.status === 204) {
-      await this.onStopped(wasPlaying, "no active device");
-      return;
+    const pausedAt = (await this.state.storage.get("pausedAt")) ?? 0;
+    const pauseExpired = !player.isPlaying && pausedAt > 0 &&
+      Date.now() - pausedAt >= PAUSE_SESSION_MS;
+    if (player.isPlaying) {
+      const sessionMissing = !(await this.state.storage.get("playbackSessionID"));
+      const resumedAfterLongPause = pausedAt > 0 &&
+        Date.now() - pausedAt >= PAUSE_SESSION_MS;
+      if (sessionMissing || resumedAfterLongPause) await this.beginPlaybackSession(player.trackID);
+      await this.state.storage.put({ pausedAt: 0, lastPlayingAt: Date.now() });
+    } else if (!pausedAt) {
+      await this.state.storage.put("pausedAt", Date.now());
     }
+    if (pauseExpired) await this.closePlaybackSession("paused for 10 minutes");
 
-    const player = await res.json();
-    if (!player.item) {
-      await this.onStopped(wasPlaying, "no item");
-      return;
+    await this.state.storage.put("isPlaying", player.isPlaying);
+    const lines = await this.lyricsFor(
+      player.trackID,
+      player.title,
+      player.artist,
+      player.durationMs / 1_000
+    );
+    const offsetMs = finiteNumber(await this.state.storage.get("lyricOffsetMs"), 0);
+    const schemaVersion = numericVersion(await this.state.storage.get("clientSchemaVersion"));
+    const nextRevision = ((await this.state.storage.get("serverRevision")) ?? 0) + 1;
+    const contentState = buildContentState(
+      { ...player, lines },
+      { nowMs: Date.now(), offsetMs, schemaVersion, revision: nextRevision }
+    );
+    await this.storeCurrentState(contentState);
+
+    const writer = await this.currentWriter();
+    const previousWriter = (await this.state.storage.get("currentWriter")) ?? "server";
+    await this.state.storage.put("currentWriter", writer);
+    if (writer === "phone") return {};
+
+    const updateToken = await this.state.storage.get("updateToken");
+    if (player.isPlaying && !updateToken) {
+      await this.startActivityIfNeeded(contentState);
+      return {};
     }
+    if (!updateToken) return {};
+    const reason = await this.updateReason(contentState, {
+      ownershipChanged: previousWriter !== "server",
+      wasPlaying,
+    });
+    if (reason) await this.pushUpdate(contentState, reason);
+    return {};
+  }
 
-    const isPlaying = player.is_playing === true;
-    const lastPlayingAt = (await this.state.storage.get("lastPlayingAt")) ?? 0;
-    if (!isPlaying && lastPlayingAt > 0 && Date.now() - lastPlayingAt > RESUME_GRACE_MS) {
-      await this.onStopped(false, "paused too long");
-      return;
+  async fetchPlayer() {
+    const token = await this.accessToken();
+    let response = await fetch(PLAYER_URL, { headers: { Authorization: `Bearer ${token}` } });
+    if (response.status === 401) {
+      await this.state.storage.delete("accessToken");
+      response = await fetch(PLAYER_URL, {
+        headers: { Authorization: `Bearer ${await this.accessToken()}` },
+      });
     }
-    const trackId = player.item.id;
-    const title = player.item.name;
-    const artist = player.item.artists?.[0]?.name ?? "";
-    const durationSec = Math.round((player.item.duration_ms ?? 0) / 1000);
-    const positionSec = Math.round((player.progress_ms ?? 0) / 1000);
-
-    // Persist both sides of the state transition. Leaving this true after a
-    // pause keeps the DO on the fast loop and makes every paused tick look
-    // like a fresh play-state change.
-    await this.state.storage.put("isPlaying", isPlaying);
-
-    // Lyrics for this track (cached per track id).
-    const lines = await this.lyricsFor(trackId, title, artist, durationSec);
-
-    // Current + next line at the projected position.
-    let idx = -1;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].t <= positionSec) idx = i; else break;
+    if (response.status === 429) {
+      const seconds = finiteNumber(response.headers.get("Retry-After"), 5);
+      return { retryDelayMs: Math.max(1_000, Math.min(seconds, 30) * 1_000) };
     }
-    const currentLine = idx >= 0 ? lines[idx].text : "♪";
-    const nextLine = idx >= 0 && idx + 1 < lines.length ? lines[idx + 1].text : null;
+    if (response.status === 204) return { player: null };
+    if (!response.ok) throw new Error(`player HTTP ${response.status}`);
+    return { player: await response.json() };
+  }
 
-    const now = Math.floor(Date.now() / 1000);
-    const progressStart = now - positionSec;
-    const contentState = {
-      trackTitle: title,
-      artistName: artist,
-      currentLine,
-      nextLine,
-      isPlaying,
-      progressStart,
-      progressEnd: progressStart + Math.max(durationSec, positionSec + 1),
+  async normalizedPlayer(raw) {
+    const item = raw.item;
+    const trackID = String(item.id ?? item.uri ?? `${item.name ?? "track"}:${item.duration_ms ?? 0}`);
+    const oldTrack = await this.state.storage.get("activeTrack");
+    const sameTrack = oldTrack?.trackID === trackID;
+    const responseArtwork = cleanString(item.album?.images?.[0]?.url);
+    const albumImageURL = responseArtwork ?? (sameTrack ? oldTrack?.albumImageURL ?? null : null);
+    const artist = item.artists?.[0]?.name ?? item.show?.publisher ?? "";
+    const normalized = {
+      trackID,
+      title: String(item.name ?? "Unknown track"),
+      artist: String(artist),
+      albumImageURL,
+      durationMs: Math.max(0, finiteNumber(item.duration_ms, 0)),
+      progressMs: Math.max(0, finiteNumber(raw.progress_ms, 0)),
+      isPlaying: raw.is_playing === true,
     };
+    await this.state.storage.put({
+      activeTrack: normalized,
+      lastArtworkStatus: {
+        trackID,
+        hasURL: Boolean(albumImageURL),
+        preservedFromSameTrack: !responseArtwork && sameTrack && Boolean(albumImageURL),
+      },
+    });
+    return normalized;
+  }
 
-    // Push on meaningful change OR a ~45s keep-alive pulse while playing —
-    // without the pulse, instrumental gaps let stale-date expire and the
-    // card dims/freezes even though everything is healthy.
-    const lastTrack = await this.state.storage.get("lastTrackId");
-    const trackChanged = lastTrack !== trackId;
-    const lineKey = `${title}|${currentLine}|${isPlaying}`;
-    const lineChanged = lineKey !== (await this.state.storage.get("lastLineKey"));
+  async beginPlaybackSession(trackID) {
+    await this.state.storage.put({
+      playbackSessionID: `${Date.now()}-${trackID}`,
+      playbackSessionStartAttempted: false,
+      playbackSessionDismissed: false,
+      playbackSessionClosed: false,
+      forceServerUpdate: true,
+    });
+  }
+
+  async closePlaybackSession(reason) {
+    if ((await this.state.storage.get("playbackSessionClosed")) === true) return;
+    if ((await this.currentWriter()) === "server") await this.pushEnd(reason);
+    await this.state.storage.put({
+      updateToken: "",
+      playbackSessionID: "",
+      playbackSessionStartAttempted: false,
+      playbackSessionDismissed: false,
+      playbackSessionClosed: true,
+      lastSentTrackID: "",
+      lastSentScheduleV2: [],
+    });
+  }
+
+  async onNoActiveItem() {
+    const samples = ((await this.state.storage.get("noItemSamples")) ?? 0) + 1;
+    await this.state.storage.put({ noItemSamples: samples, isPlaying: false });
+    if (samples < 2) return;
+    await this.closePlaybackSession("no active item");
+    await this.state.storage.put({
+      activeTrack: null,
+      activeContentState: null,
+      pausedAt: 0,
+      lastArtworkStatus: { trackID: null, hasURL: false, confirmedStop: true },
+    });
+  }
+
+  async currentWriter() {
+    const lease = (await this.state.storage.get("phoneLeaseExpiresAt")) ?? 0;
+    return lease > Date.now() ? "phone" : "server";
+  }
+
+  async updateReason(contentState, context) {
+    if (context.ownershipChanged) return "server takeover";
+    if ((await this.state.storage.get("forceServerUpdate")) === true) return "registration";
+    if ((await this.state.storage.get("lastSentTrackID")) !== contentState.trackID) return "track";
+    if ((await this.state.storage.get("lastSentPlaying")) !== contentState.isPlaying) {
+      return "play state";
+    }
+    const oldAnchor = await this.state.storage.get("lastSentProgressStartEpoch");
+    const newAnchor = contentState.progressStartEpoch;
+    if (typeof oldAnchor === "number" && typeof newAnchor === "number" &&
+        Math.abs(oldAnchor - newAnchor) > 0.75) return "seek";
+    if ((await this.state.storage.get("lastSentOffsetMs")) !==
+        (await this.state.storage.get("lyricOffsetMs"))) return "offset";
+    if ((await this.state.storage.get("lastSentAlbumImageURL")) !== contentState.albumImageURL) {
+      return "artwork";
+    }
+    if (contentState.isPlaying) {
+      const now = Date.now() / 1_000;
+      const sent = (await this.state.storage.get("lastSentScheduleV2")) ?? [];
+      const remaining = sent.filter(line => line.dateEpoch > now);
+      const horizon = remaining.at(-1)?.dateEpoch ?? 0;
+      const candidate = contentState.scheduledLinesV2?.at(-1)?.dateEpoch ?? 0;
+      if ((remaining.length < 6 || horizon - now < 20) && candidate > horizon + 1) {
+        return "schedule";
+      }
+    }
     const lastPushAt = (await this.state.storage.get("lastPushAt")) ?? 0;
-    const keepAlive = isPlaying && !trackChanged && !lineChanged &&
-      Date.now() - lastPushAt > 45_000;
-
-    if (trackChanged || lineChanged || keepAlive || (wasPlaying && !isPlaying)) {
-      const priority = trackChanged || (wasPlaying && !isPlaying) ? 10 : 5;
-      await this.push(contentState, priority);
-      await this.state.storage.put("lastTrackId", trackId);
-      await this.state.storage.put("lastLineKey", lineKey);
-      await this.state.storage.put("lastTrackTitle", title);
-      await this.state.storage.put("lastLine", currentLine);
-    }
-    if (isPlaying) await this.state.storage.put("lastPlayingAt", Date.now());
-    console.log(`poll: "${title}" pos=${positionSec}s playing=${isPlaying} lines=${lines.length} pushed=${trackChanged ? "track" : lineChanged ? "line" : keepAlive ? "keepalive" : "no"}`);
+    return Date.now() - lastPushAt >= KEEPALIVE_MS ? "keepalive" : null;
   }
 
-  async onStopped(wasPlaying, reason) {
-    await this.state.storage.put("isPlaying", false);
-    const lastPlayingAt = (await this.state.storage.get("lastPlayingAt")) ?? 0;
-    const idleFor = Date.now() - lastPlayingAt;
-
-    if (idleFor > RESUME_GRACE_MS) {
-      // Long-gone: dismiss the card so it doesn't zombie on the lock screen.
-      await this.pushEnd();
-      await this.state.storage.put("lastLineKey", "");
-      await this.state.storage.put("lastTrackId", "");
-    } else if (wasPlaying) {
-      // Brief pause: flip the card to paused rendering immediately.
-      await this.push(
-        {
-          trackTitle: (await this.state.storage.get("lastTrackTitle")) ?? "Paused",
-          artistName: "",
-          currentLine: "Paused",
-          nextLine: null,
-          isPlaying: false,
-          progressStart: Math.floor(Date.now() / 1000),
-          progressEnd: null,
-          frozenProgress: null,
-        },
-        10
-      );
-    }
-    void reason;
+  async storeCurrentState(contentState) {
+    const schedule = contentState.scheduledLinesV2 ?? [];
+    await this.state.storage.put({
+      activeContentState: contentState,
+      lastTrackTitle: contentState.trackTitle,
+      lastLine: contentState.currentLine,
+      lastPayloadSize: contentStateSize(contentState),
+      lastScheduleCount: schedule.length,
+      lastScheduleHorizonEpoch: schedule.at(-1)?.dateEpoch ?? null,
+    });
   }
 
-  // ---- Spotify auth -----------------------------------------------------
+  async startActivityIfNeeded(contentState) {
+    if ((await this.state.storage.get("autoStartEnabled")) === false) return;
+    if ((await this.state.storage.get("supportsRemoteStart")) === false) return;
+    if ((await this.state.storage.get("playbackSessionDismissed")) === true) return;
+    if ((await this.state.storage.get("playbackSessionStartAttempted")) === true) return;
+    const startToken = await this.state.storage.get("pushToStartToken");
+    if (!startToken) return;
+    const state = await this.stampState(contentState);
+    const aps = {
+      timestamp: Math.floor(state.generatedAtEpoch),
+      event: "start",
+      "attributes-type": "LyricsActivityAttributes",
+      attributes: { sessionID: "lyrics" },
+      "content-state": state,
+      alert: {
+        title: "OpenLyrics",
+        body: `Lyrics are ready for ${state.trackTitle}.`,
+      },
+      "stale-date": staleDateFor(state),
+    };
+    if ((await this.state.storage.get("supportsInputPushToken")) === true) {
+      aps["input-push-token"] = 1;
+    }
+    const status = await this.apnsRequest(startToken, { aps }, 10, "start");
+    if (status === 200) {
+      await this.state.storage.put({
+        playbackSessionStartAttempted: true,
+        phoneActivityState: "active",
+      });
+      await this.recordSuccessfulPush(state, "automatic start");
+    }
+  }
+
+  async pushUpdate(contentState, reason = "update") {
+    const updateToken = await this.state.storage.get("updateToken");
+    if (!updateToken) return;
+    const state = await this.stampState(contentState);
+    const aps = {
+      timestamp: Math.floor(state.generatedAtEpoch),
+      event: "update",
+      "content-state": state,
+    };
+    if (state.isPlaying) aps["stale-date"] = staleDateFor(state);
+    const urgent = ["track", "play state", "seek", "server takeover"].includes(reason);
+    const status = await this.apnsRequest(updateToken, { aps }, urgent ? 10 : 5, "update");
+    if (status === 200) await this.recordSuccessfulPush(state, reason);
+  }
+
+  async pushEnd(reason = "ended") {
+    const updateToken = await this.state.storage.get("updateToken");
+    if (!updateToken) return;
+    const stored = await this.state.storage.get("activeContentState");
+    const fallback = {
+      trackTitle: "",
+      artistName: "",
+      albumImageURL: null,
+      currentLine: "",
+      nextLine: null,
+      isPlaying: false,
+    };
+    const state = await this.stampState(stored ?? fallback);
+    const now = Math.floor(Date.now() / 1_000);
+    const status = await this.apnsRequest(updateToken, {
+      aps: {
+        timestamp: now,
+        event: "end",
+        "dismissal-date": now,
+        "content-state": state,
+      },
+    }, 10, "end");
+    if (status === 200 || status === 410) {
+      await this.state.storage.put({ updateToken: "", lastEndReason: reason });
+    }
+  }
+
+  async stampState(contentState) {
+    const revision = ((await this.state.storage.get("serverRevision")) ?? 0) + 1;
+    const stamped = compactContentState({
+      ...contentState,
+      schemaVersion: numericVersion(await this.state.storage.get("clientSchemaVersion")),
+      source: "server",
+      revision,
+      generatedAtEpoch: Date.now() / 1_000,
+    });
+    await this.state.storage.put("serverRevision", revision);
+    return stamped;
+  }
+
+  async recordSuccessfulPush(state, reason) {
+    const schedule = state.scheduledLinesV2 ?? [];
+    await this.state.storage.put({
+      forceServerUpdate: false,
+      lastPushAt: Date.now(),
+      lastSentTrackID: state.trackID ?? "",
+      lastSentPlaying: state.isPlaying,
+      lastSentProgressStartEpoch: state.progressStartEpoch ?? null,
+      lastSentOffsetMs: await this.state.storage.get("lyricOffsetMs"),
+      lastSentAlbumImageURL: state.albumImageURL ?? null,
+      lastSentScheduleV2: schedule,
+      lastPayloadSize: contentStateSize(state),
+      lastScheduleCount: schedule.length,
+      lastScheduleHorizonEpoch: schedule.at(-1)?.dateEpoch ?? null,
+      lastPushReason: reason,
+    });
+  }
 
   async accessToken() {
     const expiresAt = await this.state.storage.get("accessTokenExpiresAt");
@@ -221,171 +471,126 @@ export class PlaybackSessionV2 {
     }
     const refreshToken = await this.state.storage.get("refreshToken");
     if (!refreshToken) throw new Error("no refresh token registered");
-
     const body = new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
       client_id: this.env.SPOTIFY_CLIENT_ID,
     });
-    const res = await fetch(TOKEN_URL, {
+    const response = await fetch(TOKEN_URL, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body,
     });
-    if (!res.ok) throw new Error(`token refresh HTTP ${res.status}`);
-    const tokens = await res.json();
-    await this.state.storage.put("accessToken", tokens.access_token);
-    await this.state.storage.put(
-      "accessTokenExpiresAt",
-      Date.now() + (tokens.expires_in ?? 3600) * 1000
-    );
-    // Spotify may rotate the refresh token; keep the newest.
-    if (tokens.refresh_token) {
-      await this.state.storage.put("refreshToken", tokens.refresh_token);
-    }
+    if (!response.ok) throw new Error(`token refresh HTTP ${response.status}`);
+    const tokens = await response.json();
+    await this.state.storage.put({
+      accessToken: tokens.access_token,
+      accessTokenExpiresAt: Date.now() + finiteNumber(tokens.expires_in, 3_600) * 1_000,
+    });
+    if (tokens.refresh_token) await this.state.storage.put("refreshToken", tokens.refresh_token);
     return tokens.access_token;
   }
 
-  // ---- lyrics -----------------------------------------------------------
-
-  async lyricsFor(trackId, title, artist, durationSec) {
-    const cached = await this.state.storage.get(`lyrics:${trackId}`);
+  async lyricsFor(trackID, title, artist, durationSec) {
+    const key = `lyrics:${trackID}`;
+    const cached = await this.state.storage.get(key);
     if (Array.isArray(cached)) return cached;
     if (cached?.kind === "fallback" && Date.now() < cached.retryAt) return cached.lines;
-
     const url = new URL(LRCLIB_URL);
     url.searchParams.set("track_name", title);
     url.searchParams.set("artist_name", artist);
     if (durationSec > 0) url.searchParams.set("duration", String(durationSec));
-
-    const res = await fetch(url, {
-      headers: { "user-agent": "OpenLyrics/0.1 (personal sync server)" },
+    const response = await fetch(url, {
+      headers: { "user-agent": "OpenLyrics/1.1 (personal sync server)" },
     });
     let lines = [];
-    if (res.ok) {
-      const data = await res.json();
-      if (data.syncedLyrics) {
-        lines = parseLRC(data.syncedLyrics);
-      }
+    if (response.ok) {
+      const data = await response.json();
+      if (data.syncedLyrics) lines = parseLRC(data.syncedLyrics);
     }
-    if (lines.length === 0) {
+    if (!lines.length) {
       lines = [{ t: 0, text: "♪" }];
-      // Do not cache a permanent miss: catalog updates and transient LRCLIB
-      // failures should be able to heal without changing tracks. A short
-      // negative-cache window prevents a paused/no-lyrics track from hammering
-      // LRCLIB on every alarm.
-      await this.state.storage.put(`lyrics:${trackId}`, {
+      await this.state.storage.put(key, {
         kind: "fallback",
         lines,
-        retryAt: Date.now() + 15 * 60 * 1000,
+        retryAt: Date.now() + 15 * 60 * 1_000,
       });
       return lines;
     }
-    await this.state.storage.put(`lyrics:${trackId}`, lines);
+    await this.state.storage.put(key, lines);
     return lines;
   }
 
-  // ---- APNs push --------------------------------------------------------
-
   async pushJwt() {
-    // APNs rate-limits provider-token rotation (TooManyProviderTokenUpdates)
-    // — mint once and reuse for ~50 minutes like every production sender.
-    const cachedJwt = await this.state.storage.get("providerJwt");
-    const cachedAt = await this.state.storage.get("providerJwtAt");
-    if (cachedJwt && typeof cachedAt === "number" &&
-        Date.now() - cachedAt < 50 * 60 * 1000) {
-      return cachedJwt;
+    const cached = await this.state.storage.get("providerJwt");
+    const createdAt = await this.state.storage.get("providerJwtAt");
+    if (cached && typeof createdAt === "number" && Date.now() - createdAt < 50 * 60 * 1_000) {
+      return cached;
     }
-    const [headerB64, claimsB64] = [
-      b64url(JSON.stringify({ alg: "ES256", kid: this.env.APNS_KEY_ID })),
-      b64url(JSON.stringify({ iss: this.env.APNS_TEAM_ID, iat: Math.floor(Date.now() / 1000) })),
-    ];
-    const signingInput = `${headerB64}.${claimsB64}`;
-    const keyData = pemToBuffer(this.env.APNS_KEY_P8);
+    const header = b64url(JSON.stringify({ alg: "ES256", kid: this.env.APNS_KEY_ID }));
+    const claims = b64url(JSON.stringify({
+      iss: this.env.APNS_TEAM_ID,
+      iat: Math.floor(Date.now() / 1_000),
+    }));
+    const input = `${header}.${claims}`;
     const key = await crypto.subtle.importKey(
-      "pkcs8", keyData, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]
+      "pkcs8",
+      pemToBuffer(this.env.APNS_KEY_P8),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign"]
     );
-    const sig = await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" }, key,
-      new TextEncoder().encode(signingInput)
-    ); // WebCrypto returns raw r||s — exactly what APNs wants.
-    const jwt = `${headerB64}.${claimsB64}.${b64url(new Uint8Array(sig))}`;
-    await this.state.storage.put("providerJwt", jwt);
-    await this.state.storage.put("providerJwtAt", Date.now());
+    const signature = await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      key,
+      new TextEncoder().encode(input)
+    );
+    const jwt = `${input}.${b64url(new Uint8Array(signature))}`;
+    await this.state.storage.put({ providerJwt: jwt, providerJwtAt: Date.now() });
     return jwt;
   }
 
-  async push(contentState, priority) {
-    const updateToken = await this.state.storage.get("updateToken");
-    if (!updateToken) return;
-    const status = await this.apnsRequest(updateToken, {
-      aps: {
-        timestamp: Math.floor(Date.now() / 1000),
-        event: "update",
-        "stale-date": Math.floor(Date.now() / 1000) + 120,
-        "content-state": contentState,
-      },
-    }, priority);
-    if (status === 200) {
-      await this.state.storage.put("lastPushAt", Date.now());
-    }
-    console.log(`push p${priority}: HTTP ${status} "${contentState.trackTitle}"`);
-  }
-
-  async pushEnd() {
-    const updateToken = await this.state.storage.get("updateToken");
-    if (!updateToken) return;
-    const status = await this.apnsRequest(updateToken, {
-      aps: {
-        timestamp: Math.floor(Date.now() / 1000),
-        event: "end",
-        "dismissal-date": Math.floor(Date.now() / 1000),
-        "content-state": {
-          trackTitle: "", artistName: "", currentLine: "",
-          nextLine: null, isPlaying: false,
-        },
-      },
-    }, 10);
-    if (status === 200 || status === 410) {
-      // An ended activity cannot be updated again. Clearing the token also
-      // stops the alarm chain from sending the same end event every 30s.
-      await this.state.storage.put("updateToken", "");
-      if (status === 200) await this.state.storage.put("lastPushAt", Date.now());
-    }
-  }
-
-  async apnsRequest(token, payload, priority) {
+  async apnsRequest(token, payload, priority = 10, kind = "update") {
     const jwt = await this.pushJwt();
-    const pushHost = this.apnsHost();
-    let res;
-    // APNs occasionally serves 500s; retry with backoff before giving up.
+    const host = this.apnsHost();
+    let response;
     for (let attempt = 1; attempt <= 3; attempt++) {
-      res = await fetch(`${pushHost}/3/device/${token}`, {
+      response = await fetch(`${host}/3/device/${token}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           "apns-topic": APNS_TOPIC,
           "apns-push-type": "liveactivity",
-          "apns-priority": String(priority ?? 10),
-          "authorization": `bearer ${jwt}`,
+          "apns-priority": String(priority),
+          authorization: `bearer ${jwt}`,
         },
         body: JSON.stringify(payload),
       });
-      if (res.status < 500 || attempt === 3) break;
-      console.log(`push attempt ${attempt}: HTTP ${res.status}, retrying`);
-      await new Promise(r => setTimeout(r, 1500 * attempt));
+      if (response.status < 500 || attempt === 3) break;
+      await new Promise(resolve => setTimeout(resolve, attempt * 1_500));
     }
-    if (res.status === 410) {
-      // Activity gone (user dismissed / ended): stop pushing until re-register.
-      await this.state.storage.put("updateToken", "");
-      await this.state.storage.put("lastError", "activity ended remotely (410)");
-    } else if (!res.ok) {
-      const text = await res.text();
-      console.log(`push FAILED ${res.status}: ${text.slice(0, 200)}`);
-      await this.state.storage.put("lastError", `push ${res.status}: ${text.slice(0, 200)}`);
-      await this.state.storage.put("lastErrorAt", new Date().toISOString());
+    let responseText = "";
+    if (!response.ok) responseText = (await response.text()).slice(0, 200);
+    await this.state.storage.put("lastAPNsResult", {
+      kind,
+      status: response.status,
+      at: new Date().toISOString(),
+      detail: responseText || "accepted",
+    });
+    if (response.status === 410) {
+      if (kind === "start") {
+        await this.state.storage.put("pushToStartToken", "");
+      } else {
+        await this.state.storage.put("updateToken", "");
+        if (kind === "update") await this.state.storage.put("playbackSessionDismissed", true);
+      }
+    } else if (!response.ok) {
+      await this.state.storage.put({
+        lastError: `APNs ${kind} ${response.status}: ${responseText}`,
+        lastErrorAt: new Date().toISOString(),
+      });
     }
-    return res.status;
+    return response.status;
   }
 
   apnsHost() {
@@ -398,21 +603,149 @@ export class PlaybackSessionV2 {
     }
     return host;
   }
+
+  async recordError(error) {
+    await this.state.storage.put({
+      lastError: String(error?.stack ?? error).slice(0, 500),
+      lastErrorAt: new Date().toISOString(),
+    });
+  }
 }
 
-// ---- helpers -------------------------------------------------------------
+export function buildContentState(player, options = {}) {
+  const nowMs = finiteNumber(options.nowMs, Date.now());
+  const nowEpoch = nowMs / 1_000;
+  const offsetSec = finiteNumber(options.offsetMs, 0) / 1_000;
+  const schemaVersion = numericVersion(options.schemaVersion);
+  const revision = finiteNumber(options.revision, 0);
+  const durationSec = Math.max(0, finiteNumber(player.durationMs, 0) / 1_000);
+  const positionSec = Math.max(0, finiteNumber(player.progressMs, 0) / 1_000);
+  const lines = Array.isArray(player.lines) && player.lines.length
+    ? player.lines
+    : [{ t: 0, text: "♪" }];
+  let index = -1;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    if (lines[lineIndex].t + offsetSec <= positionSec) index = lineIndex;
+    else break;
+  }
+  const currentLine = index >= 0 ? lines[index].text : "♪";
+  const nextLine = index + 1 < lines.length ? lines[index + 1].text : null;
+  const progressStartEpoch = player.isPlaying ? nowEpoch - positionSec : null;
+  const progressEndEpoch = player.isPlaying && durationSec > 0
+    ? progressStartEpoch + durationSec
+    : null;
+  const frozenProgress = !player.isPlaying && durationSec > 0
+    ? clamp(positionSec / durationSec, 0, 1)
+    : null;
 
-function parseLRC(lrc) {
+  let karaokeStartEpoch = null;
+  let karaokeEndEpoch = null;
+  let frozenKaraokeProgress = null;
+  if (index >= 0) {
+    const lineStart = lines[index].t + offsetSec;
+    const lineEnd = Math.max(
+      lineStart + 0.25,
+      index + 1 < lines.length ? lines[index + 1].t + offsetSec : lineStart + 4
+    );
+    if (player.isPlaying) {
+      karaokeStartEpoch = nowEpoch + lineStart - positionSec;
+      karaokeEndEpoch = nowEpoch + lineEnd - positionSec;
+    } else {
+      frozenKaraokeProgress = clamp((positionSec - lineStart) / (lineEnd - lineStart), 0, 1);
+    }
+  }
+  const scheduledLinesV2 = player.isPlaying
+    ? lines
+      .filter(line => line.t + offsetSec - positionSec > 0.05)
+      .slice(0, 24)
+      .map(line => ({ dateEpoch: nowEpoch + line.t + offsetSec - positionSec, text: line.text }))
+    : [];
+  const common = {
+    trackTitle: String(player.title ?? "Unknown track"),
+    artistName: String(player.artist ?? ""),
+    albumImageURL: player.albumImageURL ?? null,
+    currentLine: String(currentLine),
+    nextLine: nextLine == null ? null : String(nextLine),
+    isPlaying: player.isPlaying === true,
+    frozenProgress,
+    frozenKaraokeProgress,
+  };
+  if (schemaVersion < 2) {
+    return compactContentState({
+      ...common,
+      progressStart: nullableSwiftDate(progressStartEpoch),
+      progressEnd: nullableSwiftDate(progressEndEpoch),
+      scheduledLines: scheduledLinesV2.map(line => ({
+        date: swiftReferenceSeconds(line.dateEpoch),
+        text: line.text,
+      })),
+      karaokeStartDate: nullableSwiftDate(karaokeStartEpoch),
+      karaokeEndDate: nullableSwiftDate(karaokeEndEpoch),
+    });
+  }
+  return compactContentState({
+    schemaVersion: 2,
+    source: "server",
+    revision,
+    generatedAtEpoch: nowEpoch,
+    trackID: String(player.trackID ?? ""),
+    ...common,
+    // Keep legacy Date anchors for one compatibility release. The schedule is
+    // not duplicated because the second copy can exceed ActivityKit's limit.
+    progressStart: nullableSwiftDate(progressStartEpoch),
+    progressEnd: nullableSwiftDate(progressEndEpoch),
+    scheduledLines: null,
+    karaokeStartDate: nullableSwiftDate(karaokeStartEpoch),
+    karaokeEndDate: nullableSwiftDate(karaokeEndEpoch),
+    progressStartEpoch,
+    progressEndEpoch,
+    scheduledLinesV2,
+    karaokeStartEpoch,
+    karaokeEndEpoch,
+  });
+}
+
+export function compactContentState(contentState, maxBytes = PAYLOAD_LIMIT_BYTES) {
+  const copy = JSON.parse(JSON.stringify(contentState));
+  while (contentStateSize(copy) > maxBytes) {
+    if (Array.isArray(copy.scheduledLinesV2) && copy.scheduledLinesV2.length) {
+      copy.scheduledLinesV2.pop();
+      continue;
+    }
+    if (Array.isArray(copy.scheduledLines) && copy.scheduledLines.length) {
+      copy.scheduledLines.pop();
+      continue;
+    }
+    break;
+  }
+  if (contentStateSize(copy) > maxBytes) {
+    copy.nextLine = truncate(copy.nextLine, 400);
+    copy.currentLine = truncate(copy.currentLine, 800);
+    copy.trackTitle = truncate(copy.trackTitle, 200);
+    copy.artistName = truncate(copy.artistName, 200);
+  }
+  if (contentStateSize(copy) > maxBytes) copy.nextLine = null;
+  return copy;
+}
+
+export function contentStateSize(contentState) {
+  return new TextEncoder().encode(JSON.stringify(contentState)).length;
+}
+
+export function swiftReferenceSeconds(unixSeconds) {
+  return unixSeconds - SWIFT_REFERENCE_EPOCH_OFFSET;
+}
+
+export function parseLRC(lrc) {
   const parsed = [];
   let offset = 0;
-  for (const raw of lrc.split("\n")) {
+  for (const raw of String(lrc).split("\n")) {
     const line = raw.replace(/\r$/, "");
     const offsetMatch = line.match(/^\[offset:\s*([+-]?\d+)\]\s*$/i);
     if (offsetMatch) {
-      offset += Number(offsetMatch[1]) / 1000;
+      offset += Number(offsetMatch[1]) / 1_000;
       continue;
     }
-
     let rest = line;
     const times = [];
     let match;
@@ -422,29 +755,61 @@ function parseLRC(lrc) {
       rest = rest.slice(match[0].length);
     }
     const text = rest.trim();
-    if (text) for (const t of times) parsed.push({ t, text });
+    if (text) for (const time of times) parsed.push({ t: time, text });
   }
-  const out = parsed.map(({ t, text }) => ({ t: Math.max(0, t - offset), text }));
-  out.sort((a, b) => a.t - b.t);
-  return out;
+  const result = parsed.map(({ t, text }) => ({ t: Math.max(0, t - offset), text }));
+  result.sort((left, right) => left.t - right.t);
+  return result;
+}
+
+function staleDateFor(contentState) {
+  const now = Date.now() / 1_000;
+  const schedule = contentState.scheduledLinesV2 ?? [];
+  const horizon = schedule.at(-1)?.dateEpoch ?? now;
+  return Math.floor(Math.max(now + 60, horizon + 15));
+}
+
+function nullableSwiftDate(epoch) {
+  return typeof epoch === "number" ? swiftReferenceSeconds(epoch) : null;
+}
+
+function numericVersion(value) {
+  return Math.floor(finiteNumber(value, 1)) >= 2 ? 2 : 1;
+}
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function cleanString(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function truncate(value, length) {
+  return value == null ? value : String(value).slice(0, length);
 }
 
 function pemToBuffer(pem) {
-  const b64 = pem
+  const base64 = pem
     .replace(/-----BEGIN PRIVATE KEY-----/, "")
     .replace(/-----END PRIVATE KEY-----/, "")
     .replace(/\s+/g, "");
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return bytes.buffer;
 }
 
 function b64url(input) {
-  // Accept strings (UTF-8 encoded) or bytes — iterating a raw string would
-  // silently produce garbage base64 of char codes.
   const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

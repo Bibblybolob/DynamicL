@@ -49,6 +49,19 @@ struct AppearanceView: View {
                     .padding(12)
                     .background(.tertiary.opacity(0.35), in: .rect(cornerRadius: 14))
                 }
+                section(title: "Surface", icon: "square.stack.3d.up") {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(LAStylePrefs.SurfaceStyle.allCases, id: \.self) { surface in
+                            SurfaceOption(
+                                surface: surface,
+                                palette: surfacePalette(for: surface),
+                                isSelected: prefs.surfaceStyle == surface
+                            ) {
+                                setStyle { $0.surfaceStyle = surface }
+                            }
+                        }
+                    }
+                }
                 section(title: "Theme", icon: "paintpalette") {
                     LazyVGrid(columns: swatchColumns, spacing: 10) {
                         ForEach(LAStylePrefs.Theme.allCases, id: \.self) { theme in
@@ -162,7 +175,7 @@ struct AppearanceView: View {
                     }
                     .tint(Color.accentColor)
                 }
-                Text("Changes apply to the Live Activity instantly — no need to restart playback.")
+                Text("Changes apply to the Live Activity and widgets. No need to restart playback.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Reset appearance") {
@@ -175,14 +188,26 @@ struct AppearanceView: View {
             .padding()
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Live Activity Style")
+        .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Preview
 
     private var previewPalette: LAPalette {
-        LAStyleStore.resolve(prefs: prefs, albumDominant: DominantColorExtractor.cached(for: model.provider?.lastAlbumImageURL ?? ""))
+        let base = LAStyleStore.resolve(
+            prefs: prefs,
+            albumDominant: DominantColorExtractor.cached(for: model.provider?.lastAlbumImageURL ?? "")
+        )
+        return LAStyleStore.applySurface(prefs.surfaceStyle, to: base)
+    }
+
+    private func surfacePalette(for surface: LAStylePrefs.SurfaceStyle) -> LAPalette {
+        let base = LAStyleStore.resolve(
+            prefs: prefs,
+            albumDominant: DominantColorExtractor.cached(for: model.provider?.lastAlbumImageURL ?? "")
+        )
+        return LAStyleStore.applySurface(surface, to: base)
     }
 
     private var previewCard: some View {
@@ -258,11 +283,68 @@ struct AppearanceView: View {
             }
         }
         .padding(16)
-        .background(
-            LinearGradient(colors: [palette.backgroundTop.color, palette.backgroundBottom.color],
-                           startPoint: .top, endPoint: .bottom),
-            in: .rect(cornerRadius: 20)
-        )
+        .background {
+            surfacePreviewBackground(palette: palette, surface: prefs.surfaceStyle)
+        }
+        .clipShape(.rect(cornerRadius: 20))
+    }
+
+    @ViewBuilder
+    private func surfacePreviewBackground(palette: LAPalette,
+                                           surface: LAStylePrefs.SurfaceStyle) -> some View {
+        switch surface {
+        case .gradient:
+            LinearGradient(
+                colors: [palette.backgroundTop.color, palette.backgroundBottom.color],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .glass:
+            ZStack {
+                palette.backgroundBottom.color
+                LinearGradient(
+                    colors: [palette.backgroundTop.color.opacity(0.78),
+                             palette.backgroundBottom.color.opacity(0.94)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Color.white.opacity(0.08)
+            }
+        case .neon:
+            ZStack {
+                palette.backgroundBottom.color
+                RadialGradient(
+                    colors: [palette.accent.color.opacity(0.46), .clear],
+                    center: .topTrailing,
+                    startRadius: 4,
+                    endRadius: 220
+                )
+                LinearGradient(
+                    colors: [.clear, palette.accent.color.opacity(0.12)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        case .paper:
+            LinearGradient(
+                colors: [palette.backgroundTop.color, palette.backgroundBottom.color],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        case .outline:
+            ZStack {
+                palette.backgroundBottom.color
+                LinearGradient(
+                    colors: [palette.backgroundTop.color.opacity(0.65),
+                             palette.backgroundBottom.color],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(palette.accent.color.opacity(0.5), lineWidth: 1)
+                    .padding(1)
+            }
+        }
     }
 
     // MARK: - Pieces
@@ -357,6 +439,52 @@ private struct FontOption: View {
     }
 }
 
+private struct SurfaceOption: View {
+    let surface: LAStylePrefs.SurfaceStyle
+    let palette: LAPalette
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(
+                            LinearGradient(
+                                colors: [palette.backgroundTop.color,
+                                         palette.backgroundBottom.color],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: surface.icon)
+                        .font(.body.bold())
+                        .foregroundStyle(palette.accent.color)
+                    if surface == .outline {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(palette.accent.color.opacity(0.7), lineWidth: 1.5)
+                            .padding(2)
+                    }
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(.white, lineWidth: 2.5)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.white)
+                            .offset(x: 36, y: -24)
+                    }
+                }
+                .frame(height: 52)
+                Text(surface.label)
+                    .font(.caption2.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 extension LAStylePrefs.Theme {
     var label: String {
         switch self {
@@ -396,6 +524,28 @@ extension LAStylePrefs.ArtworkStyle {
         case .vinyl: return "Vinyl"
         case .square: return "Square"
         case .hidden: return "None"
+        }
+    }
+}
+
+extension LAStylePrefs.SurfaceStyle {
+    var label: String {
+        switch self {
+        case .gradient: return "Gradient"
+        case .glass: return "Glass"
+        case .neon: return "Neon"
+        case .paper: return "Paper"
+        case .outline: return "Outline"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .gradient: return "circle.lefthalf.filled"
+        case .glass: return "square.on.square"
+        case .neon: return "bolt.fill"
+        case .paper: return "doc.text"
+        case .outline: return "rectangle"
         }
     }
 }

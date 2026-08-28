@@ -10,7 +10,12 @@ struct LyricWidgetsBundle: WidgetBundle {
         MinimalLyricsWidget()
         AlbumCardWidget()
         KaraokeFocusWidget()
+        LyricsPosterWidget()
+        WaveformPlayerWidget()
+        AlbumStackWidget()
         LockscreenLyricWidget()
+        LockscreenAlbumWidget()
+        LockscreenQuoteWidget()
         VinylWidget()
         LyricsLiveActivity()
     }

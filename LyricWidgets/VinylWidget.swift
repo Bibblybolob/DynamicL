@@ -22,6 +22,8 @@ struct VinylEntry: TimelineEntry {
     let date: Date
     let rotation: Double
     let imageData: Data?
+    let albumImageURL: String?
+    let showsArtwork: Bool
     let trackTitle: String
     let artistName: String
     let isPlaying: Bool
@@ -30,6 +32,8 @@ struct VinylEntry: TimelineEntry {
         date: .now,
         rotation: 0,
         imageData: nil,
+        albumImageURL: nil,
+        showsArtwork: false,
         trackTitle: "No music",
         artistName: "OpenLyrics",
         isPlaying: false
@@ -58,14 +62,27 @@ struct VinylProvider: TimelineProvider {
 
     private func buildTimeline() async -> Timeline<VinylEntry> {
         let style = WidgetStyle()
-        guard let snapshot = SharedNowPlaying.load(),
-              let base = await entry(
-                  from: snapshot,
-                  rotation: 0,
-                  showArtwork: style.prefs.artworkStyle != .hidden
-              ) else {
+        guard let snapshot = SharedNowPlaying.load() else {
             return Timeline(entries: [.idle], policy: .after(.now.addingTimeInterval(600)))
         }
+
+        // Resolve artwork once per timeline. Re-fetching from every one of the
+        // 60 spin entries can create a request storm when the network is down.
+        let showsArtwork = style.prefs.artworkStyle != .hidden
+        let artworkData: Data?
+        if !showsArtwork {
+            artworkData = nil
+        } else if let snapshotData = snapshot.albumImageData {
+            artworkData = snapshotData
+        } else {
+            artworkData = await Self.artData(for: snapshot.albumImageURL)
+        }
+        let base = entry(
+            from: snapshot,
+            rotation: 0,
+            imageData: artworkData,
+            showsArtwork: showsArtwork
+        )
 
         // Paused / stopped: single static entry.
         guard base.isPlaying, style.prefs.animationsEnabled else {
@@ -79,11 +96,13 @@ struct VinylProvider: TimelineProvider {
         entries.reserveCapacity(60)
         let start = Date.now
         for step in 0..<60 {
-            if let e = await entry(from: snapshot, rotation: Double(step) * 24,
-                                   date: start.addingTimeInterval(Double(step)),
-                                   showArtwork: style.prefs.artworkStyle != .hidden) {
-                entries.append(e)
-            }
+            entries.append(entry(
+                from: snapshot,
+                rotation: Double(step) * 24,
+                date: start.addingTimeInterval(Double(step)),
+                imageData: artworkData,
+                showsArtwork: showsArtwork
+            ))
         }
         let refreshAt = (entries.last?.date ?? .now).addingTimeInterval(1)
         return Timeline(entries: entries.isEmpty ? [base] : entries, policy: .after(refreshAt))
@@ -92,27 +111,32 @@ struct VinylProvider: TimelineProvider {
     private func currentEntry() async -> VinylEntry? {
         guard let snapshot = SharedNowPlaying.load() else { return nil }
         let style = WidgetStyle()
-        return await entry(
+        let showsArtwork = style.prefs.artworkStyle != .hidden
+        let artworkData: Data?
+        if !showsArtwork {
+            artworkData = nil
+        } else if let snapshotData = snapshot.albumImageData {
+            artworkData = snapshotData
+        } else {
+            artworkData = await Self.artData(for: snapshot.albumImageURL)
+        }
+        return entry(
             from: snapshot,
             rotation: 0,
-            showArtwork: style.prefs.artworkStyle != .hidden
+            imageData: artworkData,
+            showsArtwork: showsArtwork
         )
     }
 
     private func entry(from snapshot: WidgetLyricSnapshot, rotation: Double,
-                       date: Date = .now, showArtwork: Bool = true) async -> VinylEntry? {
-        let data: Data?
-        if !showArtwork {
-            data = nil
-        } else if let snapshotData = snapshot.albumImageData {
-            data = snapshotData
-        } else {
-            data = await Self.artData(for: snapshot.albumImageURL)
-        }
+                       date: Date = .now, imageData: Data?,
+                       showsArtwork: Bool) -> VinylEntry {
         return VinylEntry(
             date: date,
             rotation: rotation,
-            imageData: data,
+            imageData: imageData,
+            albumImageURL: snapshot.albumImageURL,
+            showsArtwork: showsArtwork,
             trackTitle: snapshot.trackTitle,
             artistName: snapshot.artistName,
             isPlaying: effectiveIsPlaying(snapshot)
@@ -199,17 +223,16 @@ struct VinylWidgetView: View {
         }
         .clipShape(.rect(cornerRadius: 18))
         .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [style.palette.backgroundTop.color, style.palette.backgroundBottom.color],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            style.background
         }
     }
 
     @ViewBuilder
     private func record(size: CGFloat) -> some View {
-        if let data = entry.imageData, let image = UIImage(data: data) {
+        let data = entry.showsArtwork
+            ? entry.imageData ?? SharedNowPlaying.cachedArtwork(for: entry.albumImageURL)
+            : nil
+        if let data, let image = UIImage(data: data) {
             disc(image: image, size: size)
         } else {
             ZStack {
@@ -277,5 +300,5 @@ struct VinylWidgetView: View {
 #Preview(as: .accessoryCircular) {
     VinylWidget()
 } timeline: {
-    VinylEntry(date: .now, rotation: 0, imageData: nil, trackTitle: "Sample Track", artistName: "OpenLyrics", isPlaying: true)
+    VinylEntry(date: .now, rotation: 0, imageData: nil, albumImageURL: nil, showsArtwork: true, trackTitle: "Sample Track", artistName: "OpenLyrics", isPlaying: true)
 }

@@ -57,6 +57,10 @@ struct SyncServerRow: View {
                         .foregroundStyle(connectionCheck.isSuccess ? .green : .secondary)
                 }
             }
+            ShareLink(item: DiagnosticsLog.shareURL) {
+                Label("Share diagnostics", systemImage: "square.and.arrow.up")
+            }
+            .font(.caption.weight(.semibold))
             Text(statusText)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
@@ -77,12 +81,14 @@ struct SyncServerRow: View {
         let client = SyncServerClient.shared
         let hasURL = !client.serverURLString.isEmpty
         let hasAuth = !client.serverAuthTokenString.isEmpty
-        let tokensKnown = client.updateToken != nil
-        switch (hasURL, hasAuth, tokensKnown) {
-        case (true, true, true): return "Registered — server pushes enabled."
-        case (true, true, false): return "Waiting for an activity to start…"
-        case (true, false, _): return "Add the server access token to enable push."
-        case (false, _, true): return "Tokens captured locally; add the server URL."
+        let hasUpdateToken = client.updateToken != nil
+        let hasStartToken = client.pushToStartToken != nil
+        switch (hasURL, hasAuth, hasUpdateToken, hasStartToken) {
+        case (true, true, true, _): return "Registered. Phone fallback is ready."
+        case (true, true, false, true): return "Ready. Automatic start is enabled."
+        case (true, true, false, false): return "Waiting for an Activity token."
+        case (true, false, _, _): return "Add the server access token to enable push."
+        case (false, _, true, _), (false, _, _, true): return "Add the server URL."
         default: return "Optional — enables never-stall push updates."
         }
     }

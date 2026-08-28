@@ -64,6 +64,8 @@ test("registration validates input and forwards authenticated requests", async (
         updateToken: "0123456789abcdef0123456789abcdef",
         pushToStartToken: "",
         spotifyRefreshToken: "refresh-token-123",
+        clientSchemaVersion: 2,
+        lyricOffsetMs: 250,
       }),
     }),
     testEnv({
@@ -78,6 +80,84 @@ test("registration validates input and forwards authenticated requests", async (
   assert.equal(forwarded.input, "https://session/register");
   assert.equal(forwarded.init.method, "POST");
   assert.equal(forwarded.body.updateToken, "0123456789abcdef0123456789abcdef");
+  assert.equal(forwarded.body.clientSchemaVersion, 2);
+  assert.equal(forwarded.body.lyricOffsetMs, 250);
+});
+
+test("registration accepts only a push-to-start token", async () => {
+  let forwarded;
+  const response = await worker.fetch(
+    new Request("https://sync.test/register", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        pushToStartToken: "abcdef0123456789abcdef0123456789",
+        spotifyRefreshToken: "refresh-token-123",
+        clientSchemaVersion: 2,
+        supportsInputPushToken: true,
+      }),
+    }),
+    testEnv({
+      sessionFetch: async (input, init) => {
+        forwarded = { input, body: JSON.parse(init.body) };
+        return json({ ok: true });
+      },
+    })
+  );
+  assert.equal(response.status, 200);
+  assert.equal(forwarded.input, "https://session/register");
+  assert.equal(forwarded.body.updateToken, undefined);
+  assert.equal(forwarded.body.supportsInputPushToken, true);
+});
+
+test("heartbeat validates and forwards the phone writer lease", async () => {
+  let forwarded;
+  const response = await worker.fetch(
+    new Request("https://sync.test/heartbeat", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        activityState: "active",
+        updateToken: "0123456789abcdef0123456789abcdef",
+        sentAtMs: 1_700_000_000_000,
+        localRevision: 8,
+        trackID: "track-1",
+        lyricOffsetMs: -300,
+        clientSchemaVersion: 2,
+      }),
+    }),
+    testEnv({
+      sessionFetch: async (input, init) => {
+        forwarded = { input, body: JSON.parse(init.body) };
+        return json({ ok: true, writer: "phone" });
+      },
+    })
+  );
+  assert.equal(response.status, 200);
+  assert.equal(forwarded.input, "https://session/heartbeat");
+  assert.equal(forwarded.body.activityState, "active");
+  assert.equal(forwarded.body.localRevision, 8);
+});
+
+test("heartbeat rejects an unknown activity state", async () => {
+  const response = await worker.fetch(
+    new Request("https://sync.test/heartbeat", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ activityState: "hidden", clientSchemaVersion: 2 }),
+    }),
+    testEnv()
+  );
+  assert.equal(response.status, 400);
 });
 
 test("registration rejects a JSON null payload", async () => {

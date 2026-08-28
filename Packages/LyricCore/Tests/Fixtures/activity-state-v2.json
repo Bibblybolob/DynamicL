@@ -1,0 +1,17 @@
+{
+  "state": {
+    "schemaVersion": 2,
+    "source": "server",
+    "revision": 7,
+    "generatedAtEpoch": 1700000000,
+    "progressStartEpoch": 1699999989.75,
+    "progressStart": 721692789.75,
+    "scheduledLinesV2": [
+      {
+        "dateEpoch": 1700000000.25,
+        "text": "Second line"
+      }
+    ]
+  },
+  "expectedGeneratedDate": "2023-11-14T22:13:20Z"
+}

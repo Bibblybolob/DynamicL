@@ -56,7 +56,10 @@ final class LRCLIBParsingTests: XCTestCase {
             plainLyrics: nil,
             syncedLyrics: "[00:05.00]hello\n[00:10.00]world"
         )
-        let doc = makeDocument(result: result, track: TrackSignature(title: "T", artist: "A"))
+        let doc = LRCLIBClient().document(
+            from: result,
+            track: TrackSignature(title: "T", artist: "A")
+        )
         XCTAssertNotNil(doc)
         XCTAssertEqual(doc?.lines.count, 2)
         XCTAssertEqual(doc?.lines[0].time ?? -1, 5.0, accuracy: 0.001)
@@ -73,8 +76,29 @@ final class LRCLIBParsingTests: XCTestCase {
             plainLyrics: "one\ntwo\nthree",
             syncedLyrics: nil
         )
-        let doc = makeDocument(result: result, track: TrackSignature(title: "T", artist: "A"))
+        let doc = LRCLIBClient().document(
+            from: result,
+            track: TrackSignature(title: "T", artist: "A")
+        )
         XCTAssertEqual(doc?.lines.map(\.text), ["one", "two", "three"])
+        XCTAssertEqual(doc?.lines.map(\.time), [1.5, 15.0, 28.5])
+    }
+
+    func testPlainResultUsesThreeSecondFallbackWithoutDuration() throws {
+        let result = LRCLibResult(
+            id: 4,
+            trackName: "T",
+            artistName: "A",
+            albumName: nil,
+            duration: nil,
+            instrumental: false,
+            plainLyrics: "one\ntwo\nthree",
+            syncedLyrics: nil
+        )
+        let doc = LRCLIBClient().document(
+            from: result,
+            track: TrackSignature(title: "T", artist: "A")
+        )
         XCTAssertEqual(doc?.lines.map(\.time), [0.0, 3.0, 6.0])
     }
 
@@ -89,21 +113,10 @@ final class LRCLIBParsingTests: XCTestCase {
             plainLyrics: nil,
             syncedLyrics: nil
         )
-        let doc = makeDocument(result: result, track: TrackSignature(title: "T", artist: "A"))
+        let doc = LRCLIBClient().document(
+            from: result,
+            track: TrackSignature(title: "T", artist: "A")
+        )
         XCTAssertNil(doc)
-    }
-
-    private func makeDocument(result: LRCLibResult, track: TrackSignature) -> LyricsDocument? {
-        if let lrc = result.syncedLyrics, !lrc.isEmpty,
-           let doc = try? LRCParser.makeDocument(lrc: lrc, track: track), !doc.lines.isEmpty {
-            return doc
-        }
-        if let plain = result.plainLyrics, !plain.isEmpty {
-            let lines = plain.split(separator: "\n", omittingEmptySubsequences: true)
-                .enumerated()
-                .map { index, text in LyricLine(time: TimeInterval(index) * 3.0, text: String(text)) }
-            return lines.isEmpty ? nil : LyricsDocument(track: track, lines: lines)
-        }
-        return nil
     }
 }

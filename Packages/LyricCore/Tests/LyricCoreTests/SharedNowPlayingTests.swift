@@ -29,7 +29,7 @@ final class SharedNowPlayingTests: XCTestCase {
         XCTAssertEqual(loaded, snapshot)
     }
 
-    func testClearRemovesSnapshot() {
+    func testClearRemovesSnapshotButKeepsArtwork() {
         SharedNowPlaying.setPlayingOverride(true, defaults: defaults)
         SharedNowPlaying.saveArtwork(Data([1, 2, 3]), for: "https://example.com/album.jpg", defaults: defaults)
         let snapshot = WidgetLyricSnapshot(
@@ -45,7 +45,72 @@ final class SharedNowPlayingTests: XCTestCase {
 
         XCTAssertNil(SharedNowPlaying.load(defaults: defaults))
         XCTAssertNil(SharedNowPlaying.playingOverride(defaults: defaults))
-        XCTAssertNil(SharedNowPlaying.cachedArtwork(for: "https://example.com/album.jpg", defaults: defaults))
+        XCTAssertEqual(
+            SharedNowPlaying.cachedArtwork(for: "https://example.com/album.jpg", defaults: defaults),
+            Data([1, 2, 3])
+        )
+    }
+
+    func testExplicitArtworkClearRemovesImages() {
+        let url = "https://example.com/album.jpg"
+        SharedNowPlaying.saveArtwork(Data([1, 2, 3]), for: url, defaults: defaults)
+
+        SharedNowPlaying.clearArtworkCache(defaults: defaults)
+
+        XCTAssertNil(SharedNowPlaying.cachedArtwork(for: url, defaults: defaults))
+    }
+
+    func testArtworkCacheKeepsFourMostRecentImages() {
+        for index in 0..<5 {
+            SharedNowPlaying.saveArtwork(
+                Data([UInt8(index)]),
+                for: "https://example.com/\(index).jpg",
+                defaults: defaults
+            )
+        }
+
+        XCTAssertNil(SharedNowPlaying.cachedArtwork(
+            for: "https://example.com/0.jpg",
+            defaults: defaults
+        ))
+        for index in 1..<5 {
+            XCTAssertEqual(
+                SharedNowPlaying.cachedArtwork(
+                    for: "https://example.com/\(index).jpg",
+                    defaults: defaults
+                ),
+                Data([UInt8(index)])
+            )
+        }
+    }
+
+    func testArtworkReadUpdatesTheLRUOrder() {
+        for index in 0..<4 {
+            SharedNowPlaying.saveArtwork(
+                Data([UInt8(index)]),
+                for: "https://example.com/\(index).jpg",
+                defaults: defaults
+            )
+        }
+        XCTAssertNotNil(SharedNowPlaying.cachedArtwork(
+            for: "https://example.com/0.jpg",
+            defaults: defaults
+        ))
+
+        SharedNowPlaying.saveArtwork(
+            Data([4]),
+            for: "https://example.com/4.jpg",
+            defaults: defaults
+        )
+
+        XCTAssertNotNil(SharedNowPlaying.cachedArtwork(
+            for: "https://example.com/0.jpg",
+            defaults: defaults
+        ))
+        XCTAssertNil(SharedNowPlaying.cachedArtwork(
+            for: "https://example.com/1.jpg",
+            defaults: defaults
+        ))
     }
 
     func testArtworkCacheRejectsDifferentURL() {

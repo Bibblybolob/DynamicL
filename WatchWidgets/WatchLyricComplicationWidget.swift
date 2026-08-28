@@ -168,8 +168,10 @@ struct WatchLyricComplicationView: View {
             AccessoryCircularLyricView(entry: entry)
         case .accessoryInline:
             AccessoryInlineLyricView(entry: entry)
+#if os(watchOS)
         case .accessoryCorner:
             AccessoryCornerLyricView(entry: entry)
+#endif
         default:
             AccessoryRectangularLyricView(entry: entry)
         }
@@ -177,18 +179,25 @@ struct WatchLyricComplicationView: View {
 }
 
 struct WatchLyricComplication: Widget {
+    private var supportedFamilies: [WidgetFamily] {
+        var families: [WidgetFamily] = [
+            .accessoryCircular,
+            .accessoryRectangular,
+            .accessoryInline,
+        ]
+#if os(watchOS)
+        families.append(.accessoryCorner)
+#endif
+        return families
+    }
+
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "WatchLyricComplication", provider: WatchLyricProvider()) { entry in
             WatchLyricComplicationView(entry: entry)
         }
         .configurationDisplayName("Current Line")
         .description("Shows the live lyric line on your watch face.")
-        .supportedFamilies([
-            .accessoryCircular,
-            .accessoryRectangular,
-            .accessoryInline,
-            .accessoryCorner,
-        ])
+        .supportedFamilies(supportedFamilies)
     }
 }
 

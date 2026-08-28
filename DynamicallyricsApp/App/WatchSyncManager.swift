@@ -46,7 +46,12 @@ final class WatchSyncManager: NSObject {
         let key = payloadKey(for: snapshot)
         guard key != lastPayloadKey else { return }
         guard WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
+        guard let snapshotData = try? JSONEncoder().encode(snapshot) else {
+            Self.logger.error("Could not encode the watch snapshot")
+            return
+        }
         let payload: [String: Any] = [
+            "snapshotData": snapshotData,
             "trackTitle": snapshot.trackTitle,
             "artistName": snapshot.artistName,
             "currentLine": snapshot.currentLine,
@@ -70,7 +75,12 @@ final class WatchSyncManager: NSObject {
     var lastPublishedKey: String? { lastPayloadKey }
 
     private func payloadKey(for snapshot: WidgetLyricSnapshot) -> String {
-        "\(snapshot.trackTitle)|\(snapshot.currentLine)|\(snapshot.isPlaying)"
+        let schedule = snapshot.scheduledLines.map {
+            "\(Int($0.date.timeIntervalSince1970.rounded())):\($0.text)"
+        }.joined(separator: "|")
+        return "\(snapshot.trackTitle)|\(snapshot.artistName)|\(snapshot.currentLine)"
+            + "|\(snapshot.isPlaying)|\(snapshot.albumImageURL ?? "")"
+            + "|\(snapshot.albumImageData?.hashValue ?? 0)|\(schedule)"
     }
 }
 

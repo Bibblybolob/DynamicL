@@ -1,7 +1,7 @@
 import Foundation
 
-/// Live Activity appearance preferences, chosen in-app and shared with the
-/// widget extension through the app group so restyling needs no content push.
+/// Live Activity and widget appearance preferences, chosen in-app and shared
+/// through the app group so restyling needs no content push.
 public struct LAStylePrefs: Codable, Equatable, Sendable {
     public enum Theme: String, Codable, CaseIterable, Sendable {
         case hotPink
@@ -36,6 +36,16 @@ public struct LAStylePrefs: Codable, Equatable, Sendable {
         case vinyl
         case square
         case hidden
+    }
+
+    /// Controls the surface treatment used by the Live Activity and widgets.
+    /// The setting changes the card finish without changing the selected theme.
+    public enum SurfaceStyle: String, Codable, CaseIterable, Sendable {
+        case gradient
+        case glass
+        case neon
+        case paper
+        case outline
     }
 
     public enum TextAlignment: String, Codable, CaseIterable, Sendable {
@@ -94,6 +104,7 @@ public struct LAStylePrefs: Codable, Equatable, Sendable {
     public var theme: Theme
     public var layout: Layout
     public var artworkStyle: ArtworkStyle
+    public var surfaceStyle: SurfaceStyle
     public var textAlignment: TextAlignment
     public var fontStyle: FontStyle
     public var lyricScale: LyricScale
@@ -122,10 +133,12 @@ public struct LAStylePrefs: Codable, Equatable, Sendable {
                 showNextLine: Bool = true,
                 showProgressBar: Bool = true,
                 animationsEnabled: Bool = true,
-                karaokeEnabled: Bool = true) {
+                karaokeEnabled: Bool = true,
+                surfaceStyle: SurfaceStyle = .gradient) {
         self.theme = theme
         self.layout = layout
         self.artworkStyle = artworkStyle
+        self.surfaceStyle = surfaceStyle
         self.textAlignment = textAlignment
         self.fontStyle = fontStyle
         self.lyricScale = lyricScale
@@ -146,6 +159,7 @@ public struct LAStylePrefs: Codable, Equatable, Sendable {
         theme = try c.decodeIfPresent(Theme.self, forKey: .theme) ?? .hotPink
         layout = try c.decodeIfPresent(Layout.self, forKey: .layout) ?? .player
         artworkStyle = try c.decodeIfPresent(ArtworkStyle.self, forKey: .artworkStyle) ?? .vinyl
+        surfaceStyle = try c.decodeIfPresent(SurfaceStyle.self, forKey: .surfaceStyle) ?? .gradient
         textAlignment = try c.decodeIfPresent(TextAlignment.self, forKey: .textAlignment) ?? .leading
         fontStyle = try c.decodeIfPresent(FontStyle.self, forKey: .fontStyle) ?? .rounded
         lyricScale = try c.decodeIfPresent(LyricScale.self, forKey: .lyricScale) ?? .balanced
@@ -380,5 +394,50 @@ public enum LAStyleStore {
             ? RGB(r: 0.07, g: 0.07, b: 0.09)
             : RGB(r: 1, g: 1, b: 1)
         return LAPalette(backgroundTop: boosted, backgroundBottom: darkened, accent: pastel, text: textColor)
+    }
+
+    /// Applies a surface finish to a theme palette. This stays in LyricCore
+    /// so the app and every widget target use the same color decisions.
+    public static func applySurface(_ surface: LAStylePrefs.SurfaceStyle,
+                                    to palette: LAPalette) -> LAPalette {
+        func clamp(_ value: Double) -> Double { min(1, max(0, value)) }
+        func scale(_ color: RGB, by amount: Double) -> RGB {
+            RGB(r: clamp(color.r * amount),
+                g: clamp(color.g * amount),
+                b: clamp(color.b * amount))
+        }
+        func luminance(_ color: RGB) -> Double {
+            0.299 * color.r + 0.587 * color.g + 0.114 * color.b
+        }
+
+        switch surface {
+        case .gradient, .glass, .outline:
+            return palette
+        case .neon:
+            return LAPalette(
+                backgroundTop: scale(palette.backgroundTop, by: 0.18),
+                backgroundBottom: scale(palette.backgroundBottom, by: 0.06),
+                accent: palette.accent,
+                text: RGB(r: 1, g: 1, b: 1)
+            )
+        case .paper:
+            let baseAccent = palette.accent
+            let accent: RGB
+            if luminance(baseAccent) > 0.68 {
+                accent = scale(baseAccent, by: 0.38)
+            } else if luminance(baseAccent) < 0.22 {
+                accent = RGB(r: clamp(baseAccent.r * 2 + 0.12),
+                             g: clamp(baseAccent.g * 2 + 0.12),
+                             b: clamp(baseAccent.b * 2 + 0.12))
+            } else {
+                accent = baseAccent
+            }
+            return LAPalette(
+                backgroundTop: RGB(r: 0.98, g: 0.94, b: 0.84),
+                backgroundBottom: RGB(r: 0.86, g: 0.76, b: 0.61),
+                accent: accent,
+                text: RGB(r: 0.12, g: 0.09, b: 0.08)
+            )
+        }
     }
 }

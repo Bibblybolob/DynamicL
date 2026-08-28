@@ -21,6 +21,18 @@ enum DiagnosticsLog {
         }
     }
 
+    /// Flushes pending writes and returns a file that the user can share from
+    /// the app. Create an empty file when no event has been recorded yet.
+    static var shareURL: URL {
+        queue.sync {
+            let url = documentsDirectory.appending(path: fileName)
+            if !FileManager.default.fileExists(atPath: url.path) {
+                try? Data().write(to: url)
+            }
+            return url
+        }
+    }
+
     private static var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }

@@ -1,5 +1,11 @@
 import Foundation
 
+enum SyncActivityState: String {
+    case active
+    case none
+    case dismissed
+}
+
 /// Uploads Live Activity push tokens to the user-configured sync server so a
 /// server-side poller can push content-state updates over APNs.
 ///
@@ -15,8 +21,12 @@ final class SyncServerClient {
     /// Most recent tokens seen; re-uploaded whenever the server URL changes.
     private(set) var updateToken: String?
     private(set) var pushToStartToken: String?
+    private(set) var serverSessionDismissed = false
 
     private var pendingUploadTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
+    private var lastHeartbeatAt: Date?
+    private var lastLyricOffsetMs = 0
 
     var serverURLString: String {
         UserDefaults.standard.string(forKey: Self.urlKey) ?? ""
@@ -103,10 +113,84 @@ final class SyncServerClient {
         await uploadCurrentTokens()
     }
 
+    /// Removes an update token that belongs to an ended activity. The global
+    /// push-to-start token remains registered for the next playback session.
+    func noteActivityEnded(dismissed: Bool) {
+        updateToken = nil
+        if dismissed { serverSessionDismissed = true }
+        lastHeartbeatAt = .distantPast
+        DiagnosticsLog.append(dismissed ? "sync: activity dismissed" : "sync: activity ended")
+    }
+
+    func resetDismissalForNewSession() {
+        serverSessionDismissed = false
+        lastHeartbeatAt = .distantPast
+    }
+
+    /// Renews the phone's writer lease. If this call stops because iOS
+    /// suspends the app, the server takes over after 15 seconds.
+    func heartbeat(
+        activityState: SyncActivityState,
+        trackID: String?,
+        lyricOffset: TimeInterval,
+        localRevision: Int64,
+        healthy: Bool,
+        autoStartEnabled: Bool,
+        force: Bool = false
+    ) {
+        guard healthy else { return }
+        lastLyricOffsetMs = Int((lyricOffset * 1_000).rounded())
+        let now = Date.now
+        guard force || now.timeIntervalSince(lastHeartbeatAt ?? .distantPast) >= 5 else { return }
+        guard heartbeatTask == nil else { return }
+        guard configuredBaseURL() != nil, !serverAuthTokenString.isEmpty else { return }
+        guard updateToken != nil || pushToStartToken != nil else { return }
+        lastHeartbeatAt = now
+
+        heartbeatTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.heartbeatTask = nil }
+            guard let url = URL(string: self.endpoint(path: "heartbeat")) else { return }
+            var body: [String: Any] = [
+                "clientSchemaVersion": 2,
+                "activityState": activityState.rawValue,
+                "sentAtMs": Int64(now.timeIntervalSince1970 * 1_000),
+                "localRevision": localRevision,
+                "lyricOffsetMs": self.lastLyricOffsetMs,
+                "autoStartEnabled": autoStartEnabled,
+            ]
+            if let updateToken = self.updateToken { body["updateToken"] = updateToken }
+            if let trackID { body["trackID"] = trackID }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 10
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(self.serverAuthTokenString)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                if (200...299).contains(code),
+                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    self.applyServerState(object)
+                    let writer = object["writer"] as? String ?? "phone"
+                    DiagnosticsLog.append("sync: heartbeat ok writer=\(writer)")
+                } else {
+                    DiagnosticsLog.append("sync: heartbeat HTTP \(code)")
+                }
+            } catch {
+                DiagnosticsLog.append("sync: heartbeat failed")
+            }
+        }
+    }
+
     private func uploadCurrentTokens(force: Bool = false) async {
-        // The current worker updates an existing activity. A push-to-start
-        // token alone cannot be registered until an update token exists.
-        guard let updateToken, !updateToken.isEmpty else { return }
+        // A push-to-start token must be accepted before the first activity
+        // exists. Requiring an update token here made automatic start
+        // impossible on a fresh installation.
+        guard updateToken?.isEmpty == false || pushToStartToken?.isEmpty == false else { return }
         guard configuredBaseURL() != nil else {
             if force {
                 DiagnosticsLog.append("sync: no valid HTTPS server URL set")
@@ -139,16 +223,31 @@ final class SyncServerClient {
         // The refresh token lets the sync server poll Spotify on our behalf —
         // that's the entire point of server push (app liveness becomes
         // irrelevant). Sent only over the user-configured HTTPS endpoint.
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "updateToken": updateToken,
-            "pushToStartToken": pushToStartToken ?? "",
+        let supportsRemoteStart: Bool
+        if #available(iOS 17.2, *) {
+            supportsRemoteStart = true
+        } else {
+            supportsRemoteStart = false
+        }
+        var body: [String: Any] = [
+            "clientSchemaVersion": 2,
             "spotifyRefreshToken": refreshToken,
-        ])
+            "supportsRemoteStart": supportsRemoteStart,
+            "supportsInputPushToken": ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 18,
+            "lyricOffsetMs": lastLyricOffsetMs,
+            "autoStartEnabled": UserDefaults.standard.object(forKey: "lockScreenLyricsEnabled") as? Bool ?? true,
+        ]
+        if let updateToken, !updateToken.isEmpty { body["updateToken"] = updateToken }
+        if let pushToStartToken, !pushToStartToken.isEmpty { body["pushToStartToken"] = pushToStartToken }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
             if (200...299).contains(code) {
+                if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    applyServerState(object)
+                }
                 DiagnosticsLog.append("sync: tokens registered (\(code))")
             } else {
                 DiagnosticsLog.append("sync: registration rejected HTTP \(code)")
@@ -173,6 +272,12 @@ final class SyncServerClient {
     private func endpoint(path: String) -> String {
         guard let base = configuredBaseURL() else { return path }
         return base.appending("/\(path)")
+    }
+
+    private func applyServerState(_ object: [String: Any]) {
+        if let dismissed = object["playbackSessionDismissed"] as? Bool {
+            serverSessionDismissed = dismissed
+        }
     }
 }
 

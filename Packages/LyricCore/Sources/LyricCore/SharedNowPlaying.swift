@@ -49,15 +49,29 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
 public enum SharedNowPlaying {
     public static let appGroupID = "group.com.jonathantran.dynamicallyrics.la"
     private static let storageKey = "widgetLyricSnapshot"
+    private static let artworkIndexKey = "albumArtworkCacheV2"
     private static let artworkCacheKey = "currentAlbumArtwork"
     // Read these keys for one release so users can migrate from the earlier
     // two-value cache without showing a missing image.
     private static let artworkURLKey = "currentAlbumArtworkURL"
     private static let artworkDataKey = "currentAlbumArtworkData"
 
-    private struct ArtworkCache: Codable {
+    private static let maxArtworkEntries = 4
+    private static let maxArtworkBytes = 2_000_000
+
+    private struct LegacyArtworkCache: Codable {
         let url: String
         let data: Data
+    }
+
+    private struct ArtworkEntry: Codable {
+        let url: String
+        let data: Data
+        let savedAt: Date
+    }
+
+    private struct ArtworkIndex: Codable {
+        var entries: [ArtworkEntry]
     }
 
     public static func save(_ snapshot: WidgetLyricSnapshot) {
@@ -72,14 +86,24 @@ public enum SharedNowPlaying {
         clear(defaults: store())
     }
 
+    /// Removes artwork only during an explicit account reset or sign-out.
+    public static func clearArtworkCache() {
+        clearArtworkCache(defaults: store())
+    }
+
+    public static func clearAll() {
+        clear(defaults: store())
+        clearArtworkCache(defaults: store())
+    }
+
     /// Returns artwork only when it belongs to the requested URL.
     /// This prevents a previous track's image from appearing for a new track.
     public static func cachedArtwork(for urlString: String?) -> Data? {
         cachedArtwork(for: urlString, defaults: store())
     }
 
-    /// Stores one current artwork image in the shared app group.
-    /// The cache keeps one image so it does not grow across tracks.
+    /// Stores artwork in a bounded app-group cache. The newest four images
+    /// share a 2 MB limit, so recent tracks survive short data gaps.
     public static func saveArtwork(_ data: Data, for urlString: String) {
         saveArtwork(data, for: urlString, defaults: store())
     }
@@ -91,8 +115,21 @@ public enum SharedNowPlaying {
 
     static func cachedArtwork(for urlString: String?, defaults: UserDefaults?) -> Data? {
         guard let urlString else { return nil }
+        var entries = artworkEntries(defaults: defaults)
+        if let index = entries.lastIndex(where: { $0.url == urlString }),
+           !entries[index].data.isEmpty {
+            if index == entries.index(before: entries.endIndex) {
+                return entries[index].data
+            }
+            let entry = entries.remove(at: index)
+            entries.append(ArtworkEntry(url: entry.url, data: entry.data, savedAt: .now))
+            if let encoded = try? JSONEncoder().encode(ArtworkIndex(entries: entries)) {
+                defaults?.set(encoded, forKey: artworkIndexKey)
+            }
+            return entry.data
+        }
         if let encoded = defaults?.data(forKey: artworkCacheKey),
-           let cache = try? JSONDecoder().decode(ArtworkCache.self, from: encoded),
+           let cache = try? JSONDecoder().decode(LegacyArtworkCache.self, from: encoded),
            cache.url == urlString,
            !cache.data.isEmpty {
             return cache.data
@@ -103,10 +140,16 @@ public enum SharedNowPlaying {
 
     static func saveArtwork(_ data: Data, for urlString: String, defaults: UserDefaults?) {
         guard !data.isEmpty else { return }
-        guard let encoded = try? JSONEncoder().encode(ArtworkCache(url: urlString, data: data)) else { return }
-        // Write one value. A widget can never observe a new URL with old or
-        // missing bytes between two separate UserDefaults writes.
-        defaults?.set(encoded, forKey: artworkCacheKey)
+        var entries = artworkEntries(defaults: defaults).filter { $0.url != urlString }
+        entries.append(ArtworkEntry(url: urlString, data: data, savedAt: .now))
+        while entries.count > maxArtworkEntries || entries.reduce(0, { $0 + $1.data.count }) > maxArtworkBytes {
+            entries.removeFirst()
+        }
+        guard let encoded = try? JSONEncoder().encode(ArtworkIndex(entries: entries)) else { return }
+        // Write the complete index atomically. Readers never observe a URL
+        // paired with bytes from another track.
+        defaults?.set(encoded, forKey: artworkIndexKey)
+        defaults?.removeObject(forKey: artworkCacheKey)
         defaults?.removeObject(forKey: artworkURLKey)
         defaults?.removeObject(forKey: artworkDataKey)
     }
@@ -118,12 +161,24 @@ public enum SharedNowPlaying {
 
     static func clear(defaults: UserDefaults?) {
         defaults?.removeObject(forKey: storageKey)
-        defaults?.removeObject(forKey: artworkCacheKey)
-        defaults?.removeObject(forKey: artworkURLKey)
-        defaults?.removeObject(forKey: artworkDataKey)
         // A command can fail while its optimistic override is still in the
         // app-group mailbox. Do not let that stale flip affect the next song.
         defaults?.removeObject(forKey: playingOverrideKey)
+    }
+
+    static func clearArtworkCache(defaults: UserDefaults?) {
+        defaults?.removeObject(forKey: artworkIndexKey)
+        defaults?.removeObject(forKey: artworkCacheKey)
+        defaults?.removeObject(forKey: artworkURLKey)
+        defaults?.removeObject(forKey: artworkDataKey)
+    }
+
+    private static func artworkEntries(defaults: UserDefaults?) -> [ArtworkEntry] {
+        guard let data = defaults?.data(forKey: artworkIndexKey),
+              let index = try? JSONDecoder().decode(ArtworkIndex.self, from: data) else {
+            return []
+        }
+        return index.entries
     }
 
     private static let playingOverrideKey = "widgetPlayingOverride"

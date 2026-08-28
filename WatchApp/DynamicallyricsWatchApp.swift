@@ -1,5 +1,7 @@
 import SwiftUI
 import WatchConnectivity
+import WidgetKit
+import LyricCore
 
 @main
 struct DynamicallyricsWatchApp: App {
@@ -38,12 +40,17 @@ final class WatchModel {
     }
 
     private func apply(_ payload: WatchPayload) {
-        guard let title = payload.trackTitle, let line = payload.currentLine else { return }
-        trackTitle = title
-        artistName = payload.artistName ?? ""
-        currentLine = line
-        isPlaying = payload.isPlaying
+        guard let snapshot = payload.snapshot else { return }
+        trackTitle = snapshot.trackTitle
+        artistName = snapshot.artistName
+        currentLine = snapshot.currentLine
+        isPlaying = snapshot.isPlaying
         hasContent = true
+        if let url = snapshot.albumImageURL, let data = snapshot.albumImageData {
+            SharedNowPlaying.saveArtwork(data, for: url)
+        }
+        SharedNowPlaying.save(snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func reset() {
@@ -52,6 +59,8 @@ final class WatchModel {
         artistName = ""
         currentLine = "Waiting for your iPhone…"
         isPlaying = false
+        SharedNowPlaying.clear()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }
 
@@ -96,17 +105,29 @@ private final class WatchReceiverDelegate: NSObject, WCSessionDelegate, @uncheck
 
 /// Sendable snapshot of a phone payload so it can cross into MainActor isolation.
 struct WatchPayload: Sendable {
-    let trackTitle: String?
-    let artistName: String?
-    let currentLine: String?
-    let isPlaying: Bool
+    let snapshot: WidgetLyricSnapshot?
 
     init(raw: [String: Any]) {
-        trackTitle = raw["trackTitle"] as? String
-        artistName = raw["artistName"] as? String
-        currentLine = raw["currentLine"] as? String
-        isPlaying = raw["isPlaying"] as? Bool ?? false
+        if let data = raw["snapshotData"] as? Data,
+           let decoded = try? JSONDecoder().decode(WidgetLyricSnapshot.self, from: data) {
+            snapshot = decoded
+            return
+        }
+
+        // Keep one-version compatibility with phone builds that sent only the
+        // currently visible text fields.
+        if let trackTitle = raw["trackTitle"] as? String,
+           let currentLine = raw["currentLine"] as? String {
+            snapshot = WidgetLyricSnapshot(
+                trackTitle: trackTitle,
+                artistName: raw["artistName"] as? String ?? "",
+                currentLine: currentLine,
+                isPlaying: raw["isPlaying"] as? Bool ?? false
+            )
+        } else {
+            snapshot = nil
+        }
     }
 
-    var isEmpty: Bool { trackTitle == nil && currentLine == nil }
+    var isEmpty: Bool { snapshot == nil }
 }

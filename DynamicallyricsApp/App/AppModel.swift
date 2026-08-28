@@ -25,6 +25,7 @@ final class AppModel {
     private var ticker: Task<Void, Never>?
     private var lastLineIndex: Int?
     private var pausedAt: Date?
+    private var stoppedAt: Date?
     private let keeper = BackgroundAudioKeeper.shared
 
     private var widgetPausedAt: Date?
@@ -40,6 +41,20 @@ final class AppModel {
             if !newValue {
                 liveActivity.end()
                 keeper.stop()
+            }
+            if let provider {
+                let healthy = provider.lastSuccessfulPollAt.map {
+                    Date.now.timeIntervalSince($0) <= 10
+                } ?? false
+                SyncServerClient.shared.heartbeat(
+                    activityState: liveActivity.syncActivityState,
+                    trackID: provider.lastTrackID,
+                    lyricOffset: lyrics.userOffset,
+                    localRevision: localLARevision,
+                    healthy: healthy,
+                    autoStartEnabled: newValue,
+                    force: true
+                )
             }
         }
     }
@@ -117,6 +132,9 @@ final class AppModel {
         nowPlaying.clear()
         liveActivity.end()
         keeper.stop()
+        SharedNowPlaying.clearAll()
+        watchSync.clear()
+        reloadWidgetTimelines()
     }
 
     func handleScenePhase(_ phase: ScenePhase) {
@@ -215,9 +233,25 @@ final class AppModel {
         manageKeepAlive()
         publishNowPlayingIfDue()
         syncLiveActivity()
+        syncServerHeartbeat()
         syncWidgetSnapshot()
         syncWatchSnapshot()
         consumeWidgetCommand()
+    }
+
+    private func syncServerHeartbeat() {
+        guard auth.isConnected, let provider else { return }
+        let healthy = provider.lastSuccessfulPollAt.map {
+            Date.now.timeIntervalSince($0) <= 10
+        } ?? false
+        SyncServerClient.shared.heartbeat(
+            activityState: liveActivity.syncActivityState,
+            trackID: provider.lastTrackID,
+            lyricOffset: lyrics.userOffset,
+            localRevision: localLARevision,
+            healthy: healthy,
+            autoStartEnabled: lockScreenLyricsEnabled
+        )
     }
 
     /// A successful poll after >20s of silence means the feed just recovered
@@ -365,9 +399,14 @@ final class AppModel {
         lastArtworkPrefetchAt = now
         albumArtworkPrefetchTask?.cancel()
         albumArtworkPrefetchTask = Task { [weak self] in
-            guard let data = await AlbumArtworkPrefetcher.fetch(urlString: urlString),
-                  !Task.isCancelled else { return }
+            let fetched = await AlbumArtworkPrefetcher.fetch(urlString: urlString)
+            guard !Task.isCancelled else { return }
+            guard let data = fetched else {
+                DiagnosticsLog.append("art cache: fetch failed")
+                return
+            }
             SharedNowPlaying.saveArtwork(data, for: urlString)
+            DiagnosticsLog.append("art cache: stored \(data.count) bytes")
             guard let self, self.provider?.lastAlbumImageURL == urlString else { return }
             self.lastPublishedWidgetKey = nil
             self.lastReloadedWidgetKey = nil
@@ -377,9 +416,27 @@ final class AppModel {
     }
 
     private func reloadWidgetTimelines() {
-        WidgetCenter.shared.reloadTimelines(ofKind: "CurrentLineWidget")
-        WidgetCenter.shared.reloadTimelines(ofKind: "LockscreenLyricWidget")
-        WidgetCenter.shared.reloadTimelines(ofKind: "VinylWidget")
+        // All styles use the same shared snapshot. Reload each kind when the
+        // track or artwork changes, otherwise a newly added style can keep the
+        // previous track until WidgetKit performs an unrelated refresh.
+        let kinds = [
+            "CurrentLineWidget",
+            "AlbumPlayerWidget",
+            "LyricFocusWidget",
+            "MinimalLyricsWidget",
+            "AlbumCardWidget",
+            "KaraokeFocusWidget",
+            "LyricsPosterWidget",
+            "WaveformPlayerWidget",
+            "AlbumStackWidget",
+            "LockscreenLyricWidget",
+            "LockscreenAlbumWidget",
+            "LockscreenQuoteWidget",
+            "VinylWidget",
+        ]
+        for kind in kinds {
+            WidgetCenter.shared.reloadTimelines(ofKind: kind)
+        }
     }
 
     private func clearWidgetSnapshot() {
@@ -391,19 +448,24 @@ final class AppModel {
         watchSync.clear()
     }
 
-    /// Mirrors the widget snapshot to a paired Apple Watch, deduped per line change.
+    /// Mirrors the complete widget snapshot to a paired Apple Watch. The watch
+    /// stores it in its own app group so complications can advance locally.
     private func syncWatchSnapshot() {
         guard let signature, let document = lyrics.document, status?.state != .stopped else {
             return
         }
         let index = lyrics.currentIndex ?? -1
         let current = index >= 0 && index < document.lines.count ? document.lines[index].text : "♪"
+        let artworkURL = provider?.lastAlbumImageURL
         watchSync.publish(
             WidgetLyricSnapshot(
                 trackTitle: signature.title,
                 artistName: signature.artist,
+                albumImageURL: artworkURL,
+                albumImageData: SharedNowPlaying.cachedArtwork(for: artworkURL),
                 currentLine: current,
-                isPlaying: status?.state == .playing
+                isPlaying: status?.state == .playing,
+                scheduledLines: scheduledLines(for: document, limit: 40)
             )
         )
     }
@@ -491,28 +553,47 @@ final class AppModel {
         }
 
         switch status?.state {
-        case .stopped, .none:
-            // Single stopped blips happen right after skips (204/no-device).
-            // Require two consecutive observations before tearing the LA down.
-            stoppedStreak += 1
-            if stoppedStreak >= 2 {
+        case .stopped:
+            // SpotifyProvider requires two independent stopped samples before
+            // it clears the active item. Keep the Activity through one 204 so
+            // skip transitions and network gaps do not remove artwork.
+            if provider?.isPlaybackConfirmedStopped == true {
                 if liveActivity.isRunning { liveActivity.end() }
+                liveActivity.resetDismissalForNewPlaybackSession()
+                SyncServerClient.shared.resetDismissalForNewSession()
+                stoppedAt = nil
                 pausedAt = nil
+            } else if stoppedAt == nil {
+                stoppedAt = .now
             }
             return
+        case .none:
+            // Do not treat app startup as a confirmed Spotify stop. The first
+            // successful player response determines the playback session.
+            return
         case .paused:
+            stoppedAt = nil
             if pausedAt == nil { pausedAt = .now }
-            if Date.now.timeIntervalSince(pausedAt ?? .now) > 300 {
+            if Date.now.timeIntervalSince(pausedAt ?? .now) > 600 {
                 if liveActivity.isRunning { liveActivity.end() }
                 return
             }
         case .playing:
+            if let pausedAt, Date.now.timeIntervalSince(pausedAt) >= 600 {
+                liveActivity.resetDismissalForNewPlaybackSession()
+                SyncServerClient.shared.resetDismissalForNewSession()
+            }
             pausedAt = nil
+            stoppedAt = nil
         }
-        stoppedStreak = 0
+
+        if SyncServerClient.shared.serverSessionDismissed {
+            liveActivity.suppressForCurrentPlaybackSession()
+            return
+        }
 
         let style = loadLAStyle()
-        let styleKey = "\(style.prefs.theme.rawValue)|\(style.prefs.layout.rawValue)|\(style.prefs.artworkStyle.rawValue)|\(style.prefs.textAlignment.rawValue)|\(style.prefs.fontStyle.rawValue)|\(style.prefs.lyricScale.rawValue)|\(style.prefs.showTrackInfo)|\(style.prefs.showControls)|\(style.prefs.showNextLine)|\(style.prefs.showProgressBar)|\(style.prefs.animationsEnabled)|\(style.prefs.karaokeEnabled)"
+        let styleKey = "\(style.prefs.theme.rawValue)|\(style.prefs.layout.rawValue)|\(style.prefs.artworkStyle.rawValue)|\(style.prefs.surfaceStyle.rawValue)|\(style.prefs.textAlignment.rawValue)|\(style.prefs.fontStyle.rawValue)|\(style.prefs.lyricScale.rawValue)|\(style.prefs.showTrackInfo)|\(style.prefs.showControls)|\(style.prefs.showNextLine)|\(style.prefs.showProgressBar)|\(style.prefs.animationsEnabled)|\(style.prefs.karaokeEnabled)"
 
         guard let signature else {
             if liveActivity.isRunning { liveActivity.end() }
@@ -531,7 +612,7 @@ final class AppModel {
             let placeholderKey = "\(signature.title)|\(lyrics.isAwaitingLyrics)|\(artworkReady)"
             if liveActivity.isRunning, placeholderKey != lastLAPlaceholderKey {
                 lastLAPlaceholderKey = placeholderKey
-                let placeholderState: LyricsActivityAttributes.ContentState = {
+                let placeholderState: LyricsActivityAttributes.ContentState = stamped({
                     // Anchors + accent included so neither the progress bar
                     // nor the theme flickers for the ~1s lyrics are loading.
                     let anchors = status.map { PlaybackAnchors(status: $0, duration: signature.duration) }
@@ -541,19 +622,24 @@ final class AppModel {
                         albumImageURL: provider?.lastAlbumImageURL,
                         currentLine: lyrics.isAwaitingLyrics ? "Finding lyrics…" : "No lyrics for this track",
                         isPlaying: status?.state == .playing,
-                        progressStart: anchors?.startDate,
-                        progressEnd: anchors?.endDate,
                         frozenProgress: anchors?.frozenFraction,
                         albumDominantRGB: style.prefs.theme == .album
-                            ? style.accent.map { [$0.r, $0.g, $0.b] } : nil
+                            ? style.accent.map { [$0.r, $0.g, $0.b] } : nil,
+                        schemaVersion: 2,
+                        source: .phone,
+                        trackID: provider?.lastTrackID,
+                        progressStartEpoch: anchors?.startDate.timeIntervalSince1970,
+                        progressEndEpoch: anchors?.endDate?.timeIntervalSince1970
                     )
-                }()
+                }())
                 liveActivity.update(state: placeholderState)
                 lastSentLAHash = laContentHash(placeholderState)
                 lastLAUpdateAt = .now
                 lastLAArtworkReady = artworkReady
                 lastAppliedStyleKey = styleKey
                 lastSentAccent = placeholderState.albumDominantRGB
+                lastSentLASchedule = []
+                lastAppliedLAProgressStartEpoch = placeholderState.progressStartEpoch
             }
             return
         }
@@ -562,17 +648,19 @@ final class AppModel {
             // Recovery: try adoption AND fresh creation on every tick. iOS
             // rejects what isn't allowed (background creation); attempting is
             // free and self-heals faster than gating on scenePhase guesses.
-            let startState = contentState(document: document, style: style.prefs, albumAccent: style.accent)
+            let startState = stamped(contentState(document: document, style: style.prefs, albumAccent: style.accent))
             liveActivity.start(state: startState)
             lastLineIndex = lyrics.currentIndex
             lastLAUpdateAt = .now
             lastLASentIsPlaying = startState.isPlaying
-            lastLASentTrack = "\(startState.trackTitle)|\(startState.artistName)|\(startState.albumImageURL ?? "-")|\(document.lines.count)"
+            lastLASentTrack = "\(startState.trackID ?? "-")|\(startState.trackTitle)|\(startState.artistName)|\(startState.albumImageURL ?? "-")|\(document.lines.count)"
             lastLAArtworkReady = artworkReady
             lastSentLAHash = laContentHash(startState)
             lastAppliedStyleKey = styleKey
             lastSentAccent = startState.albumDominantRGB
             lastAppliedLAOffset = lyrics.userOffset
+            lastSentLASchedule = startState.resolvedScheduledLines
+            lastAppliedLAProgressStartEpoch = startState.progressStartEpoch
             return
         }
 
@@ -583,7 +671,7 @@ final class AppModel {
         // anything. The progress bar advances itself via TimelineView on the
         // widget's own clock.
         let targetState = contentState(document: document, style: style.prefs, albumAccent: style.accent)
-        let trackKey = "\(targetState.trackTitle)|\(targetState.artistName)|\(targetState.albumImageURL ?? "-")|\(document.lines.count)"
+        let trackKey = "\(targetState.trackID ?? "-")|\(targetState.trackTitle)|\(targetState.artistName)|\(targetState.albumImageURL ?? "-")|\(document.lines.count)"
         let trackChanged = trackKey != lastLASentTrack
         let lineChanged = lyrics.currentIndex != lastLineIndex
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
@@ -596,18 +684,32 @@ final class AppModel {
         let offsetChanged = lastAppliedLAOffset.map {
             abs($0 - lyrics.userOffset) > 0.001
         } ?? false
-        let urgent = trackChanged || playChanged || artworkChanged || accentChanged || styleChanged || offsetChanged
+        let anchorChanged: Bool = {
+            switch (lastAppliedLAProgressStartEpoch, targetState.progressStartEpoch) {
+            case let (old?, new?): abs(old - new) > 0.75
+            case (.none, .none): false
+            default: true
+            }
+        }()
+        let urgent = trackChanged || playChanged || artworkChanged || accentChanged
+            || styleChanged || offsetChanged || anchorChanged
         let sinceLastSend = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast)
-        // The in-app scroller advances on a 250ms clock. ActivityKit still
-        // applies its own device-level budget, but a four-second app-side gate
-        // made normal lyric changes visibly stale. Coalescing in the controller
-        // prevents overlapping sends, so this can be responsive without a
-        // request storm.
-        let minGapPassed = sinceLastSend >= 1.5
-        let lineSend = lineChanged && minGapPassed && !throttleCapped(now: now)
-        // Keep-alive pulse: refresh staleness at most ~2/min during playback
-        // so isStale (and therefore ↻) only ever means a genuinely dead feed.
-        let keepAliveSend = status?.state == .playing && !urgent && sinceLastSend >= 30
+        let remainingSchedule = lastSentLASchedule.filter { $0.date > now }
+        let targetSchedule = targetState.resolvedScheduledLines
+        let currentEnd = remainingSchedule.last?.date ?? .distantPast
+        let targetEnd = targetSchedule.last?.date ?? .distantPast
+        let canExtendSchedule = targetEnd.timeIntervalSince(currentEnd) > 1
+        let scheduleLow = remainingSchedule.count < 6
+            || currentEnd.timeIntervalSince(now) < 20
+        let scheduleRefill = targetState.isPlaying && scheduleLow
+            && canExtendSchedule && sinceLastSend >= 5
+
+        // A valid schedule changes the lyric inside the extension. A direct
+        // line update is only a fallback for tracks without future boundaries.
+        let minGapPassed = sinceLastSend >= 0.5
+        let lineSend = lineChanged && targetSchedule.isEmpty
+            && minGapPassed && !throttleCapped(now: now)
+        let keepAliveSend = status?.state == .playing && !urgent && sinceLastSend >= 45
         // Reconciliation self-heal: ActivityKit silently drops background
         // updates now and then. If what we last sent differs from current
         // truth for >45s, resend. Generous window — frequent reconciles were
@@ -615,20 +717,26 @@ final class AppModel {
         let reconciling = sinceLastSend >= 60
             && lastSentLAHash != nil
             && lastSentLAHash != laContentHash(targetState)
-        if reconciling && !(urgent || lineSend || keepAliveSend) {
+        if reconciling && !(urgent || scheduleRefill || lineSend || keepAliveSend) {
             DiagnosticsLog.append("la reconcile: resending drifted state")
         }
-        if urgent || lineSend || keepAliveSend || reconciling {
-            liveActivity.update(state: targetState)
+        if scheduleRefill {
+            DiagnosticsLog.append("la schedule refill: remaining=\(remainingSchedule.count)")
+        }
+        if urgent || scheduleRefill || lineSend || keepAliveSend || reconciling {
+            let sentState = stamped(targetState)
+            liveActivity.update(state: sentState)
             lastLAUpdateAt = now
             lastLineIndex = lyrics.currentIndex
-            lastLASentIsPlaying = targetState.isPlaying
+            lastLASentIsPlaying = sentState.isPlaying
             lastLASentTrack = trackKey
             lastLAArtworkReady = artworkReady
-            lastSentLAHash = laContentHash(targetState)
+            lastSentLAHash = laContentHash(sentState)
             lastAppliedStyleKey = styleKey
-            lastSentAccent = targetState.albumDominantRGB
+            lastSentAccent = sentState.albumDominantRGB
             lastAppliedLAOffset = lyrics.userOffset
+            lastSentLASchedule = sentState.resolvedScheduledLines
+            lastAppliedLAProgressStartEpoch = sentState.progressStartEpoch
             recordLASendRate()
         }
     }
@@ -673,17 +781,20 @@ final class AppModel {
     @ObservationIgnored private var albumAccent: RGB?
     @ObservationIgnored private var albumAccentForURL: String?
     @ObservationIgnored private var lastSentAccent: [Double]?
+    @ObservationIgnored private var lastSentLASchedule: [WidgetLyricSnapshot.ScheduledLine] = []
+    @ObservationIgnored private var lastAppliedLAProgressStartEpoch: TimeInterval?
+    @ObservationIgnored private var localLARevision: Int64 = 0
 
     /// Stable fingerprint of a ContentState. Anchor dates are second-rounded:
     /// during steady playback startDate/endDate are constant anyway, so any
     /// hash drift means real content (title, line, play state, bar) moved.
     private func laContentHash(_ s: LyricsActivityAttributes.ContentState) -> String {
         "\(s.trackTitle)|\(s.artistName)|\(s.albumImageURL ?? "-")|\(s.currentLine)|\(s.nextLine ?? "-")|\(s.isPlaying)"
-            + "|\(s.progressStart.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
-            + "|\(s.progressEnd.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
+            + "|\(s.resolvedProgressStart.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
+            + "|\(s.resolvedProgressEnd.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.frozenProgress.map { Int(($0 * 100).rounded()) } ?? -1)"
-            + "|\(s.karaokeStartDate.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
-            + "|\(s.karaokeEndDate.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
+            + "|\(s.resolvedKaraokeStart.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
+            + "|\(s.resolvedKaraokeEnd.map { $0.timeIntervalSince1970.rounded() } ?? -1)"
             + "|\(s.frozenKaraokeProgress.map { Int(($0 * 100).rounded()) } ?? -1)"
             + "|\(s.albumDominantRGB.map { $0.map { Int($0 * 255) } } ?? [])"
     }
@@ -707,9 +818,6 @@ final class AppModel {
     private var scenePhase: ScenePhase = .inactive
     @ObservationIgnored private var lastLASentIsPlaying = false
     @ObservationIgnored private var lastLASentTrack: String?
-    /// Consecutive stopped/no-device observations (blip immunity for LA teardown).
-    @ObservationIgnored private var stoppedStreak = 0
-
     private func contentState(document: LyricsDocument,
                               style: LAStylePrefs,
                               albumAccent: RGB?) -> LyricsActivityAttributes.ContentState {
@@ -721,10 +829,11 @@ final class AppModel {
         let dominant: [Double]? = style.theme == .album
             ? albumAccent.map { [$0.r, $0.g, $0.b] }
             : nil
-        // Twelve future lines keep the Live Activity payload compact while
-        // covering normal lyric gaps. ActivityKit updates refresh the window
-        // before it runs out, and the widget advances locally at each date.
-        let scheduled = scheduledLines(for: document, limit: 12)
+        // Start with a generous window, then trim by encoded byte size before
+        // handing the state to ActivityKit.
+        let scheduled = scheduledLines(for: document, limit: 24).map {
+            ActivityScheduledLine(dateEpoch: $0.date.timeIntervalSince1970, text: $0.text)
+        }
         return .init(
             trackTitle: signature?.title ?? document.track.title,
             artistName: signature?.artist ?? document.track.artist,
@@ -732,15 +841,34 @@ final class AppModel {
             currentLine: current,
             nextLine: next,
             isPlaying: status?.state == .playing,
-            progressStart: anchors?.startDate,
-            progressEnd: anchors?.endDate,
             frozenProgress: anchors?.frozenFraction,
-            scheduledLines: scheduled.isEmpty ? nil : scheduled,
-            karaokeStartDate: karaoke.start,
-            karaokeEndDate: karaoke.end,
             frozenKaraokeProgress: karaoke.frozen,
-            albumDominantRGB: dominant
+            albumDominantRGB: dominant,
+            schemaVersion: 2,
+            source: .phone,
+            trackID: provider?.lastTrackID,
+            progressStartEpoch: anchors?.startDate.timeIntervalSince1970,
+            progressEndEpoch: anchors?.endDate?.timeIntervalSince1970,
+            scheduledLinesV2: scheduled.isEmpty ? nil : scheduled,
+            karaokeStartEpoch: karaoke.start?.timeIntervalSince1970,
+            karaokeEndEpoch: karaoke.end?.timeIntervalSince1970
         )
+    }
+
+    private func stamped(
+        _ state: LyricsActivityAttributes.ContentState
+    ) -> LyricsActivityAttributes.ContentState {
+        localLARevision += 1
+        var copy = state
+        copy.schemaVersion = 2
+        copy.source = .phone
+        copy.revision = localLARevision
+        copy.generatedAtEpoch = Date.now.timeIntervalSince1970
+        let compact = copy.compacted()
+        if compact.encodedSize > 3_500 {
+            DiagnosticsLog.append("la payload remains oversized: \(compact.encodedSize) bytes")
+        }
+        return compact
     }
 
     /// Maps the active LRC line onto the same playback clock used by the main
@@ -783,13 +911,14 @@ final class AppModel {
                                 limit: Int) -> [WidgetLyricSnapshot.ScheduledLine] {
         guard status?.state == .playing else { return [] }
         let base = lyrics.displayPosition
+        let rate = max(status?.rate ?? 1, 0.001)
         let now = Date.now
         return Array(document.lines.compactMap { line in
             // SyncEngine applies the user's offset to playback position when
             // selecting the active line. Apply the equivalent inverse shift
             // to the wall-clock schedule so the app and Live Activity remain
             // aligned after an offset adjustment too.
-            let delta = line.time + lyrics.userOffset - base
+            let delta = (line.time + lyrics.userOffset - base) / rate
             guard delta > 0.05 else { return nil }
             return .init(date: now.addingTimeInterval(delta), text: line.text)
         }.prefix(limit))

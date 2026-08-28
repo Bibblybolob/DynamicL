@@ -10,8 +10,8 @@ export default {
       return json({ ok: true, service: "dynamicallyrics-sync" });
     }
 
-    const protectedRoute =
-      url.pathname === "/register" || url.pathname === "/status" || url.pathname === "/reset";
+    const protectedRoute = ["/register", "/heartbeat", "/status", "/reset"]
+      .includes(url.pathname);
     if (protectedRoute) {
       const authError = authorize(request, env);
       if (authError) return authError;
@@ -28,14 +28,59 @@ export default {
         return json({ error: "invalid registration payload" }, 400);
       }
       const { updateToken, pushToStartToken, spotifyRefreshToken } = body;
-      if (!isHexToken(updateToken) || !isHexToken(pushToStartToken, true) ||
-          typeof spotifyRefreshToken !== "string" || spotifyRefreshToken.length < 10) {
-        return json({ error: "updateToken and spotifyRefreshToken required" }, 400);
+      const hasActivityToken = isHexToken(updateToken, true) && Boolean(updateToken) ||
+        isHexToken(pushToStartToken, true) && Boolean(pushToStartToken);
+      if (!isHexToken(updateToken, true) || !isHexToken(pushToStartToken, true) ||
+          !hasActivityToken || typeof spotifyRefreshToken !== "string" ||
+          spotifyRefreshToken.length < 10 || !validOptionalNumber(body.lyricOffsetMs) ||
+          !validSchemaVersion(body.clientSchemaVersion)) {
+        return json({ error: "an Activity token and spotifyRefreshToken are required" }, 400);
       }
       const stub = env.SESSION.get(env.SESSION.idFromName("main"));
       const resp = await stub.fetch("https://session/register", {
         method: "POST",
-        body: JSON.stringify({ updateToken, pushToStartToken, spotifyRefreshToken }),
+        body: JSON.stringify({
+          updateToken,
+          pushToStartToken,
+          spotifyRefreshToken,
+          clientSchemaVersion: body.clientSchemaVersion,
+          supportsRemoteStart: body.supportsRemoteStart !== false,
+          supportsInputPushToken: body.supportsInputPushToken === true,
+          lyricOffsetMs: body.lyricOffsetMs ?? 0,
+          autoStartEnabled: body.autoStartEnabled !== false,
+        }),
+      });
+      return json(await resp.json(), resp.status);
+    }
+
+    if (request.method === "POST" && url.pathname === "/heartbeat") {
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "invalid JSON" }, 400);
+      }
+      const validState = ["active", "none", "dismissed"].includes(body?.activityState);
+      if (!body || typeof body !== "object" || Array.isArray(body) || !validState ||
+          !isHexToken(body.updateToken, true) || !validOptionalNumber(body.sentAtMs) ||
+          !validOptionalNumber(body.localRevision) || !validOptionalNumber(body.lyricOffsetMs) ||
+          !validSchemaVersion(body.clientSchemaVersion) ||
+          (body.trackID != null && (typeof body.trackID !== "string" || body.trackID.length > 256))) {
+        return json({ error: "invalid heartbeat payload" }, 400);
+      }
+      const stub = env.SESSION.get(env.SESSION.idFromName("main"));
+      const resp = await stub.fetch("https://session/heartbeat", {
+        method: "POST",
+        body: JSON.stringify({
+          activityState: body.activityState,
+          updateToken: body.updateToken,
+          sentAtMs: body.sentAtMs,
+          localRevision: body.localRevision,
+          trackID: body.trackID,
+          lyricOffsetMs: body.lyricOffsetMs ?? 0,
+          clientSchemaVersion: body.clientSchemaVersion,
+          autoStartEnabled: body.autoStartEnabled !== false,
+        }),
       });
       return json(await resp.json(), resp.status);
     }
@@ -87,4 +132,12 @@ function constantTimeEqual(a, b) {
 function isHexToken(value, optional = false) {
   if (optional && (value == null || value === "")) return true;
   return typeof value === "string" && /^[0-9a-f]+$/i.test(value) && value.length >= 16 && value.length <= 512;
+}
+
+function validOptionalNumber(value) {
+  return value == null || (typeof value === "number" && Number.isFinite(value));
+}
+
+function validSchemaVersion(value) {
+  return value == null || value === 1 || value === 2;
 }

@@ -7,9 +7,9 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current release candidate is version 1.1.1, build 11.
-- Build 10 is the previous TestFlight build.
-- Build 11 is uploaded to TestFlight and is processing in App Store Connect.
+- The current development build is version 1.1.1, build 15.
+- Build 14 is the previous build.
+- Build 15 must pass the device test before TestFlight upload.
 
 | Feature | Status |
 |---|---|
@@ -28,14 +28,28 @@ Development continues.
 
 ## Current release candidate
 
-Build 11, version 1.1.1, includes these changes:
+Build 15, version 1.1.1, includes these changes:
+
+- The phone is the primary Live Activity update source.
+- A 15-second lease prevents the phone and server from writing at the same time.
+- The server starts a Live Activity when Spotify starts and the app is not active.
+- The server sends complete track, lyric, timing, progress, and artwork data.
+- All new server timestamps use Unix epoch seconds.
+- The Live Activity uses explicit lyric boundary dates.
+- The app and server use millisecond Spotify progress and the same lyric offset.
+- Each Activity state stays below 3.5 KB.
+- A partial Spotify response does not remove valid artwork for the same track.
+- A new track cannot use artwork from the previous track.
+- The shared artwork cache keeps the four most recent images within 2 MB.
+- A user dismissal stops automatic restart for the current playback session.
+- The app can share a diagnostic log from the sync server settings.
 
 - The app uses the OpenLyrics name.
 - The app uses the selected OpenLyrics artwork.
 - The Live Activity uses a bounded lyric area.
 - Long lyric lines wrap or reduce in size inside the lyric area.
 - The app sends Live Activity updates in order.
-- The app uses a 1.5-second minimum gap between lyric updates.
+- The app uses a 0.5-second minimum gap between lyric updates.
 - The Live Activity supports layout, artwork, alignment, and control settings.
 - The vinyl widget can show static artwork when animation is off.
 - The Now Playing screen shows album artwork and playback state.
@@ -45,8 +59,30 @@ Build 11, version 1.1.1, includes these changes:
 - Widget snapshots carry ready artwork bytes with the track update.
 - Live Activities refresh when pending artwork becomes ready.
 - The app can retry a failed lyric lookup.
-- The app provides Minimal Lyrics, Album Card, and Karaoke Focus widgets.
+- The app provides Minimal Lyrics, Album Card, Karaoke Focus, Lyrics Poster,
+  Waveform Player, and Album Stack widgets.
+- The app provides Lock Screen Lyrics, Lock Screen Album, and Lock Screen Quote
+  widgets.
 - The watch extension provides Karaoke Lyrics and Album Player widgets.
+- All iPhone widget styles refresh when the track or artwork changes.
+- The vinyl widget downloads artwork once for each timeline.
+- Live Activity artwork can recover from the shared cache.
+- The main lyrics view centers the active line when it opens.
+- Plain lyrics use estimated times across the track duration.
+- The iPhone sends the current snapshot to the Watch app and Watch widgets.
+
+## Live Activity update ownership
+
+The app sends a heartbeat every five seconds while Spotify data is healthy.
+The heartbeat gives the phone a 15-second update lease.
+The server continues to poll Spotify, but it does not send an update during this lease.
+The server becomes the writer after the lease expires.
+
+The server polls every five seconds during playback.
+It polls every 10 seconds when playback is stopped.
+On iOS 17.2 or later, the server can use the push-to-start token to start one
+Live Activity for a new playback session. The app then registers the new
+Activity update token.
 
 ## Widgets
 
@@ -66,6 +102,11 @@ The app group is `group.com.jonathantran.dynamicallyrics.la`.
 | **Minimal Lyrics** (`MinimalLyricsWidget`) | Home Screen small, medium, and large | Shows lyrics in a text-only layout. |
 | **Album Card** (`AlbumCardWidget`) | Home Screen small and medium | Shows album art with track details and lyrics. |
 | **Karaoke Focus** (`KaraokeFocusWidget`) | Home Screen medium and large | Highlights the current lyric and shows the next line. |
+| **Lyrics Poster** (`LyricsPosterWidget`) | Home Screen small, medium, and large | Shows the current lyric as a bold quote card. |
+| **Waveform Player** (`WaveformPlayerWidget`) | Home Screen small, medium, and large | Shows the current lyric with a compact player and waveform. |
+| **Album Stack** (`AlbumStackWidget`) | Home Screen medium and large | Shows layered album artwork with the current lyric. |
+| **Lock Screen Album** (`LockscreenAlbumWidget`) | Lock Screen circular and rectangular | Shows album artwork, the track, and the current lyric. |
+| **Lock Screen Quote** (`LockscreenQuoteWidget`) | Lock Screen rectangular and inline | Shows the current lyric as a compact quotation. |
 | **Lyrics Live Activity** (`LyricsLiveActivity`) | Lock Screen and Dynamic Island | Shows the current and next lyric lines. Provides a play or pause button. |
 
 ### Appearance settings
@@ -74,6 +115,7 @@ The **Live Activity Style** screen provides these settings:
 
 - Player, Lyrics Focus, or Minimal layout
 - Vinyl, square, or hidden artwork
+- Gradient, glass, neon, paper, or outline card surface
 - Left or centered lyric text
 - Font and color theme
 - Lyric size

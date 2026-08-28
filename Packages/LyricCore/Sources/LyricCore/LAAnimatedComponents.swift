@@ -148,6 +148,7 @@ public struct LAMarquee: View {
 /// Home Screen widget. It intentionally works with a remote URL but always
 /// has a local record fallback, so missing artwork never breaks layout.
 public struct LAAlbumDisc: View {
+    let urlString: String?
     let url: URL?
     let imageData: Data?
     let size: CGFloat
@@ -156,6 +157,7 @@ public struct LAAlbumDisc: View {
     public init(urlString: String?, size: CGFloat,
                 imageData: Data? = nil,
                 style: LAStylePrefs.ArtworkStyle = .vinyl) {
+        self.urlString = urlString
         self.url = urlString.flatMap(URL.init(string:))
         self.imageData = imageData
         self.size = size
@@ -257,7 +259,8 @@ public struct LAAlbumDisc: View {
 
     #if canImport(UIKit)
     private var cachedArtworkImage: Image? {
-        guard let imageData, let image = UIImage(data: imageData) else { return nil }
+        let data = imageData ?? SharedNowPlaying.cachedArtwork(for: urlString)
+        guard let data, let image = UIImage(data: data) else { return nil }
         return Image(uiImage: image)
     }
     #else
@@ -266,9 +269,9 @@ public struct LAAlbumDisc: View {
 }
 
 /// Renders a lyric line from a wall-clock schedule shared by the app and the
-/// Live Activity. TimelineView wakes only at lyric boundaries unless the
-/// optional karaoke sweep is enabled; the sweep then uses a local 200ms clock
-/// and never asks the app to send an ActivityKit update for each frame.
+/// Live Activity. Lyric changes use their exact boundary dates. Karaoke uses
+/// a nested local clock, so iOS can reduce animation cadence without changing
+/// the schedule that selects the current line.
 public struct LAScheduledLyricText: View {
     public enum Role {
         case current
@@ -330,15 +333,14 @@ public struct LAScheduledLyricText: View {
     }
 
     public var body: some View {
-        Group {
+        TimelineView(.explicit(refreshDates)) { timeline in
+            let pair = resolvedLines(at: timeline.date)
             if role == .current && karaokeEnabled && animations {
-                TimelineView(.periodic(from: .now, by: 0.2)) { timeline in
-                    content(at: timeline.date)
+                TimelineView(.periodic(from: .now, by: 0.2)) { sweep in
+                    content(pair: pair, at: sweep.date)
                 }
             } else {
-                TimelineView(.explicit(refreshDates)) { timeline in
-                    content(at: timeline.date)
-                }
+                content(pair: pair, at: timeline.date)
             }
         }
         .frame(height: lineHeight)
@@ -346,8 +348,7 @@ public struct LAScheduledLyricText: View {
     }
 
     @ViewBuilder
-    private func content(at date: Date) -> some View {
-        let pair = resolvedLines(at: date)
+    private func content(pair: ResolvedLines, at date: Date) -> some View {
         let text = role == .current ? pair.current : pair.next
         Group {
             if role == .current {

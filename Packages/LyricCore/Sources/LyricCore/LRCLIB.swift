@@ -160,7 +160,7 @@ public struct LRCLIBClient: Sendable {
     }
 
     /// Best-effort document for a track: exact get, then search fallback.
-    /// Prefers synced lyrics; falls back to unsynced lines at 3s intervals.
+    /// Prefers synced lyrics; falls back to duration-aware estimated timing.
     public func fetchDocument(for signature: TrackSignature) async -> LyricsDocument? {
         if case .document(let doc) = await fetchOutcome(for: signature) {
             return doc
@@ -203,18 +203,41 @@ public struct LRCLIBClient: Sendable {
         }
     }
 
-    private func document(from result: LRCLibResult, track: TrackSignature) -> LyricsDocument? {
+    func document(from result: LRCLibResult, track: TrackSignature) -> LyricsDocument? {
         if let lrc = result.syncedLyrics, !lrc.isEmpty,
            let doc = try? LRCParser.makeDocument(lrc: lrc, track: track), !doc.lines.isEmpty {
             return doc
         }
         if let plain = result.plainLyrics, !plain.isEmpty {
-            let lines = plain.split(separator: "\n", omittingEmptySubsequences: true)
-                .enumerated()
-                .map { index, text in LyricLine(time: TimeInterval(index) * 3.0, text: String(text)) }
+            let textLines = plain.split(separator: "\n", omittingEmptySubsequences: true)
+                .map(String.init)
+            let lines = estimatedLines(
+                from: textLines,
+                duration: track.duration ?? result.duration
+            )
             return lines.isEmpty ? nil : LyricsDocument(track: track, lines: lines)
         }
         return nil
+    }
+
+    /// Plain lyrics have no timestamps. Spread them across the known track
+    /// duration with a short edge margin instead of advancing every three
+    /// seconds and finishing early on longer songs.
+    private func estimatedLines(from textLines: [String], duration: TimeInterval?) -> [LyricLine] {
+        guard textLines.count > 1,
+              let duration,
+              duration.isFinite,
+              duration > 0 else {
+            return textLines.enumerated().map {
+                LyricLine(time: TimeInterval($0.offset) * 3, text: $0.element)
+            }
+        }
+
+        let edgeMargin = min(8, duration * 0.05)
+        let interval = max(0, duration - (edgeMargin * 2)) / TimeInterval(textLines.count - 1)
+        return textLines.enumerated().map {
+            LyricLine(time: edgeMargin + (TimeInterval($0.offset) * interval), text: $0.element)
+        }
     }
 
     private func send(_ url: URL) async throws -> (Data, URLResponse?) {

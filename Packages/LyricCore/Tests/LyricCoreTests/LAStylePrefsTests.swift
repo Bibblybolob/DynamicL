@@ -7,6 +7,7 @@ final class LAStylePrefsTests: XCTestCase {
 
         XCTAssertEqual(prefs.layout, .player)
         XCTAssertEqual(prefs.artworkStyle, .vinyl)
+        XCTAssertEqual(prefs.surfaceStyle, .gradient)
         XCTAssertEqual(prefs.textAlignment, .leading)
         XCTAssertEqual(prefs.lyricScale, .balanced)
         XCTAssertTrue(prefs.showTrackInfo)
@@ -24,6 +25,7 @@ final class LAStylePrefsTests: XCTestCase {
         XCTAssertEqual(prefs.fontStyle, .serif)
         XCTAssertEqual(prefs.layout, .player)
         XCTAssertEqual(prefs.artworkStyle, .vinyl)
+        XCTAssertEqual(prefs.surfaceStyle, .gradient)
         XCTAssertEqual(prefs.textAlignment, .leading)
         XCTAssertEqual(prefs.lyricScale, .balanced)
         XCTAssertTrue(prefs.showTrackInfo)
@@ -54,11 +56,22 @@ final class LAStylePrefsTests: XCTestCase {
             showNextLine: false,
             showProgressBar: false,
             animationsEnabled: false,
-            karaokeEnabled: false
+            karaokeEnabled: false,
+            surfaceStyle: .paper
         )
 
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(LAStylePrefs.self, from: data)
         XCTAssertEqual(decoded, original)
+    }
+
+    func testSurfacePaletteKeepsThemeAccentForDarkFinishes() {
+        let source = LAStylePrefs.Theme.ocean.palette
+        let neon = LAStyleStore.applySurface(.neon, to: source)
+
+        XCTAssertEqual(neon.accent, source.accent)
+        XCTAssertEqual(neon.text, RGB(r: 1, g: 1, b: 1))
+        XCTAssertLessThan(neon.backgroundTop.r, source.backgroundTop.r)
+        XCTAssertLessThan(neon.backgroundBottom.g, source.backgroundBottom.g)
     }
 }

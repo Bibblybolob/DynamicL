@@ -52,6 +52,13 @@ struct SyncedLyricsView: View {
                     proxy.scrollTo(newIndex, anchor: .center)
                 }
             }
+            .task(id: document.track) {
+                // ScrollViewReader does not apply onChange when the view opens
+                // on an already active line. Yield once so its lazy rows exist.
+                await Task.yield()
+                guard !Task.isCancelled, let currentIndex else { return }
+                proxy.scrollTo(currentIndex, anchor: .center)
+            }
         }
     }
 

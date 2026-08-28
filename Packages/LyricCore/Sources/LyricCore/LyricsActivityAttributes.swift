@@ -2,8 +2,34 @@
 import ActivityKit
 import Foundation
 
+public enum ActivityUpdateSource: String, Codable, Hashable, Sendable {
+    case phone
+    case server
+}
+
+/// A future lyric boundary encoded with Unix time. Using a numeric epoch keeps
+/// the Swift and JavaScript payloads identical and avoids Date's 2001 epoch.
+public struct ActivityScheduledLine: Codable, Hashable, Sendable {
+    public var dateEpoch: TimeInterval
+    public var text: String
+
+    public init(dateEpoch: TimeInterval, text: String) {
+        self.dateEpoch = dateEpoch
+        self.text = text
+    }
+
+    public var date: Date { Date(timeIntervalSince1970: dateEpoch) }
+}
+
 public struct LyricsActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
+        /// Version 2 uses Unix timestamps and records the update owner. Nil
+        /// means a state produced by an older build.
+        public var schemaVersion: Int?
+        public var source: ActivityUpdateSource?
+        public var revision: Int64?
+        public var generatedAtEpoch: TimeInterval?
+        public var trackID: String?
         public var trackTitle: String
         public var artistName: String
         /// Artwork URL used by the mini-player presentation. The view falls
@@ -33,6 +59,13 @@ public struct LyricsActivityAttributes: ActivityAttributes {
         /// Dominant album-art color as [r, g, b] in 0...1 — drives Album-mode
         /// theming. Nil-safe so legacy states keep decoding.
         public var albumDominantRGB: [Double]?
+        /// Version 2 timing fields. The legacy Date fields above remain for
+        /// one compatibility release and are decode fallbacks only.
+        public var progressStartEpoch: TimeInterval?
+        public var progressEndEpoch: TimeInterval?
+        public var scheduledLinesV2: [ActivityScheduledLine]?
+        public var karaokeStartEpoch: TimeInterval?
+        public var karaokeEndEpoch: TimeInterval?
 
         public init(trackTitle: String, artistName: String, albumImageURL: String? = nil,
                     currentLine: String,
@@ -43,7 +76,22 @@ public struct LyricsActivityAttributes: ActivityAttributes {
                     karaokeStartDate: Date? = nil,
                     karaokeEndDate: Date? = nil,
                     frozenKaraokeProgress: Double? = nil,
-                    albumDominantRGB: [Double]? = nil) {
+                    albumDominantRGB: [Double]? = nil,
+                    schemaVersion: Int? = nil,
+                    source: ActivityUpdateSource? = nil,
+                    revision: Int64? = nil,
+                    generatedAtEpoch: TimeInterval? = nil,
+                    trackID: String? = nil,
+                    progressStartEpoch: TimeInterval? = nil,
+                    progressEndEpoch: TimeInterval? = nil,
+                    scheduledLinesV2: [ActivityScheduledLine]? = nil,
+                    karaokeStartEpoch: TimeInterval? = nil,
+                    karaokeEndEpoch: TimeInterval? = nil) {
+            self.schemaVersion = schemaVersion
+            self.source = source
+            self.revision = revision
+            self.generatedAtEpoch = generatedAtEpoch
+            self.trackID = trackID
             self.trackTitle = trackTitle
             self.artistName = artistName
             self.albumImageURL = albumImageURL
@@ -58,6 +106,70 @@ public struct LyricsActivityAttributes: ActivityAttributes {
             self.karaokeEndDate = karaokeEndDate
             self.frozenKaraokeProgress = frozenKaraokeProgress
             self.albumDominantRGB = albumDominantRGB
+            self.progressStartEpoch = progressStartEpoch
+            self.progressEndEpoch = progressEndEpoch
+            self.scheduledLinesV2 = scheduledLinesV2
+            self.karaokeStartEpoch = karaokeStartEpoch
+            self.karaokeEndEpoch = karaokeEndEpoch
+        }
+
+        public var resolvedProgressStart: Date? {
+            progressStartEpoch.map(Date.init(timeIntervalSince1970:)) ?? progressStart
+        }
+
+        public var resolvedProgressEnd: Date? {
+            progressEndEpoch.map(Date.init(timeIntervalSince1970:)) ?? progressEnd
+        }
+
+        public var resolvedKaraokeStart: Date? {
+            karaokeStartEpoch.map(Date.init(timeIntervalSince1970:)) ?? karaokeStartDate
+        }
+
+        public var resolvedKaraokeEnd: Date? {
+            karaokeEndEpoch.map(Date.init(timeIntervalSince1970:)) ?? karaokeEndDate
+        }
+
+        public var resolvedScheduledLines: [WidgetLyricSnapshot.ScheduledLine] {
+            if let scheduledLinesV2 {
+                return scheduledLinesV2.map { .init(date: $0.date, text: $0.text) }
+            }
+            return scheduledLines ?? []
+        }
+
+        public var encodedSize: Int {
+            (try? JSONEncoder().encode(self).count) ?? .max
+        }
+
+        /// Keeps the dynamic state under ActivityKit's 4 KB limit. Future
+        /// lines are removed before visible metadata, so an oversized lyric
+        /// cannot make the whole update disappear.
+        public func compacted(maxBytes: Int = 3_500) -> Self {
+            var copy = self
+            while copy.encodedSize > maxBytes {
+                if var v2 = copy.scheduledLinesV2, !v2.isEmpty {
+                    v2.removeLast()
+                    copy.scheduledLinesV2 = v2.isEmpty ? nil : v2
+                    continue
+                }
+                if var legacy = copy.scheduledLines, !legacy.isEmpty {
+                    legacy.removeLast()
+                    copy.scheduledLines = legacy.isEmpty ? nil : legacy
+                    continue
+                }
+                break
+            }
+
+            if copy.encodedSize > maxBytes {
+                copy.nextLine = copy.nextLine.map { String($0.prefix(400)) }
+                copy.currentLine = String(copy.currentLine.prefix(800))
+                copy.trackTitle = String(copy.trackTitle.prefix(200))
+                copy.artistName = String(copy.artistName.prefix(200))
+            }
+            if copy.encodedSize > maxBytes {
+                copy.nextLine = nil
+                copy.albumDominantRGB = nil
+            }
+            return copy
         }
     }
 
