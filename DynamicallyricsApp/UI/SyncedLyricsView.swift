@@ -9,6 +9,7 @@ struct SyncedLyricsView: View {
     let lyricPosition: TimeInterval
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var followsPlayback = true
 
     var body: some View {
         let karaokeEnabled = LAStyleStore.load().karaokeEnabled
@@ -38,7 +39,7 @@ struct SyncedLyricsView: View {
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                         .scaleEffect(index == currentIndex ? 1.0 : 0.95, anchor: .leading)
-                        .animation(.spring(duration: 0.3), value: currentIndex)
+                        .animation(reduceMotion ? nil : .spring(duration: 0.3), value: currentIndex)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .id(index)
                     }
@@ -47,17 +48,42 @@ struct SyncedLyricsView: View {
                 .padding(.horizontal)
             }
             .onChange(of: currentIndex) { _, newIndex in
+                guard followsPlayback else { return }
                 guard let newIndex else { return }
-                withAnimation(.spring(duration: 0.4)) {
+                withAnimation(reduceMotion ? nil : .spring(duration: 0.4)) {
                     proxy.scrollTo(newIndex, anchor: .center)
                 }
             }
+            .simultaneousGesture(
+                DragGesture().onChanged { _ in
+                    followsPlayback = false
+                }
+            )
             .task(id: document.track) {
                 // ScrollViewReader does not apply onChange when the view opens
                 // on an already active line. Yield once so its lazy rows exist.
                 await Task.yield()
                 guard !Task.isCancelled, let currentIndex else { return }
-                proxy.scrollTo(currentIndex, anchor: .center)
+                if followsPlayback { proxy.scrollTo(currentIndex, anchor: .center) }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !followsPlayback {
+                    Button {
+                        followsPlayback = true
+                        guard let currentIndex else { return }
+                        withAnimation(reduceMotion ? nil : .spring(duration: 0.4)) {
+                            proxy.scrollTo(currentIndex, anchor: .center)
+                        }
+                    } label: {
+                        Label("Follow lyrics", systemImage: "location.fill")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.regularMaterial, in: Capsule())
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 18)
+                }
             }
         }
     }

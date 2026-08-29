@@ -34,7 +34,12 @@ public enum LRCParser {
                    let end = lowered[start...].firstIndex(of: "]") {
                     let value = lowered[lowered.index(after: start)..<end]
                         .trimmingCharacters(in: .whitespaces)
-                    offset += (Double(value) ?? 0) / 1000.0
+                    // LRC documents may contain repeated tags. The final
+                    // valid declaration is the effective offset; summing
+                    // values shifts lyrics twice.
+                    if let parsed = Double(value) {
+                        offset = parsed / 1000.0
+                    }
                 }
                 continue
             }

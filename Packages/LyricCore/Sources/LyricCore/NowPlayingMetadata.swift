@@ -24,7 +24,10 @@ public struct NowPlayingMetadata: Equatable, Sendable {
         stoppedSamples = 0
         let cleanURL = albumImageURL?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if self.trackKey != trackKey {
+        let samePartialTrack = trackID == nil && self.signature.map {
+            $0.title == signature.title && $0.artist == signature.artist
+        } == true
+        if self.trackKey != trackKey && !samePartialTrack {
             self.trackKey = trackKey
             self.trackID = trackID
             self.signature = signature
@@ -33,7 +36,7 @@ public struct NowPlayingMetadata: Equatable, Sendable {
         }
 
         self.trackID = trackID ?? self.trackID
-        self.signature = signature
+        self.signature = mergedSignature(existing: self.signature, incoming: signature)
         if let cleanURL, !cleanURL.isEmpty {
             self.albumImageURL = cleanURL
         }
@@ -68,5 +71,25 @@ public struct NowPlayingMetadata: Equatable, Sendable {
         signature = nil
         albumImageURL = nil
         stoppedSamples = 0
+    }
+
+    /// Spotify can omit fields during a transition. Empty text, missing album,
+    /// and missing duration are not new metadata; preserve the last complete
+    /// value so the app does not reload lyrics or redraw artwork for a partial
+    /// response belonging to the same track.
+    private func mergedSignature(
+        existing: TrackSignature?,
+        incoming: TrackSignature
+    ) -> TrackSignature {
+        guard let existing else { return incoming }
+        return TrackSignature(
+            title: incoming.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? existing.title : incoming.title,
+            artist: incoming.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? existing.artist : incoming.artist,
+            album: incoming.album?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? incoming.album : existing.album,
+            duration: incoming.duration.flatMap { $0 > 0 ? $0 : nil } ?? existing.duration
+        )
     }
 }

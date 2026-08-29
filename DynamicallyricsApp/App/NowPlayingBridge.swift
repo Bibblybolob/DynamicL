@@ -4,27 +4,32 @@ import LyricCore
 
 /// Publishes now-playing info and receives system transport commands.
 ///
-/// iOS delivers remote-command events (play/pause/skip/seek-with-target) to the
-/// app that owns the audio session even while it's backgrounded — the free,
-/// system-delivered substitute for APNs Live Activity push. Seek events carry
-/// the exact target position, so slider drags become instant Spotify seeks
-/// instead of waiting for the next poll.
+/// iOS delivers remote-command events while the app is active. Background
+/// control uses the authenticated sync server when it is configured. Seek
+/// events carry the exact target position, so slider drags become instant
+/// Spotify seeks instead of waiting for the next poll.
 @MainActor
 final class NowPlayingBridge {
     private var installed = false
 
     private var onToggle: (() -> Void)?
+    private var onPlay: (() -> Void)?
+    private var onPause: (() -> Void)?
     private var onNext: (() -> Void)?
     private var onPrevious: (() -> Void)?
     private var onChangePosition: ((TimeInterval) -> Void)?
 
     func install(toggle: @escaping () -> Void,
+                 play: @escaping () -> Void,
+                 pause: @escaping () -> Void,
                  next: @escaping () -> Void,
                  previous: @escaping () -> Void,
                  changePosition: @escaping (TimeInterval) -> Void) {
         guard !installed else { return }
         installed = true
         onToggle = toggle
+        onPlay = play
+        onPause = pause
         onNext = next
         onPrevious = previous
         onChangePosition = changePosition
@@ -40,6 +45,16 @@ final class NowPlayingBridge {
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
             Task { @MainActor in self.onToggle?() }
+            return .success
+        }
+        center.playCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            Task { @MainActor in self.onPlay?() }
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            Task { @MainActor in self.onPause?() }
             return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in

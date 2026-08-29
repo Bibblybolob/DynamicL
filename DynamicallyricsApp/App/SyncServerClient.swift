@@ -1,4 +1,5 @@
 import Foundation
+import LyricCore
 
 enum SyncActivityState: String {
     case active
@@ -27,6 +28,7 @@ final class SyncServerClient {
     private var heartbeatTask: Task<Void, Never>?
     private var lastHeartbeatAt: Date?
     private var lastLyricOffsetMs = 0
+    private var lastAlbumDominantRGB: [Double]?
 
     var serverURLString: String {
         UserDefaults.standard.string(forKey: Self.urlKey) ?? ""
@@ -136,10 +138,12 @@ final class SyncServerClient {
         localRevision: Int64,
         healthy: Bool,
         autoStartEnabled: Bool,
+        albumDominantRGB: [Double]? = nil,
         force: Bool = false
     ) {
         guard healthy else { return }
         lastLyricOffsetMs = Int((lyricOffset * 1_000).rounded())
+        lastAlbumDominantRGB = albumDominantRGB
         let now = Date.now
         guard force || now.timeIntervalSince(lastHeartbeatAt ?? .distantPast) >= 5 else { return }
         guard heartbeatTask == nil else { return }
@@ -159,6 +163,9 @@ final class SyncServerClient {
                 "lyricOffsetMs": self.lastLyricOffsetMs,
                 "autoStartEnabled": autoStartEnabled,
             ]
+            if let albumDominantRGB = self.lastAlbumDominantRGB {
+                body["albumDominantRGB"] = albumDominantRGB
+            }
             if let updateToken = self.updateToken { body["updateToken"] = updateToken }
             if let trackID { body["trackID"] = trackID }
 
@@ -183,6 +190,46 @@ final class SyncServerClient {
             } catch {
                 DiagnosticsLog.append("sync: heartbeat failed")
             }
+        }
+    }
+
+    /// Sends a widget or Live Activity transport command to the background
+    /// authority when it is configured. `nil` means that local Spotify control
+    /// must be used. A server response is idempotent by command ID.
+    func sendCommand(_ command: PlaybackCommand, id: UUID) async -> Bool? {
+        let serverCommand: String
+        switch command {
+        case .togglePlayPause: serverCommand = "toggle"
+        case .next: serverCommand = "next"
+        case .previous: serverCommand = "previous"
+        case .refresh: return nil
+        }
+        guard configuredBaseURL() != nil, !serverAuthTokenString.isEmpty else { return nil }
+        guard let url = URL(string: endpoint(path: "command")) else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 10
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(serverAuthTokenString)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "command": serverCommand,
+            "commandID": id.uuidString,
+            "issuedAtMs": Int64(Date.now.timeIntervalSince1970 * 1_000),
+        ])
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            if (200...299).contains(code) {
+                DiagnosticsLog.append("sync: command accepted \(serverCommand)")
+                return true
+            }
+            DiagnosticsLog.append("sync: command HTTP \(code); using local control")
+            return false
+        } catch {
+            DiagnosticsLog.append("sync: command failed; using local control")
+            return false
         }
     }
 
@@ -237,6 +284,9 @@ final class SyncServerClient {
             "lyricOffsetMs": lastLyricOffsetMs,
             "autoStartEnabled": UserDefaults.standard.object(forKey: "lockScreenLyricsEnabled") as? Bool ?? true,
         ]
+        if let lastAlbumDominantRGB {
+            body["albumDominantRGB"] = lastAlbumDominantRGB
+        }
         if let updateToken, !updateToken.isEmpty { body["updateToken"] = updateToken }
         if let pushToStartToken, !pushToStartToken.isEmpty { body["pushToStartToken"] = pushToStartToken }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)

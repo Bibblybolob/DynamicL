@@ -22,38 +22,50 @@ enum DominantColorExtractor {
         guard let url = URL(string: urlString) else { return nil }
         if let hit = cache.object(forKey: url as NSURL)?.value { return hit }
 
-        // Network + decode off the main actor.
+        // Network + decode off the main actor. Prefer the same app-group
+        // artwork bytes that widgets use, so color and image cannot disagree.
         let sampled: [Double]? = await Task.detached(priority: .utility) { () -> [Double]? in
-            guard let (data, response) = try? await URLSession.shared.data(from: url),
-                  let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let source = CGImageSourceCreateWithData(data as CFData, nil)
-            else { return nil }
+            let data: Data
+            if let cached = await ArtworkRepository.shared.data(for: urlString) {
+                data = cached
+            } else {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 8
+                guard let (fetched, response) = try? await URLSession.shared.data(for: request),
+                      let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                    return nil
+                }
+                data = fetched
+            }
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceThumbnailMaxPixelSize: 24,
                 kCGImageSourceCreateThumbnailWithTransform: true,
             ]
-            guard let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
-                  let data = thumb.dataProvider?.data,
-                  let bytes = CFDataGetBytePtr(data),
-                  thumb.bitsPerPixel == 32 || thumb.bitsPerPixel == 24
-            else { return nil }
+            guard let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
 
-            let bytesPerPixel = thumb.bitsPerPixel / 8
-            var r = 0.0, g = 0.0, b = 0.0, count = 0.0
-            for y in stride(from: 0, to: thumb.height, by: 2) {
-                for x in stride(from: 0, to: thumb.width, by: 2) {
-                    let offset = (y * thumb.bytesPerRow) + (x * bytesPerPixel)
-                    // Skip near-transparent pixels.
-                    if bytesPerPixel == 4 && bytes[offset + 3] < 32 { continue }
-                    r += Double(bytes[offset])
-                    g += Double(bytes[offset + 1])
-                    b += Double(bytes[offset + 2])
-                    count += 1
-                }
-            }
-            guard count > 0 else { return nil }
-            return [r / count / 255, g / count / 255, b / count / 255]
+            // CGImage byte order is not guaranteed. Draw into a known RGBA
+            // bitmap instead of assuming the provider is RGB or BGRA.
+            var pixel = [UInt8](repeating: 0, count: 4)
+            guard let context = CGContext(
+                data: &pixel,
+                width: 1,
+                height: 1,
+                bitsPerComponent: 8,
+                bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return nil }
+            context.interpolationQuality = .medium
+            context.draw(thumb, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            let alpha = Double(pixel[3]) / 255
+            guard alpha > 0.05 else { return nil }
+            return [
+                min(1, Double(pixel[0]) / 255 / alpha),
+                min(1, Double(pixel[1]) / 255 / alpha),
+                min(1, Double(pixel[2]) / 255 / alpha),
+            ]
         }.value
 
         guard let rgb = sampled else { return nil }

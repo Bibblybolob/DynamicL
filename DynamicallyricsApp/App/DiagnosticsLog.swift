@@ -4,6 +4,8 @@ import Foundation
 /// on-device can be pulled off with `devicectl device copy from` for debugging.
 enum DiagnosticsLog {
     private static let fileName = "lyrics-diagnostics.log"
+    private static let rotatedFileName = "lyrics-diagnostics.log.1"
+    private static let maxFileBytes = 1_000_000
     private static let queue = DispatchQueue(label: "diagnostics.log")
 
     static func append(_ line: String) {
@@ -12,9 +14,16 @@ enum DiagnosticsLog {
             let url = documentsDirectory.appending(path: fileName)
             let entry = "[\(stamp)] \(line)\n"
             if let handle = try? FileHandle(forWritingTo: url) {
-                defer { try? handle.close() }
-                _ = try? handle.seekToEnd()
+                if let size = try? handle.seekToEnd(), size + UInt64(entry.utf8.count) > UInt64(maxFileBytes) {
+                    try? handle.close()
+                    let rotated = documentsDirectory.appending(path: rotatedFileName)
+                    try? FileManager.default.removeItem(at: rotated)
+                    try? FileManager.default.moveItem(at: url, to: rotated)
+                    try? Data(entry.utf8).write(to: url, options: .atomic)
+                    return
+                }
                 try? handle.write(contentsOf: Data(entry.utf8))
+                try? handle.close()
             } else {
                 try? Data(entry.utf8).write(to: url)
             }

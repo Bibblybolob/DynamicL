@@ -12,10 +12,12 @@ public enum ActivityUpdateSource: String, Codable, Hashable, Sendable {
 public struct ActivityScheduledLine: Codable, Hashable, Sendable {
     public var dateEpoch: TimeInterval
     public var text: String
+    public var endDateEpoch: TimeInterval?
 
-    public init(dateEpoch: TimeInterval, text: String) {
+    public init(dateEpoch: TimeInterval, text: String, endDateEpoch: TimeInterval? = nil) {
         self.dateEpoch = dateEpoch
         self.text = text
+        self.endDateEpoch = endDateEpoch
     }
 
     public var date: Date { Date(timeIntervalSince1970: dateEpoch) }
@@ -131,7 +133,9 @@ public struct LyricsActivityAttributes: ActivityAttributes {
 
         public var resolvedScheduledLines: [WidgetLyricSnapshot.ScheduledLine] {
             if let scheduledLinesV2 {
-                return scheduledLinesV2.map { .init(date: $0.date, text: $0.text) }
+                return scheduledLinesV2.map {
+                    .init(date: $0.date, text: $0.text, endDate: $0.endDateEpoch.map(Date.init(timeIntervalSince1970:)))
+                }
             }
             return scheduledLines ?? []
         }

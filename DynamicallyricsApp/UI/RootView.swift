@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import LyricCore
 
 struct RootView: View {
@@ -47,9 +48,10 @@ struct RootView: View {
                 placeholder
             }
 
-            if model.lyrics.document != nil {
-                settingsCard
-            }
+            // Settings are available before lyrics load. This prevents a
+            // first-time user from being locked out of appearance, offset, or
+            // Live Activity controls while a track has no matching lyrics.
+            settingsCard
 
             // Server setup is independent of whether the current track has
             // lyrics. Keeping it outside the document-only controls means a
@@ -249,11 +251,18 @@ struct RootView: View {
         Group {
             if let urlString = model.provider?.lastAlbumImageURL,
                let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        artworkPlaceholder
+                if let data = SharedNowPlaying.cachedArtwork(for: urlString),
+                   let image = UIImage(data: data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            artworkPlaceholder
+                        }
                     }
                 }
             } else {

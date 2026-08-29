@@ -26,8 +26,6 @@ final class AppModel {
     private var lastLineIndex: Int?
     private var pausedAt: Date?
     private var stoppedAt: Date?
-    private let keeper = BackgroundAudioKeeper.shared
-
     private var widgetPausedAt: Date?
     private var lastPublishedWidgetKey: String?
     private var widgetIdlePublished = false
@@ -40,7 +38,6 @@ final class AppModel {
             UserDefaults.standard.set(newValue, forKey: "lockScreenLyricsEnabled")
             if !newValue {
                 liveActivity.end()
-                keeper.stop()
             }
             if let provider {
                 let healthy = provider.lastSuccessfulPollAt.map {
@@ -82,6 +79,16 @@ final class AppModel {
                     let accepted = await self.provider?.togglePlayPause() ?? false
                     if accepted { self.provider?.burst() } else { SharedNowPlaying.setPlayingOverride(nil) }
                 }
+            },
+            play: { [weak self] in
+                guard let self else { return }
+                DiagnosticsLog.append("cmd: play")
+                Task { _ = await self.provider?.play() }
+            },
+            pause: { [weak self] in
+                guard let self else { return }
+                DiagnosticsLog.append("cmd: pause")
+                Task { _ = await self.provider?.pause() }
             },
             next: { [weak self] in
                 guard let self, let provider = self.provider else { return }
@@ -131,7 +138,6 @@ final class AppModel {
         lyrics.update(signature: nil, status: nil)
         nowPlaying.clear()
         liveActivity.end()
-        keeper.stop()
         SharedNowPlaying.clearAll()
         watchSync.clear()
         reloadWidgetTimelines()
@@ -143,11 +149,8 @@ final class AppModel {
         case .active:
             if auth.isConnected { startPolling() }
         case .background:
-            // Deliberately do NOT stop the poller here. While the silent
-            // keep-alive audio runs (playing + lock-screen toggle on), the tick
-            // loop must keep polling so the Lock Screen Live Activity stays in
-            // sync. When keep-alive doesn't apply, iOS suspends the process on
-            // its own within seconds, which stops polling anyway.
+            // The sync server owns background polling after the phone lease
+            // expires. The app does not play silent audio to stay alive.
             break
         default:
             break
@@ -181,7 +184,6 @@ final class AppModel {
         lyrics.update(signature: nil, status: nil)
         nowPlaying.clear()
         liveActivity.end()
-        keeper.stop()
     }
 
     private func startPolling() {
@@ -230,7 +232,6 @@ final class AppModel {
         lyrics.tick()
         markRecoveredIfSilenceBroken()
         revivePollerIfNeeded()
-        manageKeepAlive()
         publishNowPlayingIfDue()
         syncLiveActivity()
         syncServerHeartbeat()
@@ -250,7 +251,8 @@ final class AppModel {
             lyricOffset: lyrics.userOffset,
             localRevision: localLARevision,
             healthy: healthy,
-            autoStartEnabled: lockScreenLyricsEnabled
+            autoStartEnabled: lockScreenLyricsEnabled,
+            albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] }
         )
     }
 
@@ -273,27 +275,34 @@ final class AppModel {
 
     /// Picks up play/pause + refresh requests made from widgets / Live Activity buttons.
     private func consumeWidgetCommand() {
-        switch PlaybackCommandBus.consume() {
-        case .togglePlayPause:
-            Task { [weak self] in
-                guard let self else { return }
+        guard let envelope = PlaybackCommandBus.consumeEnvelope() else { return }
+        DiagnosticsLog.append("cmd bus: \(envelope.command.rawValue) id=\(envelope.id.uuidString.prefix(8))")
+        Task { [weak self] in
+            guard let self else { return }
+            if envelope.command != .refresh,
+               let delivered = await SyncServerClient.shared.sendCommand(envelope.command, id: envelope.id),
+               delivered {
+                provider?.burst()
+                return
+            }
+
+            switch envelope.command {
+            case .togglePlayPause:
                 let accepted = await provider?.togglePlayPause() ?? false
                 if !accepted {
                     // The real state never changed; drop the optimistic flip.
                     SharedNowPlaying.setPlayingOverride(nil)
                     WidgetCenter.shared.reloadAllTimelines()
                 }
+            case .next:
+                _ = await provider?.next()
+            case .previous:
+                _ = await provider?.previous()
+            case .refresh:
+                DiagnosticsLog.append("cmd: refresh")
+                provider?.kick()
+                provider?.burst(count: 8)
             }
-        case .next:
-            Task { await provider?.next() }
-        case .previous:
-            Task { await provider?.previous() }
-        case .refresh:
-            DiagnosticsLog.append("cmd: refresh")
-            provider?.kick()
-            provider?.burst(count: 8)
-        case nil:
-            break
         }
     }
 
@@ -305,8 +314,7 @@ final class AppModel {
         if let signature, status?.state == .playing,
            lyrics.document == nil || lyrics.document?.track != signature {
             let artworkURL = provider?.lastAlbumImageURL
-            let artworkData = SharedNowPlaying.cachedArtwork(for: artworkURL)
-            let artworkReady = artworkURL == nil || artworkData != nil
+            let artworkReady = artworkURL == nil || SharedNowPlaying.cachedArtwork(for: artworkURL) != nil
             let key = "interim|\(signature.title)|\(signature.artist)|\(artworkURL ?? "")|\(artworkReady)"
             guard key != lastPublishedWidgetKey else { return }
             lastPublishedWidgetKey = key
@@ -316,7 +324,9 @@ final class AppModel {
                     trackTitle: signature.title,
                     artistName: signature.artist,
                     albumImageURL: artworkURL,
-                    albumImageData: artworkData,
+                    artworkKey: artworkURL.map(SharedNowPlaying.artworkKey),
+                    albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
+                    trackID: provider?.lastTrackID,
                     currentLine: lyrics.isLoading ? "Loading lyrics…" : "♪",
                     isPlaying: true
                 )
@@ -348,14 +358,16 @@ final class AppModel {
         let index = lyrics.currentIndex ?? -1
         let offsetKey = String(format: "%.3f", lyrics.userOffset)
         let artworkURL = provider?.lastAlbumImageURL
-        let artworkData = SharedNowPlaying.cachedArtwork(for: artworkURL)
-        let artworkReady = artworkURL == nil || artworkData != nil
-        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(offsetKey)|\(artworkURL ?? "")|\(artworkReady)"
+        let artworkReady = artworkURL == nil || SharedNowPlaying.cachedArtwork(for: artworkURL) != nil
+        let scheduled = scheduledLines(for: document, limit: 40)
+        let scheduleKey = scheduled.map {
+            String(format: "%.1f:%.1f:%@", $0.date.timeIntervalSince1970,
+                   $0.endDate?.timeIntervalSince1970 ?? -1, $0.text)
+        }.joined(separator: "|")
+        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(offsetKey)|\(artworkURL ?? "")|\(artworkReady)|\(scheduleKey)"
         guard key != lastPublishedWidgetKey else { return }
         lastPublishedWidgetKey = key
         widgetIdlePublished = false
-
-        let scheduled = scheduledLines(for: document, limit: 40)
 
         let current = index >= 0 && index < document.lines.count ? document.lines[index].text : "♪"
         SharedNowPlaying.save(
@@ -363,7 +375,9 @@ final class AppModel {
                 trackTitle: signature.title,
                 artistName: signature.artist,
                 albumImageURL: artworkURL,
-                albumImageData: artworkData,
+                artworkKey: artworkURL.map(SharedNowPlaying.artworkKey),
+                albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
+                trackID: provider?.lastTrackID,
                 currentLine: current,
                 isPlaying: isPlaying,
                 updatedAt: .now,
@@ -405,7 +419,7 @@ final class AppModel {
                 DiagnosticsLog.append("art cache: fetch failed")
                 return
             }
-            SharedNowPlaying.saveArtwork(data, for: urlString)
+            await ArtworkRepository.shared.save(data, for: urlString)
             DiagnosticsLog.append("art cache: stored \(data.count) bytes")
             guard let self, self.provider?.lastAlbumImageURL == urlString else { return }
             self.lastPublishedWidgetKey = nil
@@ -462,44 +476,14 @@ final class AppModel {
                 trackTitle: signature.title,
                 artistName: signature.artist,
                 albumImageURL: artworkURL,
-                albumImageData: SharedNowPlaying.cachedArtwork(for: artworkURL),
+                artworkKey: artworkURL.map(SharedNowPlaying.artworkKey),
+                albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
+                trackID: provider?.lastTrackID,
                 currentLine: current,
                 isPlaying: status?.state == .playing,
                 scheduledLines: scheduledLines(for: document, limit: 40)
             )
         )
-    }
-
-    /// How long a real pause keeps the process alive so an unpause is heard
-    /// without unlocking. iOS suspends a released app within ~60s.
-    static let pausedKeepAliveLimit: TimeInterval = 600
-    @ObservationIgnored private var lastPlayingAt: Date = .distantPast
-
-    private func manageKeepAlive() {
-        // Session-wide persistence: the process must survive pauses (up to the
-        // limit above), stale-API stalls, and playback — otherwise iOS suspends
-        // it and resume events land unheard (tonight's 798s coma). Volume drops
-        // to near-silence while idle instead of releasing the session.
-        if status?.state == .playing { lastPlayingAt = .now }
-        let now = Date.now
-        let stalled = provider?.shouldHoldKeepAlive ?? false
-        let withinPauseGrace = status?.state == .paused
-            && now.timeIntervalSince(lastPlayingAt) < Self.pausedKeepAliveLimit
-        let shouldRun = (auth.isConnected || demoActive)
-            && lockScreenLyricsEnabled
-            && (status?.state == .playing || withinPauseGrace || stalled)
-        if shouldRun {
-            keeper.start()
-            // Self-heal: interruptions, route changes, or media-server resets
-            // can stop audio while isKeepingAlive still reads true. Without
-            // this guard the process gets suspended and everything freezes.
-            if !keeper.isPlayerAlive {
-                keeper.resurrect()
-            }
-        } else {
-            keeper.stop()
-        }
-        keeper.setLoud(status?.state == .playing)
     }
 
     /// Status says playing but data went quiet: something killed polling
@@ -780,6 +764,8 @@ final class AppModel {
     /// Extracted album dominant color (Album mode) + the artwork URL it came from.
     @ObservationIgnored private var albumAccent: RGB?
     @ObservationIgnored private var albumAccentForURL: String?
+    @ObservationIgnored private var albumAccentTask: Task<Void, Never>?
+    @ObservationIgnored private var albumAccentGeneration = 0
     @ObservationIgnored private var lastSentAccent: [Double]?
     @ObservationIgnored private var lastSentLASchedule: [WidgetLyricSnapshot.ScheduledLine] = []
     @ObservationIgnored private var lastAppliedLAProgressStartEpoch: TimeInterval?
@@ -803,14 +789,29 @@ final class AppModel {
     /// when Album mode is active. Called once per tick before LA work.
     private func loadLAStyle() -> (prefs: LAStylePrefs, accent: RGB?) {
         let prefs = LAStyleStore.load()
-        guard prefs.theme == .album else { return (prefs, nil) }
-        if let art = provider?.lastAlbumImageURL, art != albumAccentForURL {
+        guard prefs.theme == .album, let art = provider?.lastAlbumImageURL else {
+            albumAccentTask?.cancel()
+            albumAccentTask = nil
+            albumAccentGeneration += 1
+            albumAccentForURL = nil
+            albumAccent = nil
+            return (prefs, nil)
+        }
+        if art != albumAccentForURL {
+            albumAccentTask?.cancel()
+            albumAccentGeneration += 1
+            let generation = albumAccentGeneration
             albumAccentForURL = art
-            Task { [weak self] in
+            // Clear the old color immediately. A slow request for the previous
+            // track must never tint the new track.
+            albumAccent = DominantColorExtractor.cached(for: art)
+            albumAccentTask = Task { [weak self] in
                 let color = await DominantColorExtractor.extract(from: art)
-                guard let self, color != self.albumAccent else { return }
+                guard !Task.isCancelled, let self,
+                      self.albumAccentGeneration == generation,
+                      self.albumAccentForURL == art else { return }
                 self.albumAccent = color
-                DiagnosticsLog.append("album accent extracted")
+                DiagnosticsLog.append("album accent extracted for current artwork")
             }
         }
         return (prefs, albumAccent)
@@ -832,7 +833,11 @@ final class AppModel {
         // Start with a generous window, then trim by encoded byte size before
         // handing the state to ActivityKit.
         let scheduled = scheduledLines(for: document, limit: 24).map {
-            ActivityScheduledLine(dateEpoch: $0.date.timeIntervalSince1970, text: $0.text)
+            ActivityScheduledLine(
+                dateEpoch: $0.date.timeIntervalSince1970,
+                text: $0.text,
+                endDateEpoch: $0.endDate?.timeIntervalSince1970
+            )
         }
         return .init(
             trackTitle: signature?.title ?? document.track.title,
@@ -885,7 +890,7 @@ final class AppModel {
         let lineStart = document.lines[index].time + lyrics.userOffset
         let lineEnd = index + 1 < document.lines.count
             ? document.lines[index + 1].time + lyrics.userOffset
-            : lineStart + 4
+            : max(lineStart + 0.25, signature?.duration ?? lineStart + 4)
         let end = max(lineStart + 0.25, lineEnd)
         let position = lyrics.displayPosition
         let fraction = min(max((position - lineStart) / (end - lineStart), 0), 1)
@@ -913,14 +918,22 @@ final class AppModel {
         let base = lyrics.displayPosition
         let rate = max(status?.rate ?? 1, 0.001)
         let now = Date.now
-        return Array(document.lines.compactMap { line in
+        return Array(document.lines.enumerated().compactMap { index, line in
             // SyncEngine applies the user's offset to playback position when
             // selecting the active line. Apply the equivalent inverse shift
             // to the wall-clock schedule so the app and Live Activity remain
             // aligned after an offset adjustment too.
             let delta = (line.time + lyrics.userOffset - base) / rate
             guard delta > 0.05 else { return nil }
-            return .init(date: now.addingTimeInterval(delta), text: line.text)
+            let nextTime = index + 1 < document.lines.count
+                ? document.lines[index + 1].time + lyrics.userOffset
+                : max(line.time + lyrics.userOffset + 0.25, signature?.duration ?? line.time + lyrics.userOffset + 4)
+            let endDelta = max(delta + 0.25, (nextTime - base) / rate)
+            return .init(
+                date: now.addingTimeInterval(delta),
+                text: line.text,
+                endDate: now.addingTimeInterval(endDelta)
+            )
         }.prefix(limit))
     }
 }

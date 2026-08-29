@@ -114,6 +114,18 @@ test("schema 2 uses exact millisecond progress and Unix timestamps", () => {
   assert.equal(state.albumImageURL, "https://image.test/album.jpg");
 });
 
+test("the final scheduled lyric has an explicit end boundary", () => {
+  const state = buildContentState(player({ progressMs: 0, lines: [
+    { t: 0, text: "First" },
+    { t: 12, text: "Final" },
+  ] }), {
+    nowMs: 1_700_000_000_000,
+    schemaVersion: 2,
+  });
+  assert.equal(state.scheduledLinesV2[0].text, "Final");
+  assert.equal(state.scheduledLinesV2[0].endDateEpoch, 1_700_000_180);
+});
+
 test("legacy Swift dates decode to the intended Unix date", () => {
   const unix = 1_700_000_000;
   assert.equal(swiftReferenceSeconds(unix) + 978_307_200, unix);
@@ -176,6 +188,26 @@ test("same-track partial Spotify data preserves artwork", async () => {
   assert.equal(normalized.albumImageURL, "https://image.test/kept.jpg");
 });
 
+test("same-track partial Spotify data preserves title, artist, and duration", async () => {
+  const current = session({
+    activeTrack: {
+      trackID: "track-1",
+      title: "Test Song",
+      artist: "Test Artist",
+      durationMs: 200_000,
+      albumImageURL: "https://image.test/kept.jpg",
+    },
+  });
+  const normalized = await current.normalizedPlayer({
+    is_playing: true,
+    progress_ms: 12_345,
+    item: { id: "track-1", album: {} },
+  });
+  assert.equal(normalized.title, "Test Song");
+  assert.equal(normalized.artist, "Test Artist");
+  assert.equal(normalized.durationMs, 200_000);
+});
+
 test("a verified new track never uses the previous album", async () => {
   const current = session({
     activeTrack: {
@@ -228,6 +260,23 @@ test("remote start sends one complete start request per playback session", async
   assert.equal(payload.aps["content-state"].albumImageURL, "https://image.test/album.jpg");
 });
 
+test("remote start does not duplicate a known active phone activity", async () => {
+  const current = session({
+    pushToStartToken: "start-token",
+    supportsRemoteStart: true,
+    autoStartEnabled: true,
+    phoneActivityState: "active",
+    playbackSessionStartAttempted: false,
+  });
+  let requestCount = 0;
+  current.apnsRequest = async () => {
+    requestCount += 1;
+    return 200;
+  };
+  await current.startActivityIfNeeded(buildContentState(player(), { schemaVersion: 2 }));
+  assert.equal(requestCount, 0);
+});
+
 test("a phone heartbeat owns updates for 15 seconds", async () => {
   const current = session({ pushToStartToken: "start-token" });
   const response = await current.fetch(new Request("https://session/heartbeat", {
@@ -244,6 +293,117 @@ test("a phone heartbeat owns updates for 15 seconds", async () => {
   assert.equal(body.writer, "phone");
   assert.equal(await current.currentWriter(), "phone");
   assert.ok(body.leaseExpiresAt > Date.now() + 14_000);
+});
+
+test("commands are idempotent and use the current playback state", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (input, init) => {
+    calls += 1;
+    assert.equal(input, "https://api.spotify.com/v1/me/player/pause");
+    assert.equal(init.method, "PUT");
+    return new Response(null, { status: 204 });
+  };
+  try {
+    const current = session({
+      accessToken: "access",
+      accessTokenExpiresAt: Date.now() + 120_000,
+      refreshToken: "refresh-token",
+      isPlaying: true,
+    });
+    const request = () => current.fetch(new Request("https://session/command", {
+      method: "POST",
+      body: JSON.stringify({ command: "toggle", commandID: "command-123", issuedAtMs: Date.now() }),
+    }));
+    assert.equal((await (await request()).json()).accepted, true);
+    assert.equal((await (await request()).json()).accepted, true);
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("expired commands are rejected before contacting Spotify", async () => {
+  const current = session({
+    accessToken: "access",
+    accessTokenExpiresAt: Date.now() + 60_000,
+    isPlaying: true,
+  });
+  const response = await current.fetch(new Request("https://session/command", {
+    method: "POST",
+    body: JSON.stringify({ command: "next", commandID: "command-123", issuedAtMs: Date.now() - 9_000 }),
+  }));
+  assert.equal(response.status, 400);
+});
+
+test("future commands are rejected before contacting Spotify", async () => {
+  const current = session({ isPlaying: true });
+  const response = await current.fetch(new Request("https://session/command", {
+    method: "POST",
+    body: JSON.stringify({ command: "next", commandID: "command-123", issuedAtMs: Date.now() + 9_000 }),
+  }));
+  assert.equal(response.status, 400);
+});
+
+test("a heartbeat without color does not erase the current track color", async () => {
+  const current = session({
+    albumDominantRGB: [0.2, 0.4, 0.8],
+    albumDominantTrackID: "track-1",
+  });
+  await current.fetch(new Request("https://session/heartbeat", {
+    method: "POST",
+    body: JSON.stringify({
+      activityState: "none",
+      clientSchemaVersion: 2,
+      localRevision: 3,
+      sentAtMs: Date.now(),
+      lyricOffsetMs: 0,
+      trackID: "track-1",
+    }),
+  }));
+  const normalized = await current.normalizedPlayer({
+    is_playing: true,
+    progress_ms: 100,
+    item: {
+      id: "track-1",
+      name: "Test Song",
+      artists: [{ name: "Artist" }],
+      duration_ms: 180_000,
+      album: {},
+    },
+  });
+  assert.deepEqual(normalized.albumDominantRGB, [0.2, 0.4, 0.8]);
+});
+
+test("status separates server readiness from reachability", async () => {
+  const current = session({ refreshToken: "refresh-token", pushToStartToken: "start-token" }, {
+    SPOTIFY_CLIENT_ID: "client-id",
+    APNS_KEY_P8: "key",
+    APNS_KEY_ID: "key-id",
+    APNS_TEAM_ID: "team-id",
+  });
+  const status = await current.fetch(new Request("https://session/status"));
+  const body = await status.json();
+  assert.equal(body.spotifyReady, true);
+  assert.equal(body.apnsReady, true);
+  assert.equal(body.serverReady, true);
+  assert.equal(body.pushToStartAvailable, true);
+});
+
+test("the server lyric cache stays bounded", async () => {
+  const current = session();
+  for (let index = 0; index < 105; index++) {
+    await current.cacheLyrics(`lyrics:track-${index}`, [{ t: 0, text: `Line ${index}` }]);
+  }
+  const index = await current.state.storage.get("lyricsCacheIndex");
+  assert.equal(index.length, 100);
+  assert.equal(await current.state.storage.get("lyrics:track-0"), undefined);
+  assert.deepEqual(await current.state.storage.get("lyrics:track-104"), [{ t: 0, text: "Line 104" }]);
+});
+
+test("the last LRC offset declaration wins", async () => {
+  const { parseLRC } = await import("../src/session.js");
+  assert.deepEqual(parseLRC("[offset:100]\n[offset:250]\n[00:01.00]Line"), [{ t: 0.75, text: "Line" }]);
 });
 
 test("an update-token 410 records dismissal for the current session", async () => {

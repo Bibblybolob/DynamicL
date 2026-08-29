@@ -24,6 +24,8 @@ final class WatchModel {
     var hasContent = false
 
     private var delegate: WatchReceiverDelegate?
+    private var schedule: [WidgetLyricSnapshot.ScheduledLine] = []
+    private var scheduleTask: Task<Void, Never>?
 
     init() {
         guard WCSession.isSupported() else { return }
@@ -37,6 +39,12 @@ final class WatchModel {
         WCSession.default.activate()
         // Show any state queued by the phone before we launched.
         apply(WatchPayload(raw: WCSession.default.receivedApplicationContext))
+        scheduleTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                self?.advanceSchedule(at: .now)
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+        }
     }
 
     private func apply(_ payload: WatchPayload) {
@@ -46,6 +54,8 @@ final class WatchModel {
         currentLine = snapshot.currentLine
         isPlaying = snapshot.isPlaying
         hasContent = true
+        schedule = snapshot.scheduledLines.sorted { $0.date < $1.date }
+        advanceSchedule(at: .now)
         if let url = snapshot.albumImageURL, let data = snapshot.albumImageData {
             SharedNowPlaying.saveArtwork(data, for: url)
         }
@@ -59,8 +69,19 @@ final class WatchModel {
         artistName = ""
         currentLine = "Waiting for your iPhone…"
         isPlaying = false
+        schedule = []
         SharedNowPlaying.clear()
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// The Watch app may not receive a new Connectivity packet for every lyric
+    /// line. Advance from the absolute schedule that arrived with the last
+    /// packet so the visible line stays aligned while the phone is suspended.
+    private func advanceSchedule(at date: Date) {
+        guard hasContent, isPlaying else { return }
+        if let line = schedule.last(where: { $0.date <= date }) {
+            currentLine = line.text
+        }
     }
 }
 
@@ -109,7 +130,10 @@ struct WatchPayload: Sendable {
 
     init(raw: [String: Any]) {
         if let data = raw["snapshotData"] as? Data,
-           let decoded = try? JSONDecoder().decode(WidgetLyricSnapshot.self, from: data) {
+           var decoded = try? JSONDecoder().decode(WidgetLyricSnapshot.self, from: data) {
+            if let artwork = raw["artworkData"] as? Data, artwork.count <= 200_000 {
+                decoded.albumImageData = artwork
+            }
             snapshot = decoded
             return
         }

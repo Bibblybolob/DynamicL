@@ -86,3 +86,72 @@ public struct PlaybackStatus: Equatable, Sendable {
         return position + elapsed * rate
     }
 }
+
+/// Version 2 of the shared playback contract.
+///
+/// The app, widgets, Live Activity, Watch, and sync server use the same small
+/// set of identity, timing, lyric, artwork, and color fields. The older
+/// `WidgetLyricSnapshot` remains available as the renderer-facing format for
+/// one compatibility release.
+public struct SharedPlaybackSnapshotV2: Codable, Hashable, Sendable {
+    public struct LyricInterval: Codable, Hashable, Sendable {
+        public var startEpoch: TimeInterval
+        public var endEpoch: TimeInterval?
+        public var text: String
+
+        public init(startEpoch: TimeInterval, endEpoch: TimeInterval? = nil, text: String) {
+            self.startEpoch = startEpoch
+            self.endEpoch = endEpoch
+            self.text = text
+        }
+    }
+
+    public var schemaVersion: Int
+    public var trackID: String?
+    public var trackTitle: String
+    public var artistName: String
+    public var albumImageURL: String?
+    public var artworkKey: String?
+    public var dominantRGB: [Double]?
+    public var isPlaying: Bool
+    public var playbackAnchorEpoch: TimeInterval?
+    public var generatedAtEpoch: TimeInterval
+    public var revision: Int64
+    public var lyricOffsetSeconds: TimeInterval
+    public var currentLine: String
+    public var nextLine: String?
+    public var lyricIntervals: [LyricInterval]
+
+    public init(
+        trackID: String? = nil,
+        trackTitle: String,
+        artistName: String,
+        albumImageURL: String? = nil,
+        artworkKey: String? = nil,
+        dominantRGB: [Double]? = nil,
+        isPlaying: Bool,
+        playbackAnchorEpoch: TimeInterval? = nil,
+        generatedAtEpoch: TimeInterval = Date.now.timeIntervalSince1970,
+        revision: Int64 = 0,
+        lyricOffsetSeconds: TimeInterval = 0,
+        currentLine: String,
+        nextLine: String? = nil,
+        lyricIntervals: [LyricInterval] = []
+    ) {
+        self.schemaVersion = 2
+        self.trackID = trackID
+        self.trackTitle = trackTitle
+        self.artistName = artistName
+        self.albumImageURL = albumImageURL
+        self.artworkKey = artworkKey
+        self.dominantRGB = dominantRGB
+        self.isPlaying = isPlaying
+        self.playbackAnchorEpoch = playbackAnchorEpoch
+        self.generatedAtEpoch = generatedAtEpoch
+        self.revision = revision
+        self.lyricOffsetSeconds = lyricOffsetSeconds
+        self.currentLine = currentLine
+        self.nextLine = nextLine
+        self.lyricIntervals = lyricIntervals
+    }
+}

@@ -197,10 +197,44 @@ public struct LRCLIBClient: Sendable {
         let synced = usable.filter { $0.syncedLyrics?.isEmpty == false }
         let candidates = synced.isEmpty ? usable : synced
         guard !candidates.isEmpty else { return nil }
-        guard let targetDuration = signature.duration else { return candidates.first }
-        return candidates.min {
-            abs(($0.duration ?? .infinity) - targetDuration) < abs(($1.duration ?? .infinity) - targetDuration)
+        let ranked = candidates.map { result in
+            (result, matchScore(result: result, signature: signature))
+        }.sorted { $0.1 > $1.1 }
+        guard let best = ranked.first else { return nil }
+        // A duration-only match can select a different song from a broad
+        // search result. Require meaningful title/artist agreement whenever
+        // the Spotify response contains those fields.
+        let needsIdentity = !signature.title.isEmpty || !signature.artist.isEmpty
+        return !needsIdentity || best.1 >= 5 ? best.0 : nil
+    }
+
+    private func matchScore(result: LRCLibResult, signature: TrackSignature) -> Int {
+        var score = normalizedSimilarity(result.trackName, signature.title) * 4
+        score += normalizedSimilarity(result.artistName, signature.artist) * 3
+        if let targetDuration = signature.duration, let duration = result.duration {
+            let difference = abs(duration - targetDuration)
+            let tolerance = max(5, targetDuration * 0.08)
+            if difference <= tolerance { score += 3 }
+            else if difference <= 30 { score += 1 }
+            else { score -= 2 }
         }
+        return score
+    }
+
+    private func normalizedSimilarity(_ lhs: String, _ rhs: String) -> Int {
+        let left = normalizedText(lhs)
+        let right = normalizedText(rhs)
+        guard !left.isEmpty, !right.isEmpty else { return 0 }
+        if left == right { return 2 }
+        if left.contains(right) || right.contains(left) { return 1 }
+        return 0
+    }
+
+    private func normalizedText(_ value: String) -> String {
+        value.lowercased().unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) }
+            .map(String.init)
+            .joined()
     }
 
     func document(from result: LRCLibResult, track: TrackSignature) -> LyricsDocument? {
@@ -242,7 +276,7 @@ public struct LRCLIBClient: Sendable {
 
     private func send(_ url: URL) async throws -> (Data, URLResponse?) {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
-        request.timeoutInterval = 15
+        request.timeoutInterval = 10
         request.setValue("OpenLyrics/1.0 (personal)", forHTTPHeaderField: "User-Agent")
         do {
             let (data, response) = try await session.data(for: request)

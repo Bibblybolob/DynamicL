@@ -15,6 +15,10 @@ const PAUSE_SESSION_MS = 10 * 60 * 1_000;
 const KEEPALIVE_MS = 45_000;
 const PAYLOAD_LIMIT_BYTES = 3_500;
 const SWIFT_REFERENCE_EPOCH_OFFSET = 978_307_200;
+const REQUEST_TIMEOUT_MS = 10_000;
+const APNS_TIMEOUT_MS = 8_000;
+const COMMAND_TTL_MS = 8_000;
+const START_RETRY_MS = 30_000;
 
 export class PlaybackSessionV2 {
   constructor(state, env) {
@@ -26,16 +30,36 @@ export class PlaybackSessionV2 {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/register") {
       const body = await request.json();
+      const oldRefreshToken = await this.state.storage.get("refreshToken");
+      const accountChanged = Boolean(oldRefreshToken && oldRefreshToken !== body.spotifyRefreshToken);
       const values = {
         refreshToken: body.spotifyRefreshToken,
         clientSchemaVersion: numericVersion(body.clientSchemaVersion),
         supportsRemoteStart: body.supportsRemoteStart !== false,
         supportsInputPushToken: body.supportsInputPushToken === true,
         lyricOffsetMs: finiteNumber(body.lyricOffsetMs, 0),
+        albumDominantRGB: validRGB(body.albumDominantRGB) ? body.albumDominantRGB : null,
+        albumDominantTrackID: body.trackID ?? null,
         autoStartEnabled: body.autoStartEnabled !== false,
         phoneLeaseExpiresAt: Date.now() + PHONE_LEASE_MS,
         currentWriter: "phone",
       };
+      if (accountChanged) {
+        // A refresh token identifies the connected Spotify account. Never use
+        // an access token or playback snapshot from the previous account.
+        values.accessToken = "";
+        values.accessTokenExpiresAt = 0;
+        values.activeTrack = null;
+        values.activeContentState = null;
+        values.playbackSessionID = "";
+        values.playbackSessionClosed = true;
+        values.lastStartAttemptAt = 0;
+        values.lastStartAttemptCount = 0;
+        values.lastSentTrackID = "";
+        values.lastSentScheduleV2 = [];
+        values.forceServerUpdate = true;
+        values.noItemSamples = 0;
+      }
       if (body.updateToken) {
         values.updateToken = body.updateToken;
         values.phoneActivityState = "active";
@@ -67,6 +91,11 @@ export class PlaybackSessionV2 {
         lyricOffsetMs: finiteNumber(body.lyricOffsetMs, 0),
         autoStartEnabled: body.autoStartEnabled !== false,
       };
+      if (Object.prototype.hasOwnProperty.call(body, "albumDominantRGB") &&
+          validRGB(body.albumDominantRGB)) {
+        values.albumDominantRGB = body.albumDominantRGB;
+        values.albumDominantTrackID = body.trackID ?? null;
+      }
       if (body.updateToken) values.updateToken = body.updateToken;
       if (body.activityState === "dismissed") {
         values.updateToken = "";
@@ -85,10 +114,36 @@ export class PlaybackSessionV2 {
       });
     }
 
+    if (request.method === "POST" && url.pathname === "/command") {
+      const body = await request.json();
+      const commandID = String(body.commandID ?? "");
+      const issuedAtMs = finiteNumber(body.issuedAtMs, Date.now());
+      if (!commandID || Math.abs(Date.now() - issuedAtMs) > COMMAND_TTL_MS ||
+          !["toggle", "next", "previous"].includes(body.command)) {
+        return Response.json({ error: "expired or invalid command" }, { status: 400 });
+      }
+      const commandKey = `command:${commandID}`;
+      const previous = await this.state.storage.get(commandKey);
+      if (previous) return Response.json(previous);
+      const accepted = await this.executeCommand(body.command);
+      const result = {
+        ok: accepted,
+        accepted,
+        commandID,
+        serverRevision: (await this.state.storage.get("serverRevision")) ?? 0,
+      };
+      await this.state.storage.put(commandKey, result);
+      await this.state.storage.setAlarm(Date.now() + 1_000);
+      return Response.json(result, { status: accepted ? 200 : 502 });
+    }
+
     if (request.method === "GET" && url.pathname === "/status") {
       return Response.json(await this.snapshot());
     }
     if (request.method === "POST" && url.pathname === "/reset") {
+      if (typeof this.state.storage.deleteAlarm === "function") {
+        await this.state.storage.deleteAlarm();
+      }
       await this.state.storage.deleteAll();
       return Response.json({ ok: true, reset: true });
     }
@@ -103,18 +158,31 @@ export class PlaybackSessionV2 {
       "lastScheduleHorizonEpoch", "lastArtworkStatus", "lastTrackTitle", "lastLine",
       "isPlaying", "lastError", "lastErrorAt", "lastPushAt", "lastTickAt",
       "serverRevision", "phoneRevision", "lyricOffsetMs", "autoStartEnabled",
+      "supportsRemoteStart", "supportsInputPushToken", "lastStartAttemptAt",
+      "lastStartAttemptCount", "refreshToken",
     ];
     const stored = {};
     for (const key of keys) stored[key] = (await this.state.storage.get(key)) ?? null;
     const lease = stored.phoneLeaseExpiresAt ?? 0;
     const out = {
       updateOwner: lease > Date.now() ? "phone" : "server",
+      currentOwner: lease > Date.now() ? "phone" : "server",
       phoneLeaseExpiresAt: lease || null,
+      phoneLeaseExpiration: lease || null,
       pushToStartAvailable: Boolean(stored.pushToStartToken) && stored.autoStartEnabled !== false,
+      pushToStartSupported: stored.supportsRemoteStart === true,
+      inputPushTokenSupported: stored.supportsInputPushToken === true,
+      spotifyReady: Boolean(stored.refreshToken) && Boolean(this.env.SPOTIFY_CLIENT_ID),
+      apnsReady: Boolean(this.env.APNS_KEY_P8 && this.env.APNS_KEY_ID && this.env.APNS_TEAM_ID),
+      serverReady: Boolean(stored.refreshToken) && Boolean(this.env.SPOTIFY_CLIENT_ID) &&
+        Boolean(this.env.APNS_KEY_P8 && this.env.APNS_KEY_ID && this.env.APNS_TEAM_ID),
       playbackSessionID: stored.playbackSessionID,
       startAttempted: stored.playbackSessionStartAttempted === true,
+      startAttemptCount: stored.lastStartAttemptCount ?? 0,
+      lastStartAttemptAt: stored.lastStartAttemptAt,
       sessionDismissed: stored.playbackSessionDismissed === true,
       lastAPNsResult: stored.lastAPNsResult,
+      lastDeliveryResult: stored.lastAPNsResult,
       payloadSchema: stored.clientSchemaVersion ?? 1,
       payloadSize: stored.lastPayloadSize,
       schedule: {
@@ -132,6 +200,10 @@ export class PlaybackSessionV2 {
       lastTickAt: stored.lastTickAt,
       lastError: stored.lastError,
       lastErrorAt: stored.lastErrorAt,
+      readiness: {
+        spotify: Boolean(stored.refreshToken) && Boolean(this.env.SPOTIFY_CLIENT_ID),
+        apns: Boolean(this.env.APNS_KEY_P8 && this.env.APNS_KEY_ID && this.env.APNS_TEAM_ID),
+      },
     };
     try {
       if (this.env.APNS_KEY_P8) {
@@ -229,12 +301,14 @@ export class PlaybackSessionV2 {
 
   async fetchPlayer() {
     const token = await this.accessToken();
-    let response = await fetch(PLAYER_URL, { headers: { Authorization: `Bearer ${token}` } });
+    let response = await fetchWithTimeout(PLAYER_URL, {
+      headers: { Authorization: `Bearer ${token}` },
+    }, REQUEST_TIMEOUT_MS);
     if (response.status === 401) {
       await this.state.storage.delete("accessToken");
-      response = await fetch(PLAYER_URL, {
+      response = await fetchWithTimeout(PLAYER_URL, {
         headers: { Authorization: `Bearer ${await this.accessToken()}` },
-      });
+      }, REQUEST_TIMEOUT_MS);
     }
     if (response.status === 429) {
       const seconds = finiteNumber(response.headers.get("Retry-After"), 5);
@@ -252,15 +326,25 @@ export class PlaybackSessionV2 {
     const sameTrack = oldTrack?.trackID === trackID;
     const responseArtwork = cleanString(item.album?.images?.[0]?.url);
     const albumImageURL = responseArtwork ?? (sameTrack ? oldTrack?.albumImageURL ?? null : null);
-    const artist = item.artists?.[0]?.name ?? item.show?.publisher ?? "";
+    const artist = cleanString(item.artists?.[0]?.name ?? item.show?.publisher)
+      ?? (sameTrack ? oldTrack?.artist ?? "" : "");
+    const title = cleanString(item.name) ?? (sameTrack ? oldTrack?.title ?? "Unknown track" : "Unknown track");
+    const durationMs = item.duration_ms == null
+      ? (sameTrack ? oldTrack?.durationMs ?? 0 : 0)
+      : Math.max(0, finiteNumber(item.duration_ms, 0));
+    const heartbeatRGB = await this.state.storage.get("albumDominantRGB");
+    const heartbeatTrackID = await this.state.storage.get("albumDominantTrackID");
     const normalized = {
       trackID,
-      title: String(item.name ?? "Unknown track"),
+      title,
       artist: String(artist),
       albumImageURL,
-      durationMs: Math.max(0, finiteNumber(item.duration_ms, 0)),
+      durationMs,
       progressMs: Math.max(0, finiteNumber(raw.progress_ms, 0)),
       isPlaying: raw.is_playing === true,
+      albumDominantRGB: heartbeatTrackID === trackID && heartbeatRGB != null && validRGB(heartbeatRGB)
+        ? heartbeatRGB
+        : (sameTrack ? oldTrack?.albumDominantRGB ?? null : null),
     };
     await this.state.storage.put({
       activeTrack: normalized,
@@ -277,6 +361,8 @@ export class PlaybackSessionV2 {
     await this.state.storage.put({
       playbackSessionID: `${Date.now()}-${trackID}`,
       playbackSessionStartAttempted: false,
+      lastStartAttemptAt: 0,
+      lastStartAttemptCount: 0,
       playbackSessionDismissed: false,
       playbackSessionClosed: false,
       forceServerUpdate: true,
@@ -290,6 +376,8 @@ export class PlaybackSessionV2 {
       updateToken: "",
       playbackSessionID: "",
       playbackSessionStartAttempted: false,
+      lastStartAttemptAt: 0,
+      lastStartAttemptCount: 0,
       playbackSessionDismissed: false,
       playbackSessionClosed: true,
       lastSentTrackID: "",
@@ -313,6 +401,32 @@ export class PlaybackSessionV2 {
   async currentWriter() {
     const lease = (await this.state.storage.get("phoneLeaseExpiresAt")) ?? 0;
     return lease > Date.now() ? "phone" : "server";
+  }
+
+  async executeCommand(command) {
+    const token = await this.accessToken();
+    const isPlaying = (await this.state.storage.get("isPlaying")) === true;
+    const path = command === "toggle"
+      ? (isPlaying ? "pause" : "play")
+      : command;
+    const method = command === "toggle" ? "PUT" : "POST";
+    const response = await fetchWithTimeout(`${PLAYER_URL}/${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}` },
+    }, REQUEST_TIMEOUT_MS);
+    if (response.status === 401) {
+      await this.state.storage.delete("accessToken");
+      const retryToken = await this.accessToken();
+      const retry = await fetchWithTimeout(`${PLAYER_URL}/${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${retryToken}` },
+      }, REQUEST_TIMEOUT_MS);
+      if (!retry.ok) throw new Error(`command HTTP ${retry.status}`);
+    } else if (!response.ok) {
+      throw new Error(`command HTTP ${response.status}`);
+    }
+    await this.state.storage.put("forceServerUpdate", true);
+    return true;
   }
 
   async updateReason(contentState, context) {
@@ -361,9 +475,18 @@ export class PlaybackSessionV2 {
     if ((await this.state.storage.get("autoStartEnabled")) === false) return;
     if ((await this.state.storage.get("supportsRemoteStart")) === false) return;
     if ((await this.state.storage.get("playbackSessionDismissed")) === true) return;
+    // A phone heartbeat can report an active activity before its update token
+    // reaches storage. Do not create a second activity during that gap.
+    if ((await this.state.storage.get("phoneActivityState")) === "active") return;
     if ((await this.state.storage.get("playbackSessionStartAttempted")) === true) return;
     const startToken = await this.state.storage.get("pushToStartToken");
     if (!startToken) return;
+    const lastAttemptAt = finiteNumber(await this.state.storage.get("lastStartAttemptAt"), 0);
+    if (Date.now() - lastAttemptAt < START_RETRY_MS) return;
+    await this.state.storage.put({
+      lastStartAttemptAt: Date.now(),
+      lastStartAttemptCount: finiteNumber(await this.state.storage.get("lastStartAttemptCount"), 0) + 1,
+    });
     const state = await this.stampState(contentState);
     const aps = {
       timestamp: Math.floor(state.generatedAtEpoch),
@@ -476,11 +599,11 @@ export class PlaybackSessionV2 {
       refresh_token: refreshToken,
       client_id: this.env.SPOTIFY_CLIENT_ID,
     });
-    const response = await fetch(TOKEN_URL, {
+    const response = await fetchWithTimeout(TOKEN_URL, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body,
-    });
+    }, REQUEST_TIMEOUT_MS);
     if (!response.ok) throw new Error(`token refresh HTTP ${response.status}`);
     const tokens = await response.json();
     await this.state.storage.put({
@@ -500,25 +623,67 @@ export class PlaybackSessionV2 {
     url.searchParams.set("track_name", title);
     url.searchParams.set("artist_name", artist);
     if (durationSec > 0) url.searchParams.set("duration", String(durationSec));
-    const response = await fetch(url, {
-      headers: { "user-agent": "OpenLyrics/1.1 (personal sync server)" },
-    });
+    const response = await fetchWithTimeout(url, {
+      headers: { "user-agent": "OpenLyrics/1.2 (personal sync server)" },
+    }, REQUEST_TIMEOUT_MS);
     let lines = [];
     if (response.ok) {
       const data = await response.json();
       if (data.syncedLyrics) lines = parseLRC(data.syncedLyrics);
     }
     if (!lines.length) {
+      const searchURL = new URL("https://lrclib.net/api/search");
+      searchURL.searchParams.set("q", `${title} ${artist}`.trim());
+      const searchResponse = await fetchWithTimeout(searchURL, {
+        headers: { "user-agent": "OpenLyrics/1.2 (personal sync server)" },
+      }, REQUEST_TIMEOUT_MS);
+      if (searchResponse.ok) {
+        const results = await searchResponse.json();
+        const best = Array.isArray(results)
+          ? results
+            .filter(result => result && !result.instrumental && (result.syncedLyrics || result.plainLyrics))
+            .map(result => [result, serverMatchScore(result, title, artist, durationSec)])
+            .sort((left, right) => right[1] - left[1])[0]
+          : null;
+        if (best && best[1] >= 5) {
+          const result = best[0];
+          if (result.syncedLyrics) lines = parseLRC(result.syncedLyrics);
+          if (!lines.length && result.plainLyrics) {
+            const plain = String(result.plainLyrics).split("\n").map(text => text.trim()).filter(Boolean);
+            const interval = plain.length > 1 && durationSec > 0
+              ? durationSec / (plain.length - 1)
+              : 3;
+            lines = plain.map((text, index) => ({ t: index * interval, text }));
+          }
+        }
+      }
+    }
+    if (!lines.length) {
       lines = [{ t: 0, text: "♪" }];
-      await this.state.storage.put(key, {
+      await this.cacheLyrics(key, {
         kind: "fallback",
         lines,
-        retryAt: Date.now() + 15 * 60 * 1_000,
+        retryAt: Date.now() + 5 * 60 * 1_000,
       });
       return lines;
     }
-    await this.state.storage.put(key, lines);
+    await this.cacheLyrics(key, lines);
     return lines;
+  }
+
+  /// Durable Object storage has no automatic TTL for these per-track keys.
+  /// Keep a bounded index so a long listening history cannot grow storage
+  /// without limit.
+  async cacheLyrics(key, value) {
+    let index = await this.state.storage.get("lyricsCacheIndex");
+    index = Array.isArray(index) ? index.filter(item => item !== key) : [];
+    index.push(key);
+    while (index.length > 100) {
+      const removed = index.shift();
+      if (removed) await this.state.storage.delete(removed);
+    }
+    await this.state.storage.put(key, value);
+    await this.state.storage.put("lyricsCacheIndex", index);
   }
 
   async pushJwt() {
@@ -555,7 +720,7 @@ export class PlaybackSessionV2 {
     const host = this.apnsHost();
     let response;
     for (let attempt = 1; attempt <= 3; attempt++) {
-      response = await fetch(`${host}/3/device/${token}`, {
+      response = await fetchWithTimeout(`${host}/3/device/${token}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -565,9 +730,10 @@ export class PlaybackSessionV2 {
           authorization: `bearer ${jwt}`,
         },
         body: JSON.stringify(payload),
-      });
-      if (response.status < 500 || attempt === 3) break;
-      await new Promise(resolve => setTimeout(resolve, attempt * 1_500));
+      }, APNS_TIMEOUT_MS);
+      if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 3) break;
+      const retryAfter = finiteNumber(response.headers.get("Retry-After"), attempt * 1.5);
+      await new Promise(resolve => setTimeout(resolve, Math.min(5_000, Math.max(250, retryAfter * 1_000))));
     }
     let responseText = "";
     if (!response.ok) responseText = (await response.text()).slice(0, 200);
@@ -645,7 +811,9 @@ export function buildContentState(player, options = {}) {
     const lineStart = lines[index].t + offsetSec;
     const lineEnd = Math.max(
       lineStart + 0.25,
-      index + 1 < lines.length ? lines[index + 1].t + offsetSec : lineStart + 4
+      index + 1 < lines.length
+        ? lines[index + 1].t + offsetSec
+        : Math.max(lineStart + 0.25, durationSec || lineStart + 4)
     );
     if (player.isPlaying) {
       karaokeStartEpoch = nowEpoch + lineStart - positionSec;
@@ -656,14 +824,26 @@ export function buildContentState(player, options = {}) {
   }
   const scheduledLinesV2 = player.isPlaying
     ? lines
-      .filter(line => line.t + offsetSec - positionSec > 0.05)
+      .map((line, sourceIndex) => ({ line, sourceIndex }))
+      .filter(({ line }) => line.t + offsetSec - positionSec > 0.05)
       .slice(0, 24)
-      .map(line => ({ dateEpoch: nowEpoch + line.t + offsetSec - positionSec, text: line.text }))
+      .map(({ line, sourceIndex }) => {
+        const dateEpoch = nowEpoch + line.t + offsetSec - positionSec;
+        const nextTime = sourceIndex + 1 < lines.length
+          ? lines[sourceIndex + 1].t + offsetSec
+          : Math.max(line.t + offsetSec + 0.25, durationSec || line.t + offsetSec + 4);
+        return {
+          dateEpoch,
+          endDateEpoch: Math.max(dateEpoch + 0.25, nowEpoch + nextTime - positionSec),
+          text: line.text,
+        };
+      })
     : [];
   const common = {
     trackTitle: String(player.title ?? "Unknown track"),
     artistName: String(player.artist ?? ""),
     albumImageURL: player.albumImageURL ?? null,
+    albumDominantRGB: validRGB(player.albumDominantRGB) ? player.albumDominantRGB : null,
     currentLine: String(currentLine),
     nextLine: nextLine == null ? null : String(nextLine),
     isPlaying: player.isPlaying === true,
@@ -677,6 +857,7 @@ export function buildContentState(player, options = {}) {
       progressEnd: nullableSwiftDate(progressEndEpoch),
       scheduledLines: scheduledLinesV2.map(line => ({
         date: swiftReferenceSeconds(line.dateEpoch),
+        endDate: line.endDateEpoch == null ? null : swiftReferenceSeconds(line.endDateEpoch),
         text: line.text,
       })),
       karaokeStartDate: nullableSwiftDate(karaokeStartEpoch),
@@ -743,7 +924,8 @@ export function parseLRC(lrc) {
     const line = raw.replace(/\r$/, "");
     const offsetMatch = line.match(/^\[offset:\s*([+-]?\d+)\]\s*$/i);
     if (offsetMatch) {
-      offset += Number(offsetMatch[1]) / 1_000;
+      // The last valid offset declaration is the effective one.
+      offset = Number(offsetMatch[1]) / 1_000;
       continue;
     }
     let rest = line;
@@ -786,6 +968,48 @@ function cleanString(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function validRGB(value) {
+  return value == null || (
+    Array.isArray(value) && value.length === 3 &&
+    value.every(component => typeof component === "number" && Number.isFinite(component) && component >= 0 && component <= 1)
+  );
+}
+
+function serverMatchScore(result, title, artist, durationSec) {
+  let score = normalizedSimilarity(result.trackName, title) * 4;
+  score += normalizedSimilarity(result.artistName, artist) * 3;
+  if (durationSec > 0 && Number.isFinite(Number(result.duration))) {
+    const difference = Math.abs(Number(result.duration) - durationSec);
+    const tolerance = Math.max(5, durationSec * 0.08);
+    if (difference <= tolerance) score += 3;
+    else if (difference <= 30) score += 1;
+    else score -= 2;
+  }
+  return score;
+}
+
+function normalizedSimilarity(left, right) {
+  const lhs = normalizedText(left);
+  const rhs = normalizedText(right);
+  if (!lhs || !rhs) return 0;
+  if (lhs === rhs) return 2;
+  return lhs.includes(rhs) || rhs.includes(lhs) ? 1 : 0;
+}
+
+function normalizedText(value) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+async function fetchWithTimeout(input, init = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function clamp(value, minimum, maximum) {

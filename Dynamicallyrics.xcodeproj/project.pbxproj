@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		009CC8F9FC4D4E9E79912B07 /* SyncedLyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215ADD0345FA34F59D83675B /* SyncedLyricsView.swift */; };
-		02D4DB5F0F6BED7F120994ED /* BackgroundAudioKeeper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */; };
 		0BFE9F9A2D88A9FF686B6B0D /* LyricsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */; };
 		0D78D2406231B09E9DEAB5C0 /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */; };
 		16DEEF986C634B5BF7712AB4 /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4059FBA00502BEBFF30974 /* AppearanceView.swift */; };
@@ -132,6 +131,7 @@
 		240C8EAD0820B1CD63FE6A49 /* Baloo2.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Baloo2.ttf; sourceTree = "<group>"; };
 		248CAA9DBAA3A963E7C30BCD /* DynamicallyricsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicallyricsApp.swift; sourceTree = "<group>"; };
 		2643CFE43083020E2CFD9165 /* WatchLyricStackWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLyricStackWidget.swift; sourceTree = "<group>"; };
+		26B49E7360AD2515A1641767 /* Dynamicallyrics.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Dynamicallyrics.Debug.entitlements; sourceTree = "<group>"; };
 		28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsLiveActivity.swift; sourceTree = "<group>"; };
 		285A712482FFD81B7371D537 /* LyricWatchWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LyricWatchWidgets.entitlements; sourceTree = "<group>"; };
 		286663F8584E22AD7BB60CD3 /* Bungee-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Bungee-Regular.ttf"; sourceTree = "<group>"; };
@@ -160,7 +160,6 @@
 		8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConfig.swift; sourceTree = "<group>"; };
 		946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncManager.swift; sourceTree = "<group>"; };
 		9A13679FF910F6ACFE50B30A /* WatchWidgetStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWidgetStyles.swift; sourceTree = "<group>"; };
-		9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundAudioKeeper.swift; sourceTree = "<group>"; };
 		9C07680DCE0CB34AE71DE2E4 /* WatchLyricComplicationWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLyricComplicationWidget.swift; sourceTree = "<group>"; };
 		9C8A92CCBCBBBBD7A0E18A9A /* Pacifico-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pacifico-Regular.ttf"; sourceTree = "<group>"; };
 		A3A3F61C414E6C576B7969AB /* Dynamicallyrics.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Dynamicallyrics.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -258,7 +257,6 @@
 			children = (
 				1A93E440BBCE4CE76E43D123 /* AlbumArtworkPrefetcher.swift */,
 				8A7C09312579956357A942BA /* AppModel.swift */,
-				9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */,
 				D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */,
 				B6E4D01DA0CCA1E2BB9A4B54 /* DominantColorExtractor.swift */,
 				248CAA9DBAA3A963E7C30BCD /* DynamicallyricsApp.swift */,
@@ -288,6 +286,7 @@
 		35D5A6CC91975A707DE01D17 /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				26B49E7360AD2515A1641767 /* Dynamicallyrics.Debug.entitlements */,
 				3965998A69F8220714B425AF /* Dynamicallyrics.entitlements */,
 				7057BA275139400E5B5AE94D /* Info.plist */,
 			);
@@ -611,7 +610,6 @@
 				69E17BAD3D775BFF4CEA0D7A /* AlbumArtworkPrefetcher.swift in Sources */,
 				7BB6E571255EC8ADD3980380 /* AppModel.swift in Sources */,
 				16DEEF986C634B5BF7712AB4 /* AppearanceView.swift in Sources */,
-				02D4DB5F0F6BED7F120994ED /* BackgroundAudioKeeper.swift in Sources */,
 				0D78D2406231B09E9DEAB5C0 /* DiagnosticsLog.swift in Sources */,
 				A39D7C2D8035DA8C6588D8EB /* DominantColorExtractor.swift in Sources */,
 				CBBA77CACA9F39B9090F8DF6 /* DynamicallyricsApp.swift in Sources */,
@@ -809,7 +807,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -829,7 +827,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.1.1;
+				MARKETING_VERSION = 1.2.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -876,7 +874,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -890,7 +888,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.1.1;
+				MARKETING_VERSION = 1.2.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

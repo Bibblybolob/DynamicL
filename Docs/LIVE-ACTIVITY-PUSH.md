@@ -3,8 +3,8 @@
 APNs delivery to real devices requires a **paid Apple Developer Program
 membership**. The app and Worker path is now present, but bring-up also needs
 the APNs/Spotify secrets, a deployed Worker, and the matching sync access token.
-The current server updates and ends an existing Live Activity; remote activity
-start is still a follow-up.
+The server can update an existing Live Activity and can start one remotely on
+iOS 17.2 or later.
 
 ## 1. Capabilities to add
 
@@ -52,9 +52,9 @@ curl -v \
 
 - Priority **5** = opportunistic/unmetered → use for lyric-line flips.
 - Priority **10** = immediate/budgeted → reserve for track changes & play/pause.
-- The app captures the **push-to-start token**, but the current worker only
-  updates/ends an existing Live Activity. Remote `event: start` is still a
-  follow-up because it needs a complete server-side starting state.
+- The app captures the **push-to-start token** and registers it even when no
+  Live Activity exists. The worker sends one complete `event: start` payload
+  when playback begins and the server owns the session.
 - APNs auth: JWT signed with your team's key (.p8) — standard stuff.
 
 Server side: a poller hitting Spotify's `/me/player` every ~5 seconds per
@@ -64,12 +64,13 @@ so `LyricsLiveActivity.swift` needs zero changes.
 
 ## 4. What becomes unnecessary
 
-Once push is live you can dial back: session-wide keep-alive, watchdogs, and
-poll bursts all exist to compensate for process liveness limits. With server
-push, a suspended app no longer matters. Keep them as fallback anyway.
+The server is the fallback authority after the phone lease expires. The app
+still starts locally while it is running, and iOS 17.0–17.1 use local starts
+because remote start is not available there. Silent background audio is not
+used.
 
 ## 5. Effort estimate
 
-The current bring-up includes token upload, an authenticated Worker, and the
-APNs update/end path. Remote activity start, multi-user storage, and production
-onboarding remain separate hardening work.
+The current bring-up includes token upload, an authenticated Worker, APNs
+update/start/end paths, lease ownership, and idempotent transport commands.
+Multi-user storage and production onboarding remain separate work.

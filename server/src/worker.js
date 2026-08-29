@@ -10,7 +10,7 @@ export default {
       return json({ ok: true, service: "dynamicallyrics-sync" });
     }
 
-    const protectedRoute = ["/register", "/heartbeat", "/status", "/reset"]
+    const protectedRoute = ["/register", "/heartbeat", "/command", "/status", "/reset"]
       .includes(url.pathname);
     if (protectedRoute) {
       const authError = authorize(request, env);
@@ -47,6 +47,7 @@ export default {
           supportsRemoteStart: body.supportsRemoteStart !== false,
           supportsInputPushToken: body.supportsInputPushToken === true,
           lyricOffsetMs: body.lyricOffsetMs ?? 0,
+          albumDominantRGB: validRGB(body.albumDominantRGB) ? body.albumDominantRGB : null,
           autoStartEnabled: body.autoStartEnabled !== false,
         }),
       });
@@ -69,17 +70,49 @@ export default {
         return json({ error: "invalid heartbeat payload" }, 400);
       }
       const stub = env.SESSION.get(env.SESSION.idFromName("main"));
+      const heartbeatBody = {
+        activityState: body.activityState,
+        updateToken: body.updateToken,
+        sentAtMs: body.sentAtMs,
+        localRevision: body.localRevision,
+        trackID: body.trackID,
+        lyricOffsetMs: body.lyricOffsetMs ?? 0,
+        clientSchemaVersion: body.clientSchemaVersion,
+        autoStartEnabled: body.autoStartEnabled !== false,
+      };
+      if (Object.prototype.hasOwnProperty.call(body, "albumDominantRGB") &&
+          validRGB(body.albumDominantRGB)) {
+        heartbeatBody.albumDominantRGB = body.albumDominantRGB;
+      }
       const resp = await stub.fetch("https://session/heartbeat", {
         method: "POST",
+        body: JSON.stringify(heartbeatBody),
+      });
+      return json(await resp.json(), resp.status);
+    }
+
+    if (request.method === "POST" && url.pathname === "/command") {
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "invalid JSON" }, 400);
+      }
+      const command = body?.command;
+      if (!body || typeof body !== "object" || Array.isArray(body) ||
+          !["toggle", "next", "previous"].includes(command) ||
+          typeof body.commandID !== "string" ||
+          !/^[A-Za-z0-9-]{8,80}$/.test(body.commandID) ||
+          !validOptionalNumber(body.issuedAtMs)) {
+        return json({ error: "invalid command payload" }, 400);
+      }
+      const stub = env.SESSION.get(env.SESSION.idFromName("main"));
+      const resp = await stub.fetch("https://session/command", {
+        method: "POST",
         body: JSON.stringify({
-          activityState: body.activityState,
-          updateToken: body.updateToken,
-          sentAtMs: body.sentAtMs,
-          localRevision: body.localRevision,
-          trackID: body.trackID,
-          lyricOffsetMs: body.lyricOffsetMs ?? 0,
-          clientSchemaVersion: body.clientSchemaVersion,
-          autoStartEnabled: body.autoStartEnabled !== false,
+          command,
+          commandID: body.commandID,
+          issuedAtMs: body.issuedAtMs ?? Date.now(),
         }),
       });
       return json(await resp.json(), resp.status);
@@ -140,4 +173,11 @@ function validOptionalNumber(value) {
 
 function validSchemaVersion(value) {
   return value == null || value === 1 || value === 2;
+}
+
+function validRGB(value) {
+  return value == null || (
+    Array.isArray(value) && value.length === 3 &&
+    value.every(component => typeof component === "number" && Number.isFinite(component) && component >= 0 && component <= 1)
+  );
 }

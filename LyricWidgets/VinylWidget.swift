@@ -89,18 +89,18 @@ struct VinylProvider: TimelineProvider {
             return Timeline(entries: [base], policy: .after(.now.addingTimeInterval(300)))
         }
 
-        // WidgetKit cannot run an unbounded animation. A one-second timeline
-        // is a lighter, more reliable compromise for the small widget while
-        // still giving the record a visible 15-second revolution.
+        // WidgetKit cannot run an unbounded animation. Keep a short phase
+        // window and let each entry resolve artwork from the shared cache;
+        // embedding the same image in every archived entry causes memory spikes.
         var entries: [VinylEntry] = []
-        entries.reserveCapacity(60)
+        entries.reserveCapacity(20)
         let start = Date.now
-        for step in 0..<60 {
+        for step in 0..<20 {
             entries.append(entry(
                 from: snapshot,
                 rotation: Double(step) * 24,
                 date: start.addingTimeInterval(Double(step)),
-                imageData: artworkData,
+                imageData: nil,
                 showsArtwork: showsArtwork
             ))
         }
@@ -143,11 +143,11 @@ struct VinylProvider: TimelineProvider {
         )
     }
 
-    /// Album art bytes, cached in the app-group defaults per URL so each spin
-    /// timeline fetches at most once per album.
+    /// Album art bytes, cached in the shared file repository per URL so each
+    /// spin timeline fetches at most once per album.
     private static func artData(for urlString: String?) async -> Data? {
         guard let urlString, let url = URL(string: urlString) else { return nil }
-        if let cached = SharedNowPlaying.cachedArtwork(for: urlString) { return cached }
+        if let cached = await ArtworkRepository.shared.data(for: urlString) { return cached }
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
@@ -162,7 +162,7 @@ struct VinylProvider: TimelineProvider {
             image.draw(in: CGRect(origin: .zero, size: size))
         }
         let payload = small.jpegData(compressionQuality: 0.85)
-        if let payload { SharedNowPlaying.saveArtwork(payload, for: urlString) }
+        if let payload { await ArtworkRepository.shared.save(payload, for: urlString) }
         return payload
     }
 }

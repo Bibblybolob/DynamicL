@@ -22,6 +22,47 @@ final class NowPlayingMetadataTests: XCTestCase {
         XCTAssertEqual(metadata.albumImageURL, "https://example.com/art.jpg")
     }
 
+    func testPartialSameTrackResponseKeepsStableMetadata() {
+        var metadata = NowPlayingMetadata()
+        metadata.accept(
+            trackKey: "track-1",
+            trackID: "track-1",
+            signature: .init(title: "Song", artist: "Artist", album: "Album", duration: 180),
+            albumImageURL: "https://example.com/art.jpg"
+        )
+
+        metadata.accept(
+            trackKey: "track-1",
+            trackID: nil,
+            signature: .init(title: "", artist: "", album: nil, duration: nil),
+            albumImageURL: nil
+        )
+
+        XCTAssertEqual(metadata.signature, .init(title: "Song", artist: "Artist", album: "Album", duration: 180))
+        XCTAssertEqual(metadata.trackID, "track-1")
+    }
+
+    func testPartialResponseWithoutTrackIDKeepsAcceptedIdentity() {
+        var metadata = NowPlayingMetadata()
+        metadata.accept(
+            trackKey: "track-1",
+            trackID: "track-1",
+            signature: .init(title: "Song", artist: "Artist", duration: 180),
+            albumImageURL: "https://example.com/art.jpg"
+        )
+
+        metadata.accept(
+            trackKey: "Song|Artist|",
+            trackID: nil,
+            signature: .init(title: "Song", artist: "Artist"),
+            albumImageURL: nil
+        )
+
+        XCTAssertEqual(metadata.trackKey, "track-1")
+        XCTAssertEqual(metadata.trackID, "track-1")
+        XCTAssertEqual(metadata.albumImageURL, "https://example.com/art.jpg")
+    }
+
     func testVerifiedNewTrackDoesNotUseOldArtwork() {
         var metadata = NowPlayingMetadata()
         metadata.accept(

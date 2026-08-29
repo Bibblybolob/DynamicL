@@ -2,18 +2,18 @@ import Foundation
 import LyricCore
 import os.log
 
-private struct CachedLyrics: Codable {
+private struct CachedLyrics: Codable, Sendable {
     var document: LyricsDocument
     var lastAccessedAt: Date
 }
 
-private struct PersistedLyricsEntry: Codable {
+private struct PersistedLyricsEntry: Codable, Sendable {
     var signature: TrackSignature
     var document: LyricsDocument
     var lastAccessedAt: Date
 }
 
-private struct PersistedLyricsCache: Codable {
+private struct PersistedLyricsCache: Codable, Sendable {
     var version: Int
     var entries: [PersistedLyricsEntry]
 }
@@ -94,6 +94,28 @@ private enum LyricsCacheStore {
     }
 }
 
+/// Serializes disk work away from the main actor and coalesces writes caused
+/// by rapid track changes.
+private actor LyricsCacheRepository {
+    static let shared = LyricsCacheRepository()
+    private var writeTask: Task<Void, Never>?
+
+    func load() async -> [TrackSignature: CachedLyrics] {
+        await Task.detached(priority: .utility) {
+            LyricsCacheStore.load()
+        }.value
+    }
+
+    func save(_ cache: [TrackSignature: CachedLyrics]) {
+        writeTask?.cancel()
+        writeTask = Task.detached(priority: .utility) {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            LyricsCacheStore.save(cache)
+        }
+    }
+}
+
 /// Fetches and caches lyrics documents, feeding the sync engine on track changes.
 @MainActor
 @Observable
@@ -112,8 +134,14 @@ final class LyricsService {
 
     var userOffset: TimeInterval {
         get { engine.userOffset }
-        set { engine.userOffset = newValue }
+        set {
+            let bounded = min(10, max(-10, newValue.isFinite ? newValue : 0))
+            engine.userOffset = bounded
+            UserDefaults(suiteName: SharedNowPlaying.appGroupID)?.set(bounded, forKey: Self.userOffsetKey)
+        }
     }
+
+    private static let userOffsetKey = "lyricsUserOffsetSeconds"
 
     let engine = SyncEngine()
 
@@ -122,9 +150,32 @@ final class LyricsService {
     private var loadTask: Task<Void, Never>?
     private var currentSignature: TrackSignature?
     private var retryTask: Task<Void, Never>?
+    private var cacheLoadTask: Task<Void, Never>?
 
     init() {
-        cache = LyricsCacheStore.load()
+        cache = [:]
+        let savedOffset = UserDefaults(suiteName: SharedNowPlaying.appGroupID)?
+            .double(forKey: Self.userOffsetKey) ?? 0
+        engine.userOffset = min(10, max(-10, savedOffset.isFinite ? savedOffset : 0))
+        cacheLoadTask = Task { [weak self] in
+            let loaded = await LyricsCacheRepository.shared.load()
+            guard !Task.isCancelled, let self else { return }
+            for (signature, cached) in loaded where self.cache[signature] == nil {
+                self.cache[signature] = cached
+            }
+            // A cold launch can begin a lookup before the cache finishes
+            // loading. Apply the cached document only if that lookup has not
+            // already produced a document for the same signature.
+            if let signature = self.currentSignature,
+               self.document == nil,
+               let cached = self.cache[signature] {
+                self.loadTask?.cancel()
+                self.apply(cached.document)
+                self.isLoading = false
+                self.isAwaitingLyrics = false
+                self.lookupStatus = nil
+            }
+        }
     }
 
     func update(signature: TrackSignature?, status: PlaybackStatus?) {
@@ -192,7 +243,7 @@ final class LyricsService {
         case .document(let fetched):
             Self.log.info("lookup ok: \(fetched.lines.count) lines")
             cache[signature] = CachedLyrics(document: fetched, lastAccessedAt: .now)
-            LyricsCacheStore.save(cache)
+            await LyricsCacheRepository.shared.save(cache)
             if currentSignature == signature {
                 lookupStatus = nil
                 apply(fetched)

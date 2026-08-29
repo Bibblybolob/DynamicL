@@ -417,10 +417,11 @@ public struct LAScheduledLyricText: View {
             next = passedCount < scheduledLines.count
                 ? scheduledLines[passedCount].text
                 : nil
-            startDate = scheduledLines[passedCount - 1].date
-            endDate = passedCount < scheduledLines.count
+            let active = scheduledLines[passedCount - 1]
+            startDate = active.date
+            endDate = active.endDate ?? (passedCount < scheduledLines.count
                 ? scheduledLines[passedCount].date
-                : nil
+                : nil)
         }
         return ResolvedLines(
             current: current,

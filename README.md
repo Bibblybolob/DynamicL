@@ -7,9 +7,9 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current development build is version 1.1.1, build 15.
-- Build 14 is the previous build.
-- Build 15 must pass the device test before TestFlight upload.
+- The current development build is version 1.2.0, build 16.
+- Build 15 is the previous build.
+- Build 16 must pass the device test before TestFlight upload.
 
 | Feature | Status |
 |---|---|
@@ -28,21 +28,24 @@ Development continues.
 
 ## Current release candidate
 
-Build 15, version 1.1.1, includes these changes:
+Build 16, version 1.2.0, includes these changes:
 
-- The phone is the primary Live Activity update source.
+- The phone remains the primary Live Activity update source.
 - A 15-second lease prevents the phone and server from writing at the same time.
-- The server starts a Live Activity when Spotify starts and the app is not active.
-- The server sends complete track, lyric, timing, progress, and artwork data.
+- The server can start one Live Activity when Spotify starts and the app is closed.
+- The phone and server use the same version 2 playback fields and lyric offset.
 - All new server timestamps use Unix epoch seconds.
-- The Live Activity uses explicit lyric boundary dates.
-- The app and server use millisecond Spotify progress and the same lyric offset.
-- Each Activity state stays below 3.5 KB.
-- A partial Spotify response does not remove valid artwork for the same track.
-- A new track cannot use artwork from the previous track.
-- The shared artwork cache keeps the four most recent images within 2 MB.
-- A user dismissal stops automatic restart for the current playback session.
-- The app can share a diagnostic log from the sync server settings.
+- The Live Activity uses explicit lyric start and end boundaries.
+- Each Activity content state stays below 3.5 KB.
+- Partial Spotify data does not remove valid track data or artwork.
+- A verified new track cannot use artwork from the previous track.
+- Artwork uses a four-image, 2 MB file cache in the app group.
+- Cache disk work is debounced away from the main actor.
+- Widget and server commands use IDs and expire after eight seconds.
+- The sync server status reports owner, readiness, payload size, and delivery state.
+- Watch lyrics advance from the last received local schedule.
+- Silent background audio is not used.
+- The app can share a rotated diagnostic log from the sync server settings.
 
 - The app uses the OpenLyrics name.
 - The app uses the selected OpenLyrics artwork.
@@ -54,9 +57,9 @@ Build 15, version 1.1.1, includes these changes:
 - The vinyl widget can show static artwork when animation is off.
 - The Now Playing screen shows album artwork and playback state.
 - The app downloads a reduced album image in the app process.
-- Widgets and Live Activities use the cached image for the current track.
+- Widgets and Live Activities use the file-backed image cache for the current track.
 - The artwork cache rejects an image from a different track.
-- Widget snapshots carry ready artwork bytes with the track update.
+- Watch payloads carry one bounded artwork copy when the Watch needs it.
 - Live Activities refresh when pending artwork becomes ready.
 - The app can retry a failed lyric lookup.
 - The app provides Minimal Lyrics, Album Card, Karaoke Focus, Lyrics Poster,
@@ -87,7 +90,7 @@ Activity update token.
 ## Widgets
 
 The app writes a `WidgetLyricSnapshot` to the shared app group.
-The widgets read this snapshot.
+The widgets read this snapshot and load artwork by its cache key.
 The widgets do not connect to Spotify.
 
 The app group is `group.com.jonathantran.dynamicallyrics.la`.
@@ -129,9 +132,10 @@ The vinyl widget uses a static image when animation is off.
 ### Playback control
 
 The play and pause buttons use the `ToggleLyricPlaybackIntent` App Intent.
-The intent writes a command to the shared `PlaybackCommandBus`.
-The app reads the command within about 250 milliseconds.
-The app then calls `PUT /v1/me/player/play` or `PUT /v1/me/player/pause`.
+The intent writes a command with an ID to the shared `PlaybackCommandBus`.
+The app sends the command to the sync server when it is configured.
+The server command is idempotent. If the server is not configured, the app calls
+Spotify directly.
 
 Playback control requires the Spotify `user-modify-playback-state` scope.
 If you connected Spotify before playback control was added, sign out in the app.
@@ -143,7 +147,8 @@ This scope helps the app prevent stale track data after a skip.
 ## Apple Watch
 
 - The Watch app shows the synced lyric line from the iPhone.
-- The iPhone sends the lyric line through Connectivity.
+- The iPhone sends the lyric line and a bounded future schedule through Connectivity.
+- The Watch advances lines from its local schedule when the iPhone is suspended.
 - Complications include circular, rectangular, inline, and corner layouts.
 - The Smart Stack includes a Current Line card.
 - Watch widgets include Karaoke Lyrics and Album Player styles.
@@ -160,9 +165,9 @@ This scope helps the app prevent stale track data after a skip.
 ├── Packages/LyricCore/         # Swift package shared by all targets
 │   ├── LRCParser               # Parses .lrc files and the offset tag
 │   ├── LRCLIB                  # Gets lyrics from lrclib.net
-│   ├── Models / SyncEngine     # Maps playback position to a lyric line
-│   ├── SharedNowPlaying        # App-group snapshot store and playback override
-│   ├── PlaybackCommand         # Widget-to-app playback command bus
+│   ├── Models / SyncEngine      # Shared playback state and timing logic
+│   ├── SharedNowPlaying         # App-group snapshot and file-backed artwork
+│   ├── PlaybackCommand         # ID-based playback command queue
 │   └── LyricsActivityAttributes # Live Activity data
 ├── server/                     # Optional authenticated Cloudflare sync worker
 └── project.yml                 # XcodeGen project definition
@@ -190,4 +195,11 @@ LyricCore uses Swift Package Manager tests.
 
 ```sh
 swift test --package-path Packages/LyricCore
+```
+
+The sync server tests run with:
+
+```sh
+cd server
+npm test
 ```

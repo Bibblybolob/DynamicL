@@ -106,22 +106,9 @@ final class SpotifyProvider: PlaybackProvider {
     private var stalledPauseCount = 0
     private var lastFrozenPos: Int?
     private var didLogStall = false
-    /// When the current stall episode was first confirmed (nil = none).
-    private(set) var stalledSince: Date?
     /// True while we believe the API is serving a stale paused state.
     private(set) var isStalledPause = false
     static let stallThreshold = 4
-    /// How long a confirmed stall keeps us in "act like playing" mode before we
-    /// concede it might be a real pause (skip stale windows run 10–30s).
-    static let stallKeepAliveGrace: TimeInterval = 60
-
-    /// While a stall episode is confirmed the player really IS still playing —
-    /// only Spotify's API went stale — so the background keep-alive must not be
-    /// torn down the way it is for a genuine pause.
-    var shouldHoldKeepAlive: Bool {
-        guard isStalledPause, let since = stalledSince else { return false }
-        return Date.now.timeIntervalSince(since) < Self.stallKeepAliveGrace
-    }
 
     private func beginRapidProbe(staleItem: String?) {
         guard rapidProbesLeft == 0 else { return }
@@ -152,11 +139,6 @@ final class SpotifyProvider: PlaybackProvider {
                 }
                 lastFrozenPos = state.progressMs
                 isStalledPause = stalledPauseCount >= Self.stallThreshold
-                if isStalledPause {
-                    if stalledSince == nil { stalledSince = .now }
-                } else {
-                    stalledSince = nil
-                }
                 if isStalledPause, !didLogStall {
                     didLogStall = true
                     DiagnosticsLog.append("stall confirmed: \(stalledPauseCount) frozen polls at pos=\(lastFrozenPos ?? -1)")
@@ -300,9 +282,33 @@ final class SpotifyProvider: PlaybackProvider {
             suppressedLieSamples = 0
         }
         lastAppliedPositionMs = newPos ?? lastAppliedPositionMs
-        status = state.status
+        // Spotify can briefly omit progress_ms while it still returns the
+        // current item. Do not convert that partial response to position zero:
+        // keep projecting the last trusted position until a new sample arrives.
+        if state.progressMs == nil, let existingStatus = status, existingStatus.state == .playing {
+            status = PlaybackStatus(
+                state: state.isPlaying ? .playing : .paused,
+                position: existingStatus.position(at: .now),
+                rate: state.isPlaying ? max(existingStatus.rate, 0.001) : 0
+            )
+        } else {
+            status = state.status
+        }
+        // Spotify can omit the item ID in a short same-track response. Keep
+        // the accepted ID as the primary identity when the stable text still
+        // matches; otherwise the response would look like a new track and
+        // clear valid artwork.
+        let effectiveIdentityKey: String
+        if item.id == nil,
+           metadata.signature?.title == nextSignature.title,
+           metadata.signature?.artist == nextSignature.artist,
+           let acceptedKey = metadata.trackKey {
+            effectiveIdentityKey = acceptedKey
+        } else {
+            effectiveIdentityKey = identityKey
+        }
         metadata.accept(
-            trackKey: identityKey,
+            trackKey: effectiveIdentityKey,
             trackID: item.id,
             signature: nextSignature,
             albumImageURL: state.albumImageURL
@@ -451,7 +457,6 @@ final class SpotifyProvider: PlaybackProvider {
         stalledPauseCount = 0
         isStalledPause = false
         didLogStall = false
-        stalledSince = nil
         burst(count: 8)
         DiagnosticsLog.append("recently-played flip: \(name) est=\(Int(elapsed))s")
     }
@@ -521,6 +526,16 @@ final class SpotifyProvider: PlaybackProvider {
             return false
         }
     }
+
+    @discardableResult
+    func play() async -> Bool {
+        await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/play")!, method: "PUT")
+    }
+
+    @discardableResult
+    func pause() async -> Bool {
+        await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/pause")!, method: "PUT")
+    }
 }
 
 /// Playback capabilities consumed by the app's lyrics, widget, and Live
@@ -537,7 +552,6 @@ protocol PlaybackProvider: AnyObject {
     var lastAlbumImageURL: String? { get }
     var lastTrackID: String? { get }
     var isPlaybackConfirmedStopped: Bool { get }
-    var shouldHoldKeepAlive: Bool { get }
     var isLoopLikelyAlive: Bool { get }
 
     func start()
@@ -548,6 +562,8 @@ protocol PlaybackProvider: AnyObject {
     func previous() async -> Bool
     func seek(to position: TimeInterval) async -> Bool
     func togglePlayPause() async -> Bool
+    func play() async -> Bool
+    func pause() async -> Bool
 }
 
 extension PlaybackProvider {
