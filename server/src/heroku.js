@@ -7,100 +7,102 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT ?? 3000);
 const MAX_BODY_BYTES = 512 * 1024;
 const DEFAULT_APNS_HOST = "https://api.push.apple.com";
-
-if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL is required for the Heroku sync server.");
-  process.exit(1);
-}
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 5,
-  connectionTimeoutMillis: 10_000,
-  idleTimeoutMillis: 30_000,
-  ssl: process.env.NODE_ENV === "production"
-    ? { rejectUnauthorized: false }
-    : undefined,
-});
-
-const storage = new PostgresState(pool);
-await storage.init();
-
-const state = { storage };
-const env = {
-  ...process.env,
-  APNS_HOST: process.env.APNS_HOST || DEFAULT_APNS_HOST,
-  SESSION: {
-    idFromName() {
-      return "main";
-    },
-    get() {
-      return sessionStub;
-    },
-  },
-};
-const session = new PlaybackSessionV2(state, env);
-const sessionStub = {
-  fetch(input, init) {
-    return session.fetch(new Request(input, init));
-  },
-};
-
+let storage;
+let session;
 let operation = Promise.resolve();
 let wakeTimer;
 
-const server = http.createServer(async (incoming, outgoing) => {
-  try {
-    const body = await readBody(incoming);
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(incoming.headers)) {
-      if (Array.isArray(value)) headers.set(name, value.join(", "));
-      else if (value != null) headers.set(name, value);
-    }
-    const request = new Request(
-      `http://${incoming.headers.host || "localhost"}${incoming.url || "/"}`,
-      {
-        method: incoming.method,
-        headers,
-        body: body.length > 0 && incoming.method !== "GET" && incoming.method !== "HEAD"
-          ? body
-          : undefined,
+async function startServer() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required for the Heroku sync server.");
+  }
+
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 5,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+    ssl: process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : undefined,
+  });
+
+  storage = new PostgresState(pool);
+  await storage.init();
+
+  const state = { storage };
+  const env = {
+    ...process.env,
+    APNS_HOST: process.env.APNS_HOST || DEFAULT_APNS_HOST,
+    SESSION: {
+      idFromName() {
+        return "main";
       },
-    );
-    const response = await serial(() => worker.fetch(request, env));
-    outgoing.statusCode = response.status;
-    response.headers.forEach((value, name) => outgoing.setHeader(name, value));
-    if (incoming.method === "HEAD") {
-      outgoing.end();
-      return;
+      get() {
+        return sessionStub;
+      },
+    },
+  };
+  session = new PlaybackSessionV2(state, env);
+  const sessionStub = {
+    fetch(input, init) {
+      return session.fetch(new Request(input, init));
+    },
+  };
+
+  const server = http.createServer(async (incoming, outgoing) => {
+    try {
+      const body = await readBody(incoming);
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (Array.isArray(value)) headers.set(name, value.join(", "));
+        else if (value != null) headers.set(name, value);
+      }
+      const request = new Request(
+        `http://${incoming.headers.host || "localhost"}${incoming.url || "/"}`,
+        {
+          method: incoming.method,
+          headers,
+          body: body.length > 0 && incoming.method !== "GET" && incoming.method !== "HEAD"
+            ? body
+            : undefined,
+        },
+      );
+      const response = await serial(() => worker.fetch(request, env));
+      outgoing.statusCode = response.status;
+      response.headers.forEach((value, name) => outgoing.setHeader(name, value));
+      if (incoming.method === "HEAD") {
+        outgoing.end();
+        return;
+      }
+      outgoing.end(Buffer.from(await response.arrayBuffer()));
+      scheduleWake();
+    } catch (error) {
+      console.error("request failed", error?.stack || error);
+      if (!outgoing.headersSent) {
+        outgoing.statusCode = 500;
+        outgoing.setHeader("content-type", "application/json");
+        outgoing.end(JSON.stringify({ error: "internal server error" }));
+      } else {
+        outgoing.end();
+      }
     }
-    outgoing.end(Buffer.from(await response.arrayBuffer()));
+  });
+
+  server.listen(PORT, "0.0.0.0", async () => {
+    if (await storage.get("refreshToken") && !storage.alarmAt) {
+      await storage.setAlarm(Date.now() + 1_000);
+    }
     scheduleWake();
-  } catch (error) {
-    console.error("request failed", error?.stack || error);
-    if (!outgoing.headersSent) {
-      outgoing.statusCode = 500;
-      outgoing.setHeader("content-type", "application/json");
-      outgoing.end(JSON.stringify({ error: "internal server error" }));
-    } else {
-      outgoing.end();
-    }
-  }
-});
+    console.log(`OpenLyrics sync server listening on port ${PORT}`);
+  });
 
-server.listen(PORT, "0.0.0.0", async () => {
-  if (await storage.get("refreshToken") && !storage.alarmAt) {
-    await storage.setAlarm(Date.now() + 1_000);
-  }
-  scheduleWake();
-  console.log(`OpenLyrics sync server listening on port ${PORT}`);
-});
-
-process.on("SIGTERM", async () => {
-  clearTimeout(wakeTimer);
-  server.close();
-  await pool.end();
-});
+  process.on("SIGTERM", async () => {
+    clearTimeout(wakeTimer);
+    server.close();
+    await pool.end();
+  });
+}
 
 function serial(task) {
   const next = operation.then(task, task);
@@ -230,3 +232,8 @@ function finiteTimestamp(value) {
   const timestamp = Number(value);
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
 }
+
+startServer().catch(error => {
+  console.error("server startup failed", error?.stack || error);
+  process.exitCode = 1;
+});
