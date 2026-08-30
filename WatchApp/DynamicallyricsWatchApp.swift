@@ -25,6 +25,7 @@ final class WatchModel {
 
     private var delegate: WatchReceiverDelegate?
     private var schedule: [WidgetLyricSnapshot.ScheduledLine] = []
+    private var playbackEndDate: Date?
     private var scheduleTask: Task<Void, Never>?
 
     init() {
@@ -55,6 +56,9 @@ final class WatchModel {
         isPlaying = snapshot.isPlaying
         hasContent = true
         schedule = snapshot.scheduledLines.sorted { $0.date < $1.date }
+        playbackEndDate = snapshot.isPlaying
+            ? snapshot.playbackEndEpoch.map(Date.init(timeIntervalSince1970:))
+            : nil
         advanceSchedule(at: .now)
         if let url = snapshot.albumImageURL, let data = snapshot.albumImageData {
             SharedNowPlaying.saveArtwork(data, for: url)
@@ -70,6 +74,7 @@ final class WatchModel {
         currentLine = "Waiting for your iPhone…"
         isPlaying = false
         schedule = []
+        playbackEndDate = nil
         SharedNowPlaying.clear()
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -79,6 +84,13 @@ final class WatchModel {
     /// packet so the visible line stays aligned while the phone is suspended.
     private func advanceSchedule(at date: Date) {
         guard hasContent, isPlaying else { return }
+        if let playbackEndDate, date >= playbackEndDate {
+            // The phone can be suspended at the end of a song. Clear the
+            // visible Watch state from the absolute end boundary instead of
+            // leaving the last lyric on screen until the next packet.
+            reset()
+            return
+        }
         if let line = schedule.last(where: { $0.date <= date }) {
             currentLine = line.text
         }

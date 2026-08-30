@@ -57,8 +57,21 @@ struct WatchLyricProvider: TimelineProvider {
             entries.append(entry(from: snapshot, at: line.date, line: line.text))
         }
 
+        if snapshot.isPlaying,
+           let endEpoch = snapshot.playbackEndEpoch {
+            let endDate = Date(timeIntervalSince1970: endEpoch)
+            if endDate > .now, entries.last?.date ?? .distantPast < endDate {
+                entries.append(.init(
+                    date: endDate,
+                    trackTitle: "No music",
+                    currentLine: "Play something",
+                    isPlaying: false
+                ))
+            }
+        }
+
         let lastDate = entries.last?.date ?? .now
-        let refresh = lastDate.addingTimeInterval(snapshot.isPlaying ? 30 : 900)
+        let refresh = lastDate.addingTimeInterval(entries.last?.isPlaying == false ? 900 : 30)
         completion(Timeline(entries: entries, policy: .after(refresh)))
     }
 

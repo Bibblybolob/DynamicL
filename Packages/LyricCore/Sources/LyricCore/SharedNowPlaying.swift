@@ -33,6 +33,11 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
     public var schemaVersion: Int?
     public var revision: Int64?
     public var generatedAtEpoch: TimeInterval?
+    /// Track duration in seconds. Widgets use this to schedule an explicit
+    /// idle entry when the phone is suspended at the end of a song.
+    public var trackDuration: TimeInterval?
+    /// Predicted track end on the shared wall clock. It is nil while paused.
+    public var playbackEndEpoch: TimeInterval?
     public let currentLine: String
     public let isPlaying: Bool
     public let updatedAt: Date
@@ -49,6 +54,8 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         schemaVersion: Int? = 2,
         revision: Int64? = nil,
         generatedAtEpoch: TimeInterval? = nil,
+        trackDuration: TimeInterval? = nil,
+        playbackEndEpoch: TimeInterval? = nil,
         currentLine: String,
         isPlaying: Bool,
         updatedAt: Date = .now,
@@ -64,6 +71,8 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         self.schemaVersion = schemaVersion
         self.revision = revision
         self.generatedAtEpoch = generatedAtEpoch ?? updatedAt.timeIntervalSince1970
+        self.trackDuration = trackDuration
+        self.playbackEndEpoch = playbackEndEpoch
         self.currentLine = currentLine
         self.isPlaying = isPlaying
         self.updatedAt = updatedAt
@@ -73,7 +82,8 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case trackTitle, artistName, albumImageURL, albumImageData
         case artworkKey, albumDominantRGB, trackID, schemaVersion, revision
-        case generatedAtEpoch, currentLine, isPlaying, updatedAt, scheduledLines
+        case generatedAtEpoch, trackDuration, playbackEndEpoch
+        case currentLine, isPlaying, updatedAt, scheduledLines
     }
 
     public init(from decoder: Decoder) throws {
@@ -89,6 +99,8 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         revision = try container.decodeIfPresent(Int64.self, forKey: .revision)
         generatedAtEpoch = try container.decodeIfPresent(TimeInterval.self, forKey: .generatedAtEpoch)
+        trackDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .trackDuration)
+        playbackEndEpoch = try container.decodeIfPresent(TimeInterval.self, forKey: .playbackEndEpoch)
         currentLine = try container.decode(String.self, forKey: .currentLine)
         isPlaying = try container.decode(Bool.self, forKey: .isPlaying)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast
@@ -115,6 +127,7 @@ public enum SharedNowPlaying {
     private static let maxArtworkEntries = 4
     private static let maxArtworkBytes = 2_000_000
     private static let artworkLock = NSLock()
+    private static let requestLock = NSLock()
     private nonisolated(unsafe) static let memoryCache = NSCache<NSString, NSData>()
 
     private struct LegacyArtworkCache: Codable {
@@ -166,6 +179,7 @@ public enum SharedNowPlaying {
         // app-group mailbox. Do not let that stale flip affect the next song.
         store()?.removeObject(forKey: playingOverrideKey)
         store()?.removeObject(forKey: playingOverrideExpiryKey)
+        store()?.removeObject(forKey: localSessionRequestKey)
     }
 
     /// Removes artwork only during an explicit account reset or sign-out.
@@ -201,8 +215,11 @@ public enum SharedNowPlaying {
     /// Returns artwork only when it belongs to the requested URL.
     public static func cachedArtwork(for urlString: String?) -> Data? {
         guard let urlString, !urlString.isEmpty else { return nil }
-        let key = artworkKey(for: urlString)
-        if let cached = memoryCache.object(forKey: key as NSString) {
+        // The file name uses a compact hash, but the process cache must use
+        // the complete URL. A hash collision must never return another
+        // track's artwork before the file index can verify ownership.
+        let memoryKey = urlString as NSString
+        if let cached = memoryCache.object(forKey: memoryKey) {
             return Data(referencing: cached)
         }
 
@@ -213,7 +230,7 @@ public enum SharedNowPlaying {
            let entry = index.entries.last(where: { $0.url == urlString }),
            let data = try? Data(contentsOf: directory.appending(path: entry.fileName)),
            !data.isEmpty {
-            memoryCache.setObject(data as NSData, forKey: key as NSString)
+            memoryCache.setObject(data as NSData, forKey: memoryKey)
             return data
         }
 
@@ -399,7 +416,7 @@ public enum SharedNowPlaying {
             try? FileManager.default.removeItem(at: directory.appending(path: removed.fileName))
         }
         writeFileIndex(ArtworkIndex(entries: entries), in: directory)
-        memoryCache.setObject(data as NSData, forKey: artworkKey(for: urlString) as NSString)
+        memoryCache.setObject(data as NSData, forKey: urlString as NSString)
         clearLegacyArtwork(defaults: store())
     }
 
@@ -424,6 +441,7 @@ public enum SharedNowPlaying {
 
     private static let playingOverrideKey = "widgetPlayingOverride"
     private static let playingOverrideExpiryKey = "widgetPlayingOverrideExpiresAt"
+    private static let localSessionRequestKey = "localLyricsSessionRequested"
 
     public static func setPlayingOverride(_ isPlaying: Bool?) {
         setPlayingOverride(isPlaying, defaults: store())
@@ -431,6 +449,28 @@ public enum SharedNowPlaying {
 
     public static func playingOverride() -> Bool? {
         playingOverride(defaults: store())
+    }
+
+    /// Requests that the main app start the phone-owned lyric session. This is
+    /// used by the iOS 18 Control Center control and by Shortcuts. The request
+    /// is one-shot so an old control tap cannot restart a later session.
+    public static func requestLocalSessionStart() {
+        guard let defaults = store() else { return }
+        requestLock.lock()
+        defaults.set(true, forKey: localSessionRequestKey)
+        requestLock.unlock()
+    }
+
+    /// Consumes a local-session request written by an extension or shortcut.
+    /// The operation is protected by the shared defaults lock so two extension
+    /// invocations cannot both leave a stale request behind.
+    public static func consumeLocalSessionStartRequest() -> Bool {
+        guard let defaults = store() else { return false }
+        requestLock.lock()
+        defer { requestLock.unlock() }
+        let requested = defaults.bool(forKey: localSessionRequestKey)
+        if requested { defaults.removeObject(forKey: localSessionRequestKey) }
+        return requested
     }
 
     private static func store() -> UserDefaults? {

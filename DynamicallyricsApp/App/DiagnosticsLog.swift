@@ -10,9 +10,10 @@ enum DiagnosticsLog {
 
     static func append(_ line: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())
+        let safeLine = redact(line)
         queue.async {
             let url = documentsDirectory.appending(path: fileName)
-            let entry = "[\(stamp)] \(line)\n"
+            let entry = "[\(stamp)] \(safeLine)\n"
             if let handle = try? FileHandle(forWritingTo: url) {
                 if let size = try? handle.seekToEnd(), size + UInt64(entry.utf8.count) > UInt64(maxFileBytes) {
                     try? handle.close()
@@ -44,5 +45,36 @@ enum DiagnosticsLog {
 
     private static var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    /// Diagnostics can be shared from a user device. Remove credentials and
+    /// stable private identifiers before the line enters the file queue.
+    private static func redact(_ line: String) -> String {
+        var result = line
+        let keyPattern = #"(?i)\b(accessToken|refreshToken|serverAccessToken|syncServerAuthToken|pushToStartToken|updateToken|authorization|trackID|trackKey|deviceID|userID|commandID|access_token|refresh_token)(\s*[:=]\s*|\s+)[^,;\s}\]]+"#
+        if let regex = try? NSRegularExpression(pattern: keyPattern) {
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: "$1$2[REDACTED]"
+            )
+        }
+        let bearerPattern = #"(?i)\bBearer\s+[^,;\s}\]]+"#
+        if let regex = try? NSRegularExpression(pattern: bearerPattern) {
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: "Bearer [REDACTED]"
+            )
+        }
+        let queryPattern = #"(?i)([?&](?:access_token|refresh_token|token|authorization)=)[^&\s]+"#
+        if let regex = try? NSRegularExpression(pattern: queryPattern) {
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: "$1[REDACTED]"
+            )
+        }
+        return result
     }
 }

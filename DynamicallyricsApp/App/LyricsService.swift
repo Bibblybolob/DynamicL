@@ -149,6 +149,12 @@ final class LyricsService {
     private var failedSignatures: Set<TrackSignature> = []
     private var loadTask: Task<Void, Never>?
     private var currentSignature: TrackSignature?
+    /// Stable identity for the lookup that owns the visible document. Spotify
+    /// track IDs take precedence over text metadata so a late request for an
+    /// earlier item cannot restore its lyrics after a skip to a different item
+    /// with the same title and artist.
+    private var currentLookupKey: String?
+    private var lookupGeneration: UInt64 = 0
     private var retryTask: Task<Void, Never>?
     private var cacheLoadTask: Task<Void, Never>?
 
@@ -166,7 +172,8 @@ final class LyricsService {
             // A cold launch can begin a lookup before the cache finishes
             // loading. Apply the cached document only if that lookup has not
             // already produced a document for the same signature.
-            if let signature = self.currentSignature,
+            if self.currentLookupKey != nil,
+               let signature = self.currentSignature,
                self.document == nil,
                let cached = self.cache[signature] {
                 self.loadTask?.cancel()
@@ -178,11 +185,24 @@ final class LyricsService {
         }
     }
 
-    func update(signature: TrackSignature?, status: PlaybackStatus?) {
+    func update(
+        signature: TrackSignature?,
+        trackID: String? = nil,
+        status: PlaybackStatus?
+    ) {
         engine.update(status: status)
 
-        guard signature != currentSignature else { return }
+        let lookupKey = Self.lookupKey(trackID: trackID, signature: signature)
+        guard lookupKey != currentLookupKey else {
+            // Same Spotify item, but a later complete response can fill album
+            // or duration fields that were absent in an earlier sample.
+            currentSignature = signature
+            return
+        }
+        currentLookupKey = lookupKey
         currentSignature = signature
+        lookupGeneration &+= 1
+        let generation = lookupGeneration
         loadTask?.cancel()
         retryTask?.cancel()
         retryTask = nil
@@ -193,7 +213,7 @@ final class LyricsService {
         lookupStatus = nil
         isAwaitingLyrics = false
 
-        guard let signature else {
+        guard let signature, let lookupKey else {
             apply(nil)
             return
         }
@@ -214,37 +234,56 @@ final class LyricsService {
         isLoading = true
         isAwaitingLyrics = true
         loadTask = Task { [weak self] in
-            await self?.loadAndApply(signature)
+            await self?.loadAndApply(
+                signature,
+                lookupKey: lookupKey,
+                generation: generation
+            )
         }
     }
 
     /// Starts a fresh lookup for the active track. This clears the session-only
     /// not-found marker so a temporary provider or network problem can recover.
     func retryCurrentLookup() {
-        guard let signature = currentSignature else { return }
+        guard let signature = currentSignature,
+              let lookupKey = currentLookupKey else { return }
         loadTask?.cancel()
         retryTask?.cancel()
         retryTask = nil
+        lookupGeneration &+= 1
+        let generation = lookupGeneration
         failedSignatures.remove(signature)
         lookupStatus = nil
         isLoading = true
         isAwaitingLyrics = true
         loadTask = Task { [weak self] in
-            await self?.loadAndApply(signature)
+            await self?.loadAndApply(
+                signature,
+                lookupKey: lookupKey,
+                generation: generation
+            )
         }
     }
 
-    private func loadAndApply(_ signature: TrackSignature) async {
+    private func loadAndApply(
+        _ signature: TrackSignature,
+        lookupKey: String,
+        generation: UInt64
+    ) async {
         Self.log.info("lookup start: \(signature.title) — \(signature.artist)")
         let outcome = await LRCLIBClient.shared.fetchOutcome(for: signature)
         guard !Task.isCancelled else { return }
+
+        let ownsVisibleLookup = currentLookupKey == lookupKey
+            && lookupGeneration == generation
 
         switch outcome {
         case .document(let fetched):
             Self.log.info("lookup ok: \(fetched.lines.count) lines")
             cache[signature] = CachedLyrics(document: fetched, lastAccessedAt: .now)
             await LyricsCacheRepository.shared.save(cache)
-            if currentSignature == signature {
+            if currentLookupKey == lookupKey,
+               lookupGeneration == generation {
                 lookupStatus = nil
                 apply(fetched)
                 isLoading = false
@@ -253,7 +292,7 @@ final class LyricsService {
         case .notFound:
             Self.log.error("lookup notFound: \(signature.title) — \(signature.artist)")
             failedSignatures.insert(signature)
-            if currentSignature == signature {
+            if ownsVisibleLookup {
                 lookupStatus = "No lyrics found for this track"
                 isLoading = false
                 isAwaitingLyrics = false
@@ -263,23 +302,38 @@ final class LyricsService {
             DiagnosticsLog.append("lookup failed: \(reason)")
             // Transient (network, rate limit): don't blacklist — surface it and
             // retry after a delay so a mid-song hiccup self-heals.
-            if currentSignature == signature {
+            if ownsVisibleLookup {
                 lookupStatus = "Lyrics lookup failed — retrying (\(reason))"
                 isLoading = false
+                scheduleRetry(
+                    for: signature,
+                    lookupKey: lookupKey,
+                    generation: generation
+                )
             }
-            scheduleRetry(for: signature)
         }
     }
 
-    private func scheduleRetry(for signature: TrackSignature) {
+    private func scheduleRetry(
+        for signature: TrackSignature,
+        lookupKey: String,
+        generation: UInt64
+    ) {
         retryTask?.cancel()
         retryTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(15))
-            guard !Task.isCancelled, let self, self.currentSignature == signature else { return }
+            guard !Task.isCancelled,
+                  let self,
+                  self.currentLookupKey == lookupKey,
+                  self.lookupGeneration == generation else { return }
             self.retryTask = nil
             self.isLoading = true
             self.lookupStatus = "Retrying lyrics…"
-            await self.loadAndApply(signature)
+            await self.loadAndApply(
+                signature,
+                lookupKey: lookupKey,
+                generation: generation
+            )
         }
     }
 
@@ -299,7 +353,21 @@ final class LyricsService {
         lookupStatus = nil
         isAwaitingLyrics = false
         currentSignature = doc.track
+        currentLookupKey = Self.lookupKey(trackID: nil, signature: doc.track)
+        lookupGeneration &+= 1
         apply(doc)
+    }
+
+    private static func lookupKey(
+        trackID: String?,
+        signature: TrackSignature?
+    ) -> String? {
+        guard let signature else { return nil }
+        if let trackID = trackID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !trackID.isEmpty {
+            return "spotify:\(trackID)"
+        }
+        return "metadata:\(signature.title)|\(signature.artist)|\(signature.album ?? "")|\(signature.duration ?? -1)"
     }
 
     private func apply(_ doc: LyricsDocument?) {

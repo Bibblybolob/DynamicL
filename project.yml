@@ -14,7 +14,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "1.2.0"
-    CURRENT_PROJECT_VERSION: "16"
+    CURRENT_PROJECT_VERSION: "26"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 643P4Q6FLQ
 
@@ -50,6 +50,9 @@ targets:
           - UIInterfaceOrientationPortrait
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
+        # Used only by the opt-in Aggressive Background Sync beta mode.
+        UIBackgroundModes:
+          - audio
         ITSAppUsesNonExemptEncryption: false
         UIAppFonts:
           - Bungee-Regular.ttf
@@ -81,9 +84,7 @@ targets:
           CODE_SIGN_ENTITLEMENTS: DynamicallyricsApp/Support/Dynamicallyrics.Debug.entitlements
         Release:
           CODE_SIGN_ENTITLEMENTS: DynamicallyricsApp/Support/Dynamicallyrics.entitlements
-          CODE_SIGN_STYLE: Manual
-          CODE_SIGN_IDENTITY: "6EAAD94AEE0469F154208895545F3D6B9C3E0F0A"
-          PROVISIONING_PROFILE_SPECIFIER: "Dynamicallyrics App Store Connect"
+          CODE_SIGN_STYLE: Automatic
 
   LyricWidgets:
     type: app-extension
@@ -119,9 +120,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
       configs:
         Release:
-          CODE_SIGN_STYLE: Manual
-          CODE_SIGN_IDENTITY: "6EAAD94AEE0469F154208895545F3D6B9C3E0F0A"
-          PROVISIONING_PROFILE_SPECIFIER: "Dynamicallyrics Widgets App Store Connect"
+          CODE_SIGN_STYLE: Automatic
 
   LyricWatchWidgets:
     type: app-extension
@@ -150,9 +149,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "4"
       configs:
         Release:
-          CODE_SIGN_STYLE: Manual
-          CODE_SIGN_IDENTITY: "6EAAD94AEE0469F154208895545F3D6B9C3E0F0A"
-          PROVISIONING_PROFILE_SPECIFIER: "Dynamicallyrics Watch Widgets App Store Connect"
+          CODE_SIGN_STYLE: Automatic
 
   DynamicallyricsWatch:
     type: application
@@ -175,6 +172,11 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.jonathantran.dynamicallyrics.la
+    entitlements:
+      path: WatchApp/Support/DynamicallyricsWatch.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.jonathantran.dynamicallyrics.la
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jonathantran.dynamicallyrics.la.watchkitapp
@@ -183,9 +185,7 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""
       configs:
         Release:
-          CODE_SIGN_STYLE: Manual
-          CODE_SIGN_IDENTITY: "6EAAD94AEE0469F154208895545F3D6B9C3E0F0A"
-          PROVISIONING_PROFILE_SPECIFIER: "Dynamicallyrics Watch App Store Connect"
+          CODE_SIGN_STYLE: Automatic
 
 schemes:
   Dynamicallyrics:

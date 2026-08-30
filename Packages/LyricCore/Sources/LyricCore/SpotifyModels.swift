@@ -69,12 +69,23 @@ public struct SpotifyPlayerState: Codable, Sendable, Equatable {
         )
     }
 
+    /// Spotify can report the final position with `is_playing == false`
+    /// before it returns `item: null`. Treat that state as stopped so the app,
+    /// widgets, Watch, and Live Activity can move to the idle state together.
+    public var isCompleted: Bool {
+        guard let durationMs = item?.durationMs,
+              durationMs > 0,
+              let progressMs,
+              progressMs >= durationMs - 750 else { return false }
+        return !isPlaying
+    }
+
     public var status: PlaybackStatus {
         PlaybackStatus(
             // A 200 response with `item: null` means there is no current
             // playback item. Treating it as a paused song leaves stale title
             // and lyric UI alive until a later 204 response.
-            state: item == nil ? .stopped : (isPlaying ? .playing : .paused),
+            state: item == nil || isCompleted ? .stopped : (isPlaying ? .playing : .paused),
             position: TimeInterval(progressMs ?? 0) / 1000.0,
             rate: isPlaying && item != nil ? 1.0 : 0.0
         )

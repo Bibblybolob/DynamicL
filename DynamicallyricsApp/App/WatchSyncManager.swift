@@ -17,6 +17,9 @@ final class WatchSyncManager: NSObject {
     private var delegateInstalled = false
     private var pendingSnapshot: WidgetLyricSnapshot?
     private var pendingClear = false
+    private var lastSentAt: Date?
+    private var pendingSendTask: Task<Void, Never>?
+    private static let minimumSendInterval: TimeInterval = 2
 
     private override init() {
         super.init()
@@ -32,7 +35,7 @@ final class WatchSyncManager: NSObject {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.activated = true
-                    self.flushPending()
+                    self.scheduleSend()
                 }
             }
             session.delegate = ActivationDelegate.shared
@@ -41,6 +44,7 @@ final class WatchSyncManager: NSObject {
             session.activate()
         } else {
             activated = true
+            scheduleSend()
         }
     }
 
@@ -57,15 +61,31 @@ final class WatchSyncManager: NSObject {
         pendingSnapshot = snapshot
         pendingClear = false
         guard WCSession.isSupported(), activated, WCSession.default.activationState == .activated else { return }
-        send(snapshot)
+        scheduleSend()
     }
 
     func clear() {
+        pendingSendTask?.cancel()
+        pendingSendTask = nil
         pendingSnapshot = nil
         pendingClear = true
         lastPayloadKey = nil
         guard WCSession.isSupported(), activated, WCSession.default.activationState == .activated else { return }
-        sendClear()
+        scheduleSend()
+    }
+
+    private func scheduleSend() {
+        guard pendingSendTask == nil else { return }
+        let delay = max(0, Self.minimumSendInterval - Date.now.timeIntervalSince(lastSentAt ?? .distantPast))
+        if delay == 0 {
+            flushPending()
+            return
+        }
+        pendingSendTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.flushPending()
+        }
     }
 
     private func send(_ snapshot: WidgetLyricSnapshot) {
@@ -96,6 +116,7 @@ final class WatchSyncManager: NSObject {
             try WCSession.default.updateApplicationContext(payloadWithArtwork)
             lastPayloadKey = payloadKey(for: snapshot)
             pendingSnapshot = nil
+            lastSentAt = .now
         } catch {
             Self.logger.error("updateApplicationContext failed: \(error.localizedDescription)")
         }
@@ -105,12 +126,14 @@ final class WatchSyncManager: NSObject {
         do {
             try WCSession.default.updateApplicationContext([:])
             pendingClear = false
+            lastSentAt = .now
         } catch {
             Self.logger.error("clear context failed: \(error.localizedDescription)")
         }
     }
 
     private func flushPending() {
+        pendingSendTask = nil
         if pendingClear {
             sendClear()
         } else if let pendingSnapshot {
@@ -121,13 +144,15 @@ final class WatchSyncManager: NSObject {
     var lastPublishedKey: String? { lastPayloadKey }
 
     private func payloadKey(for snapshot: WidgetLyricSnapshot) -> String {
-        let schedule = snapshot.scheduledLines.map {
-            String(format: "%.1f:%.1f:%@", $0.date.timeIntervalSince1970,
-                   $0.endDate?.timeIntervalSince1970 ?? -1, $0.text)
-        }.joined(separator: "|")
+        // Schedule dates are rebuilt from the live playback clock on every app
+        // tick. Keep them out of the key during steady playback, but include a
+        // coarse track-end value so a seek or rate change re-sends a corrected
+        // schedule to the Watch.
+        let schedule = snapshot.scheduledLines.map(\.text).joined(separator: "|")
+        let end = snapshot.playbackEndEpoch.map { String(Int(($0 * 2).rounded())) } ?? "-"
         return "\(snapshot.trackTitle)|\(snapshot.artistName)|\(snapshot.currentLine)"
             + "|\(snapshot.isPlaying)|\(snapshot.albumImageURL ?? "")"
-            + "|\(snapshot.artworkKey ?? "")|\(snapshot.albumDominantRGB ?? [])|\(schedule)"
+            + "|\(snapshot.artworkKey ?? "")|\(snapshot.albumDominantRGB ?? [])|\(end)|\(schedule)"
     }
 }
 

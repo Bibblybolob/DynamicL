@@ -24,6 +24,12 @@ struct RootView: View {
                     }
                 }
         }
+        .onAppear {
+            // The first scene-phase transition is not guaranteed to fire for
+            // the initial foreground scene. Seed the model so the background
+            // keep-alive is never left running while the app is visible.
+            model.handleScenePhase(scenePhase)
+        }
         .onChange(of: scenePhase) { _, phase in
             model.handleScenePhase(phase)
         }
@@ -78,9 +84,30 @@ struct RootView: View {
         .padding(.vertical, 4)
     }
 
+    private var localSessionToggle: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Toggle(isOn: Binding(
+                get: { model.localSessionEnabled },
+                set: { model.localSessionEnabled = $0 }
+            )) {
+                Label("Aggressive background sync (Beta)", systemImage: "bolt.horizontal.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Polls Spotify about once per second after the screen locks. It uses more battery and can reach Spotify rate limits.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 28)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 4)
+    }
+
     private var settingsCard: some View {
         VStack(spacing: 0) {
             lockScreenToggle
+            Divider().padding(.leading, 48)
+            localSessionToggle
             Divider().padding(.leading, 48)
             appearanceLink
             Divider().padding(.leading, 48)

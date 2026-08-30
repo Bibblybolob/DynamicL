@@ -258,9 +258,30 @@ public struct LAAlbumDisc: View {
     }
 
     #if canImport(UIKit)
+    private static let uiImageCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 16
+        cache.totalCostLimit = 4_000_000
+        return cache
+    }()
+
     private var cachedArtworkImage: Image? {
         let data = imageData ?? SharedNowPlaying.cachedArtwork(for: urlString)
-        guard let data, let image = UIImage(data: data) else { return nil }
+        guard let data else { return nil }
+
+        if let urlString,
+           let image = Self.uiImageCache.object(forKey: urlString as NSString) {
+            return Image(uiImage: image)
+        }
+
+        guard let image = UIImage(data: data) else { return nil }
+        if let urlString {
+            Self.uiImageCache.setObject(
+                image,
+                forKey: urlString as NSString,
+                cost: data.count
+            )
+        }
         return Image(uiImage: image)
     }
     #else
@@ -333,6 +354,10 @@ public struct LAScheduledLyricText: View {
     }
 
     public var body: some View {
+        // Use the same absolute lyric boundaries as the widget timeline. A
+        // periodic schedule can be throttled by the system while the device
+        // is locked, which leaves the Live Activity on an old lyric even
+        // though the widget has already advanced.
         TimelineView(.explicit(refreshDates)) { timeline in
             let pair = resolvedLines(at: timeline.date)
             if role == .current && karaokeEnabled && animations {
@@ -345,6 +370,17 @@ public struct LAScheduledLyricText: View {
         }
         .frame(height: lineHeight)
         .clipped()
+    }
+
+    private var refreshDates: [Date] {
+        let now = Date.now
+        let boundaries = scheduledLines.flatMap { line in
+            [line.date, line.endDate].compactMap { $0 }
+        }
+        // ActivityKit can coalesce duplicate timeline dates. Give it an
+        // ordered set of explicit line boundaries, including the final end,
+        // so lyric selection does not depend on a throttled periodic timer.
+        return Array(Set([now] + boundaries.filter { $0 > now })).sorted()
     }
 
     @ViewBuilder
@@ -393,11 +429,6 @@ public struct LAScheduledLyricText: View {
         }
         .id(text ?? "")
         .animation(animations ? .spring(duration: 0.3) : nil, value: text)
-    }
-
-    private var refreshDates: [Date] {
-        let now = Date.now
-        return [now] + scheduledLines.map(\.date).filter { $0 > now }
     }
 
     private func resolvedLines(at date: Date) -> ResolvedLines {

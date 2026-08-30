@@ -7,9 +7,9 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current development build is version 1.2.0, build 16.
-- Build 15 is the previous build.
-- Build 16 must pass the device test before TestFlight upload.
+- The current beta build is version 1.2.0, build 26.
+- Build 26 is Beta 3.
+- TestFlight distributes this build for beta testing.
 
 | Feature | Status |
 |---|---|
@@ -22,13 +22,23 @@ Development continues.
 | Apple Watch app and complications | Complete |
 | Lyric cache across app launches | Complete |
 | Lyric lookup retry and recovery | Complete |
-| Optional server-based Live Activity updates | Complete |
+| Automatic server-based Live Activity updates | Complete |
 | Live Activity layout, artwork, alignment, and control settings | Complete |
 | Apple Music integration | Planned |
 
 ## Current release candidate
 
-Build 16, version 1.2.0, includes these changes:
+Build 26, version 1.2.0, is Beta 3 and includes these changes:
+
+- The app rejects a Spotify response from an old or canceled poll.
+- A lyric request uses the Spotify track ID as its primary identity.
+- A late lyric request cannot replace lyrics for a new track.
+- Play, pause, and seek changes update the Live Activity while lyrics load.
+- The app clears an old dismissal flag that can block all Live Activities.
+- The app accepts a server dismissal only when the phone reports it.
+- An expired APNs token does not count as a user dismissal.
+- Live Activity timelines use explicit lyric start and end times.
+- A widget always returns to idle at the real end of a track.
 
 - The phone remains the primary Live Activity update source.
 - A 15-second lease prevents the phone and server from writing at the same time.
@@ -44,7 +54,8 @@ Build 16, version 1.2.0, includes these changes:
 - Widget and server commands use IDs and expire after eight seconds.
 - The sync server status reports owner, readiness, payload size, and delivery state.
 - Watch lyrics advance from the last received local schedule.
-- Silent background audio is not used.
+- Silent background audio is used only by the opt-in Aggressive Background Sync
+  beta mode.
 - The app can share a rotated diagnostic log from the sync server settings.
 
 - The app uses the OpenLyrics name.
@@ -86,6 +97,35 @@ It polls every 10 seconds when playback is stopped.
 On iOS 17.2 or later, the server can use the push-to-start token to start one
 Live Activity for a new playback session. The app then registers the new
 Activity update token.
+
+## Beta 2 reliability changes
+
+- The phone and server send one batch of up to 32 future lyric lines to the
+  Live Activity.
+- The batch covers up to 75 seconds and includes exact Unix start and end
+  times.
+- The phone sends an urgent update for a track change, play state change, seek,
+  artwork change, or style change.
+- The phone and server send a low-priority schedule refill when fewer than
+  three future lines or fewer than 20 seconds remain.
+- A valid schedule changes the lyric inside the Live Activity. The app does
+  not send one ActivityKit update for every lyric line.
+- The widget snapshot stores a longer bounded song schedule. It also stores a
+  predicted track end. This lets WidgetKit return to idle when the phone is
+  suspended.
+- Partial Spotify responses keep the last trusted progress and artwork.
+- A verified new track cannot use artwork from the previous track.
+- A track that reaches its duration returns widgets, Watch, and Live Activity
+  surfaces to idle.
+- Silent audio is disabled by default. Aggressive Background Sync can keep the
+  local writer active after screen lock, while ActivityKit and the sync server
+  provide the normal recovery path.
+- The Live Activity remains available during a pause for up to 10 minutes.
+- The iOS 18 OpenLyrics control can request a local lyrics session when the
+  app is opened by Control Center or Shortcuts.
+- Pause, play, seek, and skip commands update the local playback state before
+  the Spotify response arrives. The app uses the local Spotify client first
+  while it is running and uses the server as a fallback.
 
 ## Widgets
 
@@ -133,7 +173,7 @@ The vinyl widget uses a static image when animation is off.
 
 The play and pause buttons use the `ToggleLyricPlaybackIntent` App Intent.
 The intent writes a command with an ID to the shared `PlaybackCommandBus`.
-The app sends the command to the sync server when it is configured.
+The app sends the command to the managed sync server when it is available.
 The server command is idempotent. If the server is not configured, the app calls
 Spotify directly.
 
@@ -143,6 +183,13 @@ Then sign in again and grant the scope.
 
 The app also requests the `user-read-recently-played` scope.
 This scope helps the app prevent stale track data after a skip.
+
+### Managed sync setup
+
+The app uses the managed OpenLyrics sync server. The user does not enter a
+server URL or access token. After Spotify sign-in and the first ActivityKit
+token, the app validates the Spotify session and stores a private server token
+in Keychain. The Spotify Client ID remains the only app-specific value.
 
 ## Apple Watch
 

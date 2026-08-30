@@ -40,4 +40,40 @@ final class SpotifyMappingTests: XCTestCase {
         XCTAssertEqual(state.status.state, .stopped)
         XCTAssertNil(state.signature)
     }
+
+    func testNaturalCompletionMapsToStopped() throws {
+        let json = """
+        {
+          "progress_ms": 179500,
+          "is_playing": false,
+          "item": {
+            "id": "track-1",
+            "name": "Finished",
+            "duration_ms": 180000,
+            "artists": [{"name": "Artist"}]
+          }
+        }
+        """
+        let state = try JSONDecoder().decode(SpotifyPlayerState.self, from: Data(json.utf8))
+        XCTAssertTrue(state.isCompleted)
+        XCTAssertEqual(state.status.state, .stopped)
+    }
+
+    func testPausedTrackBeforeEndRemainsPaused() throws {
+        let json = """
+        {
+          "progress_ms": 10000,
+          "is_playing": false,
+          "item": {
+            "id": "track-1",
+            "name": "Paused",
+            "duration_ms": 180000,
+            "artists": [{"name": "Artist"}]
+          }
+        }
+        """
+        let state = try JSONDecoder().decode(SpotifyPlayerState.self, from: Data(json.utf8))
+        XCTAssertFalse(state.isCompleted)
+        XCTAssertEqual(state.status.state, .paused)
+    }
 }

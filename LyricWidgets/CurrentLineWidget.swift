@@ -153,8 +153,31 @@ struct CurrentLineProvider: TimelineProvider {
             entries.append(LyricEntry(snapshot: snapshot, date: line.date, line: line.text))
         }
 
+        // If the phone is suspended at the end of a song, no new snapshot can
+        // arrive to clear the last lyric. Add an explicit idle boundary to
+        // every timeline that has a predicted track end.
+        if snapshot.isPlaying {
+            let endDate = snapshot.playbackEndEpoch.map(Date.init(timeIntervalSince1970:))
+            if let endDate, endDate > .now {
+                // User offsets can place a lyric boundary after the real
+                // playback end. The idle boundary must always be the final
+                // timeline entry so the widget cannot revive stale lyrics.
+                entries.removeAll { $0.date >= endDate }
+                entries.append(LyricEntry(
+                    date: endDate,
+                    trackTitle: "No music",
+                    artistName: "OpenLyrics",
+                    currentLine: "Play something to see lyrics here.",
+                    nextLine: nil,
+                    albumImageURL: nil,
+                    albumImageData: nil,
+                    isPlaying: false
+                ))
+            }
+        }
+
         let lastDate = entries.last?.date ?? .now
-        let refresh = lastDate.addingTimeInterval(snapshot.isPlaying ? 30 : 900)
+        let refresh = lastDate.addingTimeInterval(entries.last?.isPlaying == false ? 900 : 30)
         completion(Timeline(entries: entries, policy: .after(refresh)))
     }
 }

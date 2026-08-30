@@ -19,15 +19,25 @@ struct SyncedLyricsView: View {
                     Color.clear.frame(height: 120).id("top-spacer")
                     ForEach(Array(document.lines.enumerated()), id: \.offset) { index, line in
                         Group {
-                            if index == currentIndex, karaokeEnabled {
-                                KaraokeLyricText(
-                                    text: line.text,
-                                    progress: karaokeProgress(for: index),
-                                    font: .system(.title3, design: .rounded, weight: .bold),
-                                    baseColor: .pink.opacity(0.38),
-                                    highlightColor: .pink,
-                                    reduceMotion: reduceMotion
-                                )
+                            if index == currentIndex {
+                                if karaokeEnabled {
+                                    KaraokeLyricText(
+                                        text: line.text,
+                                        progress: karaokeProgress(for: index),
+                                        font: .system(.title3, design: .rounded, weight: .bold),
+                                        baseColor: .pink.opacity(0.38),
+                                        highlightColor: .pink,
+                                        reduceMotion: reduceMotion
+                                    )
+                                } else {
+                                    // The active line must stay readable and
+                                    // distinct even when karaoke is disabled.
+                                    // Older saved preferences can disable the
+                                    // sweep without disabling active-line color.
+                                    Text(line.text)
+                                        .font(.system(.title3, design: .rounded, weight: .bold))
+                                        .foregroundStyle(.pink)
+                                }
                             } else {
                                 Text(line.text)
                                     .font(.system(.title3, design: .rounded, weight: .medium))

@@ -266,7 +266,6 @@ private struct LockScreenLyricsView: View {
                     LAAlbumDisc(
                         urlString: context.state.albumImageURL,
                         size: 88,
-                        imageData: SharedNowPlaying.cachedArtwork(for: context.state.albumImageURL),
                         style: look.artworkStyle
                     )
                 }
@@ -285,6 +284,7 @@ private struct LockScreenLyricsView: View {
         .containerBackground(for: .widget) {
             look.background
         }
+        .widgetURL(URL(string: "dynamicallyrics://lyrics")!)
     }
 
     @ViewBuilder

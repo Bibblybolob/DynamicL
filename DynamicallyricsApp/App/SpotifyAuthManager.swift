@@ -14,7 +14,20 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
     @ObservationIgnored private var webSession: ASWebAuthenticationSession?
     @ObservationIgnored private var refreshTask: Task<String, Error>?
 
-    var isConnected: Bool { accessToken != nil }
+    /// A Spotify connection is still usable when the short-lived access token
+    /// is gone or expired. The refresh token is the durable connection state.
+    /// This matters after a 401, app termination, or a cold launch: the app
+    /// must refresh silently instead of showing the Spotify authorization flow.
+    var isConnected: Bool {
+        let hasAccessToken = accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        return hasAccessToken || storedRefreshToken != nil
+    }
+
+    private var storedRefreshToken: String? {
+        guard let refreshToken else { return nil }
+        let value = refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
 
     override init() {
         super.init()
@@ -35,6 +48,21 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
     }
 
     func connect() async throws {
+        // A connection restored from Keychain must never open Spotify again
+        // just because the access token expired. Refresh it first. If Spotify
+        // rejects the refresh token, `refresh(using:)` clears the invalid
+        // connection and this call falls through to a new authorization.
+        if storedRefreshToken != nil {
+            do {
+                _ = try await validAccessToken()
+                return
+            } catch {
+                // Keep transient refresh failures visible. Only retry the
+                // browser flow after the stored refresh token was removed.
+                if storedRefreshToken != nil { throw error }
+            }
+        }
+
         let verifier = PKCE.generateVerifier()
         let state = PKCE.randomState()
 
@@ -60,7 +88,7 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         if let accessToken, let expiresAt = tokenExpiresAt, Date.now < expiresAt.addingTimeInterval(-30) {
             return accessToken
         }
-        guard let refreshToken else {
+        guard let refreshToken = storedRefreshToken else {
             throw SpotifyAuthError.notAuthenticated
         }
         if let refreshTask {
@@ -167,13 +195,15 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
             throw SpotifyAuthError.tokenExchange("HTTP \(http.statusCode)")
         }
         let tokens = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
-        store(tokens: tokens, keepingRefreshToken: tokens.refreshToken == nil ? refresh : nil)
+        store(tokens: tokens, keepingRefreshToken: refresh)
         return tokens.accessToken
     }
 
     private func store(tokens: SpotifyTokenResponse, keepingRefreshToken fallback: String? = nil) {
         accessToken = tokens.accessToken
-        refreshToken = tokens.refreshToken ?? fallback
+        let returnedRefreshToken = tokens.refreshToken?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        refreshToken = returnedRefreshToken.flatMap { $0.isEmpty ? nil : $0 } ?? fallback
         tokenExpiresAt = Date.now.addingTimeInterval(TimeInterval(tokens.expiresIn))
         KeychainStore.set(tokens.accessToken, forKey: "access_token")
         KeychainStore.set(refreshToken, forKey: "refresh_token")
