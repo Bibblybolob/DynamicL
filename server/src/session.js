@@ -13,6 +13,10 @@ const IDLE_POLL_MS = 10_000;
 const PHONE_LEASE_MS = 15_000;
 const PAUSE_SESSION_MS = 10 * 60 * 1_000;
 const KEEPALIVE_MS = 45_000;
+const SCHEDULE_HORIZON_SEC = 75;
+const SCHEDULE_MAX_LINES = 32;
+const SCHEDULE_REFILL_LEAD_SEC = 20;
+const SCHEDULE_REFILL_MIN_MS = 15_000;
 const PAYLOAD_LIMIT_BYTES = 3_500;
 const SWIFT_REFERENCE_EPOCH_OFFSET = 978_307_200;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -49,6 +53,8 @@ export class PlaybackSessionV2 {
         // an access token or playback snapshot from the previous account.
         values.accessToken = "";
         values.accessTokenExpiresAt = 0;
+        values.updateToken = "";
+        values.phoneActivityState = "none";
         values.activeTrack = null;
         values.activeContentState = null;
         values.playbackSessionID = "";
@@ -57,13 +63,18 @@ export class PlaybackSessionV2 {
         values.lastStartAttemptCount = 0;
         values.lastSentTrackID = "";
         values.lastSentScheduleV2 = [];
+        values.lastSchedulePushAt = 0;
         values.forceServerUpdate = true;
         values.noItemSamples = 0;
+        values.playbackSessionDismissed = false;
+        values.dismissalSource = null;
       }
       if (body.updateToken) {
         values.updateToken = body.updateToken;
         values.phoneActivityState = "active";
         values.forceServerUpdate = true;
+        values.playbackSessionDismissed = false;
+        values.dismissalSource = null;
       }
       if (body.pushToStartToken) values.pushToStartToken = body.pushToStartToken;
       await this.state.storage.put(values);
@@ -74,6 +85,7 @@ export class PlaybackSessionV2 {
         serverRevision: (await this.state.storage.get("serverRevision")) ?? 0,
         playbackSessionDismissed:
           (await this.state.storage.get("playbackSessionDismissed")) === true,
+        dismissalSource: (await this.state.storage.get("dismissalSource")) ?? null,
       });
     }
 
@@ -96,10 +108,17 @@ export class PlaybackSessionV2 {
         values.albumDominantRGB = body.albumDominantRGB;
         values.albumDominantTrackID = body.trackID ?? null;
       }
-      if (body.updateToken) values.updateToken = body.updateToken;
+      if (body.updateToken) {
+        values.updateToken = body.updateToken;
+        if (body.activityState === "active") {
+          values.playbackSessionDismissed = false;
+          values.dismissalSource = null;
+        }
+      }
       if (body.activityState === "dismissed") {
         values.updateToken = "";
         values.playbackSessionDismissed = true;
+        values.dismissalSource = "phone";
       } else if (body.activityState === "none" && !body.updateToken) {
         values.updateToken = "";
       }
@@ -111,6 +130,7 @@ export class PlaybackSessionV2 {
         serverRevision: (await this.state.storage.get("serverRevision")) ?? 0,
         playbackSessionDismissed:
           (await this.state.storage.get("playbackSessionDismissed")) === true,
+        dismissalSource: (await this.state.storage.get("dismissalSource")) ?? null,
       });
     }
 
@@ -154,12 +174,14 @@ export class PlaybackSessionV2 {
     const keys = [
       "phoneLeaseExpiresAt", "pushToStartToken", "playbackSessionID",
       "playbackSessionStartAttempted", "playbackSessionDismissed", "lastAPNsResult",
+      "dismissalSource",
       "clientSchemaVersion", "lastPayloadSize", "lastScheduleCount",
       "lastScheduleHorizonEpoch", "lastArtworkStatus", "lastTrackTitle", "lastLine",
       "isPlaying", "lastError", "lastErrorAt", "lastPushAt", "lastTickAt",
       "serverRevision", "phoneRevision", "lyricOffsetMs", "autoStartEnabled",
       "supportsRemoteStart", "supportsInputPushToken", "lastStartAttemptAt",
-      "lastStartAttemptCount", "refreshToken",
+      "lastStartAttemptCount", "lastPushReason", "lastSentCurrentLine",
+      "lastSentNextLine", "lastSchedulePushAt", "lastEndReason", "refreshToken",
     ];
     const stored = {};
     for (const key of keys) stored[key] = (await this.state.storage.get(key)) ?? null;
@@ -321,27 +343,60 @@ export class PlaybackSessionV2 {
 
   async normalizedPlayer(raw) {
     const item = raw.item;
-    const trackID = String(item.id ?? item.uri ?? `${item.name ?? "track"}:${item.duration_ms ?? 0}`);
     const oldTrack = await this.state.storage.get("activeTrack");
-    const sameTrack = oldTrack?.trackID === trackID;
+    const responseTrackID = cleanString(item.id ?? item.uri);
+    const responseTitle = cleanString(item.name);
+    const responseArtist = cleanString(item.artists?.[0]?.name ?? item.show?.publisher);
+    const metadataMatches = Boolean(oldTrack) &&
+      (!responseTitle || oldTrack.title === responseTitle) &&
+      (!responseArtist || oldTrack.artist === responseArtist);
+    // Spotify can omit the item ID in a partial player response. Keep the
+    // accepted stable ID when the returned metadata still identifies the same
+    // song; otherwise a transient response would clear valid artwork.
+    const trackID = responseTrackID ?? (metadataMatches
+      ? oldTrack.trackID
+      : `${responseTitle ?? "track"}:${item.duration_ms ?? 0}`);
+    const sameTrack = oldTrack?.trackID === trackID ||
+      (!responseTrackID && metadataMatches);
     const responseArtwork = cleanString(item.album?.images?.[0]?.url);
     const albumImageURL = responseArtwork ?? (sameTrack ? oldTrack?.albumImageURL ?? null : null);
-    const artist = cleanString(item.artists?.[0]?.name ?? item.show?.publisher)
+    const artist = responseArtist
       ?? (sameTrack ? oldTrack?.artist ?? "" : "");
-    const title = cleanString(item.name) ?? (sameTrack ? oldTrack?.title ?? "Unknown track" : "Unknown track");
+    const title = responseTitle ?? (sameTrack ? oldTrack?.title ?? "Unknown track" : "Unknown track");
     const durationMs = item.duration_ms == null
       ? (sameTrack ? oldTrack?.durationMs ?? 0 : 0)
       : Math.max(0, finiteNumber(item.duration_ms, 0));
     const heartbeatRGB = await this.state.storage.get("albumDominantRGB");
     const heartbeatTrackID = await this.state.storage.get("albumDominantTrackID");
+    const hasReportedProgress = raw.progress_ms !== null &&
+      raw.progress_ms !== undefined;
+    const reportedProgress = Number(raw.progress_ms);
+    const hasProgress = hasReportedProgress && Number.isFinite(reportedProgress);
+    const previousProgress = sameTrack
+      ? Math.max(0, finiteNumber(oldTrack?.progressMs, 0))
+      : 0;
+    const previousObservedAt = sameTrack
+      ? finiteNumber(oldTrack?.progressObservedAt, 0)
+      : 0;
+    let progressMs = hasProgress ? Math.max(0, reportedProgress) : previousProgress;
+    // Some Spotify responses omit progress_ms during a transient refresh.
+    // Project the last trusted sample instead of jumping to zero.
+    if (!hasProgress && raw.is_playing === true && previousObservedAt > 0) {
+      progressMs += Math.max(0, Date.now() - previousObservedAt);
+    }
+    progressMs = durationMs > 0 ? Math.min(progressMs, durationMs) : progressMs;
+    const completed = raw.is_playing !== true && durationMs > 0 &&
+      progressMs >= durationMs - 750;
     const normalized = {
       trackID,
       title,
       artist: String(artist),
       albumImageURL,
       durationMs,
-      progressMs: Math.max(0, finiteNumber(raw.progress_ms, 0)),
-      isPlaying: raw.is_playing === true,
+      progressMs,
+      progressObservedAt: Date.now(),
+      isPlaying: raw.is_playing === true && !completed,
+      completed,
       albumDominantRGB: heartbeatTrackID === trackID && heartbeatRGB != null && validRGB(heartbeatRGB)
         ? heartbeatRGB
         : (sameTrack ? oldTrack?.albumDominantRGB ?? null : null),
@@ -364,8 +419,10 @@ export class PlaybackSessionV2 {
       lastStartAttemptAt: 0,
       lastStartAttemptCount: 0,
       playbackSessionDismissed: false,
+      dismissalSource: null,
       playbackSessionClosed: false,
       forceServerUpdate: true,
+      lastSchedulePushAt: 0,
     });
   }
 
@@ -379,9 +436,11 @@ export class PlaybackSessionV2 {
       lastStartAttemptAt: 0,
       lastStartAttemptCount: 0,
       playbackSessionDismissed: false,
+      dismissalSource: null,
       playbackSessionClosed: true,
       lastSentTrackID: "",
       lastSentScheduleV2: [],
+      lastSchedulePushAt: 0,
     });
   }
 
@@ -436,6 +495,13 @@ export class PlaybackSessionV2 {
     if ((await this.state.storage.get("lastSentPlaying")) !== contentState.isPlaying) {
       return "play state";
     }
+    const hasFutureSchedule = contentState.isPlaying &&
+      (contentState.scheduledLinesV2 ?? []).some(line => line.dateEpoch > Date.now() / 1_000);
+    if (!hasFutureSchedule &&
+        ((await this.state.storage.get("lastSentCurrentLine")) !== contentState.currentLine ||
+         (await this.state.storage.get("lastSentNextLine")) !== (contentState.nextLine ?? null))) {
+      return "line";
+    }
     const oldAnchor = await this.state.storage.get("lastSentProgressStartEpoch");
     const newAnchor = contentState.progressStartEpoch;
     if (typeof oldAnchor === "number" && typeof newAnchor === "number" &&
@@ -451,7 +517,13 @@ export class PlaybackSessionV2 {
       const remaining = sent.filter(line => line.dateEpoch > now);
       const horizon = remaining.at(-1)?.dateEpoch ?? 0;
       const candidate = contentState.scheduledLinesV2?.at(-1)?.dateEpoch ?? 0;
-      if ((remaining.length < 6 || horizon - now < 20) && candidate > horizon + 1) {
+      const lastSchedulePushAt = finiteNumber(
+        await this.state.storage.get("lastSchedulePushAt"),
+        0
+      );
+      if ((remaining.length < 3 || horizon - now < SCHEDULE_REFILL_LEAD_SEC) &&
+          candidate > horizon + 1 &&
+          Date.now() - lastSchedulePushAt >= SCHEDULE_REFILL_MIN_MS) {
         return "schedule";
       }
     }
@@ -523,7 +595,7 @@ export class PlaybackSessionV2 {
       "content-state": state,
     };
     if (state.isPlaying) aps["stale-date"] = staleDateFor(state);
-    const urgent = ["track", "play state", "seek", "server takeover"].includes(reason);
+    const urgent = ["track", "play state", "seek", "server takeover", "registration"].includes(reason);
     const status = await this.apnsRequest(updateToken, { aps }, urgent ? 10 : 5, "update");
     if (status === 200) await this.recordSuccessfulPush(state, reason);
   }
@@ -540,7 +612,25 @@ export class PlaybackSessionV2 {
       nextLine: null,
       isPlaying: false,
     };
-    const state = await this.stampState(stored ?? fallback);
+    // End events must not reuse a playing state. A stale playing payload can
+    // leave the Lock Screen rendering a live progress bar after the server
+    // has already closed the playback session.
+    const endState = {
+      ...(stored ?? fallback),
+      isPlaying: false,
+      progressStart: null,
+      progressEnd: null,
+      progressStartEpoch: null,
+      progressEndEpoch: null,
+      scheduledLines: null,
+      scheduledLinesV2: [],
+      karaokeStartDate: null,
+      karaokeEndDate: null,
+      karaokeStartEpoch: null,
+      karaokeEndEpoch: null,
+      frozenProgress: stored?.frozenProgress ?? null,
+    };
+    const state = await this.stampState(endState);
     const now = Math.floor(Date.now() / 1_000);
     const status = await this.apnsRequest(updateToken, {
       aps: {
@@ -578,7 +668,10 @@ export class PlaybackSessionV2 {
       lastSentProgressStartEpoch: state.progressStartEpoch ?? null,
       lastSentOffsetMs: await this.state.storage.get("lyricOffsetMs"),
       lastSentAlbumImageURL: state.albumImageURL ?? null,
+      lastSentCurrentLine: state.currentLine ?? "",
+      lastSentNextLine: state.nextLine ?? null,
       lastSentScheduleV2: schedule,
+      ...(schedule.length > 0 ? { lastSchedulePushAt: Date.now() } : {}),
       lastPayloadSize: contentStateSize(state),
       lastScheduleCount: schedule.length,
       lastScheduleHorizonEpoch: schedule.at(-1)?.dateEpoch ?? null,
@@ -748,7 +841,15 @@ export class PlaybackSessionV2 {
         await this.state.storage.put("pushToStartToken", "");
       } else {
         await this.state.storage.put("updateToken", "");
-        if (kind === "update") await this.state.storage.put("playbackSessionDismissed", true);
+        // APNs 410 means this update token is no longer valid. It does not
+        // prove that the user dismissed the Activity. Only a phone heartbeat
+        // with activityState=dismissed may suppress the current session.
+        if (kind === "update") {
+          await this.state.storage.put({
+            phoneActivityState: "none",
+            forceServerUpdate: true,
+          });
+        }
       }
     } else if (!response.ok) {
       await this.state.storage.put({
@@ -826,7 +927,8 @@ export function buildContentState(player, options = {}) {
     ? lines
       .map((line, sourceIndex) => ({ line, sourceIndex }))
       .filter(({ line }) => line.t + offsetSec - positionSec > 0.05)
-      .slice(0, 24)
+      .filter(({ line }) => line.t + offsetSec - positionSec <= SCHEDULE_HORIZON_SEC)
+      .slice(0, SCHEDULE_MAX_LINES)
       .map(({ line, sourceIndex }) => {
         const dateEpoch = nowEpoch + line.t + offsetSec - positionSec;
         const nextTime = sourceIndex + 1 < lines.length

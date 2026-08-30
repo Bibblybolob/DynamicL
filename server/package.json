@@ -3,9 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node src/heroku.js",
     "test": "node --test",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

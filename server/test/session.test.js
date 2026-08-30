@@ -90,6 +90,23 @@ test("ending an activity sends dismissal-date and clears its token", async () =>
   assert.equal(await current.state.storage.get("updateToken"), "");
 });
 
+test("ending an activity sends a stopped content state", async () => {
+  const current = session({
+    updateToken: "token",
+    clientSchemaVersion: 2,
+    activeContentState: buildContentState(player(), { schemaVersion: 2 }),
+  });
+  let payload;
+  current.apnsRequest = async (_token, nextPayload) => {
+    payload = nextPayload;
+    return 200;
+  };
+  await current.pushEnd();
+  assert.equal(payload.aps["content-state"].isPlaying, false);
+  assert.deepEqual(payload.aps["content-state"].scheduledLinesV2, []);
+  assert.equal(payload.aps["content-state"].progressStartEpoch, null);
+});
+
 test("APNs host validation rejects arbitrary endpoints", () => {
   const current = session({}, { APNS_HOST: "https://example.test" });
   assert.throws(() => current.apnsHost(), /supported Apple push host/);
@@ -167,6 +184,19 @@ test("long lyric schedules remain below the content-state limit", () => {
   assert.ok(state.scheduledLinesV2.length < 24);
 });
 
+test("short lyric schedules send more than the old five-line batch", () => {
+  const lines = Array.from({ length: 40 }, (_, index) => ({
+    t: index * 2,
+    text: `Line ${index}`,
+  }));
+  const state = buildContentState(player({ lines, progressMs: 0 }), {
+    nowMs: 1_700_000_000_000,
+    schemaVersion: 2,
+  });
+  assert.equal(state.scheduledLinesV2.length, 32);
+  assert.ok(contentStateSize(state) <= 3_500);
+});
+
 test("same-track partial Spotify data preserves artwork", async () => {
   const current = session({
     activeTrack: {
@@ -186,6 +216,119 @@ test("same-track partial Spotify data preserves artwork", async () => {
     },
   });
   assert.equal(normalized.albumImageURL, "https://image.test/kept.jpg");
+});
+
+test("same-track partial Spotify data preserves projected progress", async () => {
+  const current = session({
+    activeTrack: {
+      trackID: "track-1",
+      progressMs: 20_000,
+      progressObservedAt: Date.now() - 1_000,
+    },
+  });
+  const normalized = await current.normalizedPlayer({
+    is_playing: true,
+    item: { id: "track-1", name: "Test Song", album: {} },
+  });
+  assert.ok(normalized.progressMs >= 20_900);
+  assert.ok(normalized.progressMs <= 21_200);
+});
+
+test("same-track null Spotify progress preserves projected progress", async () => {
+  const current = session({
+    activeTrack: {
+      trackID: "track-1",
+      progressMs: 20_000,
+      progressObservedAt: Date.now() - 1_000,
+    },
+  });
+  const normalized = await current.normalizedPlayer({
+    is_playing: true,
+    progress_ms: null,
+    item: { id: "track-1", name: "Test Song", album: {} },
+  });
+  assert.ok(normalized.progressMs >= 20_900);
+  assert.ok(normalized.progressMs <= 21_200);
+});
+
+test("server does not push once per lyric line when a future schedule exists", async () => {
+  const current = session({
+    lastSentTrackID: "track-1",
+    lastSentPlaying: true,
+    lastSentAlbumImageURL: "https://image.test/album.jpg",
+    lastSentCurrentLine: "Old line",
+    lastSentNextLine: "Next line",
+    lastSentScheduleV2: [{ dateEpoch: Date.now() / 1_000 + 20, text: "Next line" }],
+    lastPushAt: Date.now(),
+  });
+  const reason = await current.updateReason({
+    trackID: "track-1",
+    isPlaying: true,
+    currentLine: "New line",
+    nextLine: "Next line",
+    albumImageURL: "https://image.test/album.jpg",
+    scheduledLinesV2: [{ dateEpoch: Date.now() / 1_000 + 40, text: "Later line" }],
+  }, {});
+  assert.equal(reason, "schedule");
+});
+
+test("server sends a lyric correction for paused content", async () => {
+  const current = session({
+    lastSentTrackID: "track-1",
+    lastSentPlaying: false,
+    lastSentAlbumImageURL: "https://image.test/album.jpg",
+    lastSentCurrentLine: "Old line",
+    lastSentNextLine: "Next line",
+    lastPushAt: Date.now(),
+  });
+  const reason = await current.updateReason({
+    trackID: "track-1",
+    isPlaying: false,
+    currentLine: "New line",
+    nextLine: "Next line",
+    albumImageURL: "https://image.test/album.jpg",
+    scheduledLinesV2: [],
+  }, {});
+  assert.equal(reason, "line");
+});
+
+test("server sends a playing lyric correction when no future schedule exists", async () => {
+  const current = session({
+    lastSentTrackID: "track-1",
+    lastSentPlaying: true,
+    lastSentAlbumImageURL: "https://image.test/album.jpg",
+    lastSentCurrentLine: "Old line",
+    lastSentNextLine: null,
+    lastSentScheduleV2: [],
+    lastPushAt: Date.now(),
+  });
+  const reason = await current.updateReason({
+    trackID: "track-1",
+    isPlaying: true,
+    currentLine: "New line",
+    nextLine: null,
+    albumImageURL: "https://image.test/album.jpg",
+    scheduledLinesV2: [],
+  }, {});
+  assert.equal(reason, "line");
+});
+
+test("completed normalized player state is not treated as playing", async () => {
+  const current = session({
+    activeTrack: { trackID: "track-1", progressMs: 179_000, progressObservedAt: Date.now() },
+  });
+  const normalized = await current.normalizedPlayer({
+    is_playing: false,
+    progress_ms: 179_500,
+    item: {
+      id: "track-1",
+      name: "Finished",
+      duration_ms: 180_000,
+      album: {},
+    },
+  });
+  assert.equal(normalized.completed, true);
+  assert.equal(normalized.isPlaying, false);
 });
 
 test("same-track partial Spotify data preserves title, artist, and duration", async () => {
@@ -208,6 +351,25 @@ test("same-track partial Spotify data preserves title, artist, and duration", as
   assert.equal(normalized.durationMs, 200_000);
 });
 
+test("same-track partial Spotify data without an ID preserves identity and artwork", async () => {
+  const current = session({
+    activeTrack: {
+      trackID: "track-1",
+      title: "Test Song",
+      artist: "Test Artist",
+      durationMs: 200_000,
+      albumImageURL: "https://image.test/kept.jpg",
+    },
+  });
+  const normalized = await current.normalizedPlayer({
+    is_playing: true,
+    progress_ms: 12_345,
+    item: { name: "Test Song", artists: [{ name: "Test Artist" }], album: {} },
+  });
+  assert.equal(normalized.trackID, "track-1");
+  assert.equal(normalized.albumImageURL, "https://image.test/kept.jpg");
+});
+
 test("a verified new track never uses the previous album", async () => {
   const current = session({
     activeTrack: {
@@ -226,6 +388,30 @@ test("a verified new track never uses the previous album", async () => {
       album: {},
     },
   });
+  assert.equal(normalized.albumImageURL, null);
+});
+
+test("a different Spotify ID does not inherit artwork from a same-title track", async () => {
+  const current = session({
+    activeTrack: {
+      trackID: "old-track",
+      title: "Same Song",
+      artist: "Same Artist",
+      albumImageURL: "https://image.test/old.jpg",
+    },
+  });
+  const normalized = await current.normalizedPlayer({
+    is_playing: true,
+    progress_ms: 0,
+    item: {
+      id: "new-track",
+      name: "Same Song",
+      artists: [{ name: "Same Artist" }],
+      duration_ms: 200_000,
+      album: {},
+    },
+  });
+  assert.equal(normalized.trackID, "new-track");
   assert.equal(normalized.albumImageURL, null);
 });
 
@@ -406,7 +592,7 @@ test("the last LRC offset declaration wins", async () => {
   assert.deepEqual(parseLRC("[offset:100]\n[offset:250]\n[00:01.00]Line"), [{ t: 0.75, text: "Line" }]);
 });
 
-test("an update-token 410 records dismissal for the current session", async () => {
+test("an update-token 410 clears the token without inventing a dismissal", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response("gone", { status: 410 });
   try {
@@ -414,8 +600,49 @@ test("an update-token 410 records dismissal for the current session", async () =
     current.pushJwt = async () => "jwt";
     assert.equal(await current.apnsRequest("token", { aps: {} }, 10, "update"), 410);
     assert.equal(await current.state.storage.get("updateToken"), "");
-    assert.equal(await current.state.storage.get("playbackSessionDismissed"), true);
+    assert.notEqual(await current.state.storage.get("playbackSessionDismissed"), true);
+    assert.equal(await current.state.storage.get("phoneActivityState"), "none");
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("only an explicit dismissed heartbeat records user dismissal", async () => {
+  const current = session({ updateToken: "token" });
+  const response = await current.fetch(new Request("https://session/heartbeat", {
+    method: "POST",
+    body: JSON.stringify({
+      activityState: "dismissed",
+      clientSchemaVersion: 2,
+      localRevision: 4,
+      sentAtMs: Date.now(),
+      lyricOffsetMs: 0,
+    }),
+  }));
+  const body = await response.json();
+  assert.equal(body.playbackSessionDismissed, true);
+  assert.equal(body.dismissalSource, "phone");
+  assert.equal(await current.state.storage.get("updateToken"), "");
+});
+
+test("a new active update token clears an obsolete dismissal", async () => {
+  const current = session({
+    playbackSessionDismissed: true,
+    dismissalSource: "phone",
+  });
+  const response = await current.fetch(new Request("https://session/heartbeat", {
+    method: "POST",
+    body: JSON.stringify({
+      activityState: "active",
+      updateToken: "new-token",
+      clientSchemaVersion: 2,
+      localRevision: 5,
+      sentAtMs: Date.now(),
+      lyricOffsetMs: 0,
+    }),
+  }));
+  const body = await response.json();
+  assert.equal(body.playbackSessionDismissed, false);
+  assert.equal(body.dismissalSource, null);
+  assert.equal(await current.state.storage.get("updateToken"), "new-token");
 });

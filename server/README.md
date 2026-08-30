@@ -10,6 +10,9 @@ The server becomes the update source after the lease ends.
 
 The server polls every five seconds during playback.
 It polls every 10 seconds when playback is stopped.
+It sends a bounded batch of up to 32 lyric lines that covers up to 75 seconds.
+It refills the batch when fewer than three lines or fewer than 20 seconds
+remain. It does not send one push for every lyric line.
 
 ## Set up the server
 
@@ -66,3 +69,30 @@ npx wrangler tail
 ```sh
 npm test
 ```
+
+## Deploy to Heroku
+
+The Heroku app is `open-lyrics`. The Heroku runtime uses `src/heroku.js` and
+the `DATABASE` Postgres add-on. The Cloudflare Worker remains available with
+the Wrangler commands above.
+
+From the repository root, deploy only the `server` directory:
+
+```sh
+heroku git:remote -a open-lyrics
+git subtree push --prefix server heroku main
+```
+
+Set these config variables in the Heroku dashboard. Keep all values private:
+
+```text
+APNS_HOST=https://api.push.apple.com
+APNS_KEY_P8=<Apple private key contents>
+APNS_KEY_ID=<Apple key ID>
+APNS_TEAM_ID=<Apple team ID>
+SPOTIFY_CLIENT_ID=<Spotify client ID>
+SYNC_AUTH_TOKEN=<same token entered in OpenLyrics>
+```
+
+`DATABASE_URL` is supplied automatically by Heroku Postgres. The service
+requires this variable so that session state survives a dyno restart.
