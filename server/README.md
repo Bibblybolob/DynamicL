@@ -32,26 +32,31 @@ npx wrangler secret put APNS_KEY_P8
 npx wrangler secret put APNS_KEY_ID
 npx wrangler secret put APNS_TEAM_ID
 npx wrangler secret put SPOTIFY_CLIENT_ID
-npx wrangler secret put SYNC_AUTH_TOKEN
 ```
 
 `APNS_HOST` uses the production APNs host by default.
 TestFlight and App Store builds use the production host.
 Local development builds can use `https://api.sandbox.push.apple.com`.
 
-Keep `SYNC_AUTH_TOKEN`, `APNS_KEY_P8`, and the Spotify refresh token private.
+`SYNC_AUTH_TOKEN` is optional. If it is omitted, the first valid app
+registration creates a private per-install token. Keep `APNS_KEY_P8` and all
+Spotify tokens private.
 
 ## Register the phone
 
-Enter the Worker URL and server access token in OpenLyrics.
+OpenLyrics contains the managed server URL. The user only needs to configure
+the Spotify Client ID in `SpotifyConfig.swift` and sign in to Spotify.
 The app sends `POST /register` with the Spotify refresh token and at least one
-Activity token. The first registration can contain only a push-to-start token.
+Activity token. The first registration validates the Spotify token and returns
+a private per-install server token. The app stores this token in Keychain.
 
 The app sends `POST /heartbeat` while its Spotify data is healthy.
 The request includes the Activity state, track ID, lyric offset, schema version,
 and phone revision.
 
-All service routes except `/health` require the server access token.
+All service routes except `/health` require the private server token. A static
+`SYNC_AUTH_TOKEN` can still be configured for backward-compatible deployments,
+but new deployments do not need it.
 
 ## Check the service
 
@@ -91,8 +96,8 @@ APNS_KEY_P8=<Apple private key contents>
 APNS_KEY_ID=<Apple key ID>
 APNS_TEAM_ID=<Apple team ID>
 SPOTIFY_CLIENT_ID=<Spotify client ID>
-SYNC_AUTH_TOKEN=<same token entered in OpenLyrics>
 ```
 
 `DATABASE_URL` is supplied automatically by Heroku Postgres. The service
-requires this variable so that session state survives a dyno restart.
+requires this variable so that session state survives a dyno restart. Do not
+add `SYNC_AUTH_TOKEN` when using the built-in app pairing flow.

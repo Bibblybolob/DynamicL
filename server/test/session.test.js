@@ -509,6 +509,47 @@ test("commands are idempotent and use the current playback state", async () => {
   }
 });
 
+test("bootstrap registration issues a private server token", async () => {
+  const current = session({}, { SPOTIFY_CLIENT_ID: "client-id" });
+  current.accessToken = async () => "access-token";
+  const response = await current.fetch(new Request("https://session/register", {
+    method: "POST",
+    body: JSON.stringify({
+      bootstrap: true,
+      pushToStartToken: "abcdef0123456789abcdef0123456789",
+      spotifyRefreshToken: "refresh-token-123",
+      clientSchemaVersion: 2,
+    }),
+  }));
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(typeof body.authToken, "string");
+  assert.equal(body.authToken.length, 64);
+  assert.equal(await current.state.storage.get("clientAuthToken"), body.authToken);
+
+  const authorized = await current.fetch(new Request("https://session/authorize", {
+    method: "POST",
+    body: JSON.stringify({ token: body.authToken }),
+  }));
+  assert.equal(authorized.status, 200);
+});
+
+test("bootstrap registration cannot replace an existing pairing", async () => {
+  const current = session({ clientAuthToken: "existing-token" }, {
+    SPOTIFY_CLIENT_ID: "client-id",
+  });
+  const response = await current.fetch(new Request("https://session/register", {
+    method: "POST",
+    body: JSON.stringify({
+      bootstrap: true,
+      pushToStartToken: "abcdef0123456789abcdef0123456789",
+      spotifyRefreshToken: "refresh-token-123",
+    }),
+  }));
+  assert.equal(response.status, 401);
+});
+
 test("expired commands are rejected before contacting Spotify", async () => {
   const current = session({
     accessToken: "access",

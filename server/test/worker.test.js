@@ -51,6 +51,46 @@ test("protected routes fail closed when the server token is not configured", asy
   assert.equal(response.status, 503);
 });
 
+test("registration can bootstrap without a server token", async () => {
+  let forwarded;
+  const response = await worker.fetch(
+    new Request("https://sync.test/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        pushToStartToken: "abcdef0123456789abcdef0123456789",
+        spotifyRefreshToken: "refresh-token-123",
+        clientSchemaVersion: 2,
+      }),
+    }),
+    testEnv({
+      token: null,
+      sessionFetch: async (input, init) => {
+        forwarded = { input, body: JSON.parse(init.body) };
+        return json({ ok: true, authToken: "server-token" });
+      },
+    })
+  );
+  assert.equal(response.status, 200);
+  assert.equal(forwarded.input, "https://session/register");
+  assert.equal(forwarded.body.bootstrap, true);
+});
+
+test("dynamic server tokens authorize protected routes", async () => {
+  const response = await worker.fetch(
+    new Request("https://sync.test/status", {
+      headers: { authorization: "Bearer dynamic-token" },
+    }),
+    testEnv({
+      token: null,
+      sessionFetch: async (input) => input.endsWith("/authorize")
+        ? json({ ok: true })
+        : json({ ok: true }),
+    })
+  );
+  assert.equal(response.status, 200);
+});
+
 test("registration validates input and forwards authenticated requests", async () => {
   let forwarded;
   const response = await worker.fetch(

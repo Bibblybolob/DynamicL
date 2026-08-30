@@ -34,7 +34,42 @@ export class PlaybackSessionV2 {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/register") {
       const body = await request.json();
+      const bootstrap = body.bootstrap === true;
       const oldRefreshToken = await this.state.storage.get("refreshToken");
+      const existingClientAuthToken = await this.state.storage.get("clientAuthToken");
+      if (bootstrap && existingClientAuthToken) {
+        return Response.json({ error: "server is already paired" }, { status: 401 });
+      }
+
+      // The first registration is allowed without a bearer token. Validate
+      // the Spotify refresh token before issuing a private server token so an
+      // unrelated caller cannot claim the single-user session.
+      if (bootstrap) {
+        const previousAccessToken = await this.state.storage.get("accessToken");
+        const previousAccessTokenExpiresAt = await this.state.storage.get("accessTokenExpiresAt");
+        await this.state.storage.put({
+          refreshToken: body.spotifyRefreshToken,
+          accessToken: "",
+          accessTokenExpiresAt: 0,
+        });
+        try {
+          await this.accessToken();
+        } catch {
+          if (oldRefreshToken) {
+            await this.state.storage.put({
+              refreshToken: oldRefreshToken,
+              accessToken: previousAccessToken ?? "",
+              accessTokenExpiresAt: previousAccessTokenExpiresAt ?? 0,
+            });
+          } else {
+            await this.state.storage.delete("refreshToken");
+            await this.state.storage.delete("accessToken");
+            await this.state.storage.delete("accessTokenExpiresAt");
+          }
+          return Response.json({ error: "Spotify token validation failed" }, { status: 401 });
+        }
+      }
+
       const accountChanged = Boolean(oldRefreshToken && oldRefreshToken !== body.spotifyRefreshToken);
       const values = {
         refreshToken: body.spotifyRefreshToken,
@@ -48,6 +83,7 @@ export class PlaybackSessionV2 {
         phoneLeaseExpiresAt: Date.now() + PHONE_LEASE_MS,
         currentWriter: "phone",
       };
+      if (bootstrap) values.clientAuthToken = randomHex(32);
       if (accountChanged) {
         // A refresh token identifies the connected Spotify account. Never use
         // an access token or playback snapshot from the previous account.
@@ -81,12 +117,24 @@ export class PlaybackSessionV2 {
       await this.state.storage.setAlarm(Date.now() + 1_000);
       return Response.json({
         ok: true,
+        ...(bootstrap ? { authToken: values.clientAuthToken } : {}),
         writer: await this.currentWriter(),
         serverRevision: (await this.state.storage.get("serverRevision")) ?? 0,
         playbackSessionDismissed:
           (await this.state.storage.get("playbackSessionDismissed")) === true,
         dismissalSource: (await this.state.storage.get("dismissalSource")) ?? null,
       });
+    }
+
+    if (request.method === "POST" && url.pathname === "/authorize") {
+      const body = await request.json();
+      const expected = await this.state.storage.get("clientAuthToken");
+      const token = typeof body?.token === "string" ? body.token : "";
+      const authorized = Boolean(expected) && constantTimeEqual(token, expected);
+      return Response.json(
+        authorized ? { ok: true } : { error: "unauthorized" },
+        { status: authorized ? 200 : 401 },
+      );
     }
 
     if (request.method === "POST" && url.pathname === "/heartbeat") {
@@ -1077,6 +1125,23 @@ function validRGB(value) {
     Array.isArray(value) && value.length === 3 &&
     value.every(component => typeof component === "number" && Number.isFinite(component) && component >= 0 && component <= 1)
   );
+}
+
+function constantTimeEqual(left, right) {
+  if (typeof left !== "string" || typeof right !== "string" || left.length !== right.length) {
+    return false;
+  }
+  let result = 0;
+  for (let index = 0; index < left.length; index++) {
+    result |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return result === 0;
+}
+
+function randomHex(byteCount) {
+  const bytes = new Uint8Array(byteCount);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function serverMatchScore(result, title, artist, durationSec) {

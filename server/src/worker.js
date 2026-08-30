@@ -13,7 +13,7 @@ export default {
     const protectedRoute = ["/register", "/heartbeat", "/command", "/status", "/reset"]
       .includes(url.pathname);
     if (protectedRoute) {
-      const authError = authorize(request, env);
+      const authError = await authorize(request, env, url.pathname);
       if (authError) return authError;
     }
 
@@ -49,6 +49,7 @@ export default {
           lyricOffsetMs: body.lyricOffsetMs ?? 0,
           albumDominantRGB: validRGB(body.albumDominantRGB) ? body.albumDominantRGB : null,
           autoStartEnabled: body.autoStartEnabled !== false,
+          bootstrap: !request.headers.get("authorization"),
         }),
       });
       return json(await resp.json(), resp.status);
@@ -143,16 +144,35 @@ function json(obj, status = 200) {
   });
 }
 
-function authorize(request, env) {
+async function authorize(request, env, pathname) {
   const expected = typeof env.SYNC_AUTH_TOKEN === "string" ? env.SYNC_AUTH_TOKEN.trim() : "";
-  if (!expected) return json({ error: "server access token is not configured" }, 503);
-
   const header = request.headers.get("authorization") ?? "";
   const prefix = "Bearer ";
-  if (!header.startsWith(prefix) || !constantTimeEqual(header.slice(prefix.length), expected)) {
+  if (header.startsWith(prefix)) {
+    const token = header.slice(prefix.length);
+    if (expected) {
+      return constantTimeEqual(token, expected)
+        ? null
+        : json({ error: "unauthorized" }, 401);
+    }
+
+    // The app receives a private per-install token on its first registration.
+    // Keep the static token above for backward compatibility while allowing
+    // the Heroku runtime to validate the dynamic token in session storage.
+    const stub = env.SESSION.get(env.SESSION.idFromName("main"));
+    const response = await stub.fetch("https://session/authorize", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+    if (response.ok) return null;
     return json({ error: "unauthorized" }, 401);
   }
-  return null;
+
+  // The first registration bootstraps a private token. The session validates
+  // the Spotify refresh token and rejects bootstrap after the first pairing.
+  if (pathname === "/register" && !header) return null;
+  if (!expected) return json({ error: "server access token is not configured" }, 503);
+  return json({ error: "unauthorized" }, 401);
 }
 
 function constantTimeEqual(a, b) {

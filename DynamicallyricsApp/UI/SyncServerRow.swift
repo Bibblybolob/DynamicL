@@ -1,11 +1,8 @@
 import SwiftUI
 import LyricCore
 
-/// Server URL field for the Live Activity push pipeline. Tokens stream in
-/// automatically once this is set; leave empty to run purely local.
+/// Managed sync status for the Live Activity push pipeline.
 struct SyncServerRow: View {
-    @State private var url: String = SyncServerClient.shared.serverURLString
-    @State private var authToken: String = SyncServerClient.shared.serverAuthTokenString
     @State private var connectionCheck: ConnectionCheck = .idle
 
     var body: some View {
@@ -13,25 +10,9 @@ struct SyncServerRow: View {
             Label("Live sync server (push updates)", systemImage: "antenna.radiowaves.left.and.right")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
-            TextField("https://your-worker.workers.dev", text: $url)
-                .keyboardType(.URL)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .font(.caption.monospaced())
-                .textFieldStyle(.roundedBorder)
-                .onChange(of: url) { _, newValue in
-                    SyncServerClient.shared.setServerURL(newValue)
-                    connectionCheck = .idle
-                }
-            SecureField("Server access token", text: $authToken)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .font(.caption.monospaced())
-                .textFieldStyle(.roundedBorder)
-                .onChange(of: authToken) { _, newValue in
-                    SyncServerClient.shared.setServerAuthToken(newValue)
-                    connectionCheck = .idle
-                }
+            Text("The sync server is configured automatically after Spotify sign-in.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 Button {
                     Task {
@@ -48,9 +29,7 @@ struct SyncServerRow: View {
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
-                .disabled(url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || authToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || connectionCheck == .checking)
+                .disabled(connectionCheck == .checking)
                 if let message = connectionCheck.message {
                     Text(message)
                         .font(.caption2)
@@ -79,17 +58,14 @@ struct SyncServerRow: View {
 
     private var statusText: String {
         let client = SyncServerClient.shared
-        let hasURL = !client.serverURLString.isEmpty
         let hasAuth = !client.serverAuthTokenString.isEmpty
         let hasUpdateToken = client.updateToken != nil
         let hasStartToken = client.pushToStartToken != nil
-        switch (hasURL, hasAuth, hasUpdateToken, hasStartToken) {
-        case (true, true, true, _): return "Registered. Phone fallback is ready."
-        case (true, true, false, true): return "Ready. Automatic start is enabled."
-        case (true, true, false, false): return "Waiting for an Activity token."
-        case (true, false, _, _): return "Add the server access token to enable push."
-        case (false, _, true, _), (false, _, _, true): return "Add the server URL."
-        default: return "Optional — enables never-stall push updates."
+        switch (hasAuth, hasUpdateToken, hasStartToken) {
+        case (true, true, _): return "Registered. Phone fallback is ready."
+        case (true, false, true): return "Ready. Automatic start is enabled."
+        case (true, false, false): return "Waiting for an Activity token."
+        default: return "Sign in to Spotify to enable automatic sync."
         }
     }
 
@@ -102,10 +78,10 @@ struct SyncServerRow: View {
             switch self {
             case .idle, .checking: nil
             case .result(.ready): "Server reachable."
-            case .result(.missingURL), .result(.invalidURL): "Enter a valid HTTPS URL."
-            case .result(.missingAccessToken): "Add the access token."
-            case .result(.unauthorized): "Access token rejected."
-            case .result(.serverNotConfigured): "Worker token is not configured."
+            case .result(.missingURL), .result(.invalidURL): "Sync server URL is invalid."
+            case .result(.missingAccessToken): "Sign in to Spotify first."
+            case .result(.unauthorized): "Automatic server pairing was rejected."
+            case .result(.serverNotConfigured): "Sync server is not ready."
             case .result(.failed): "Could not reach the server."
             }
         }
