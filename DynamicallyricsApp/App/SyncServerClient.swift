@@ -124,8 +124,10 @@ final class SyncServerClient {
 
     /// Records tokens arriving from ActivityKit streams and uploads them.
     func record(updateToken: String?, pushToStartToken: String?) async {
+        var changed = false
         if let token = updateToken, token != self.updateToken {
             self.updateToken = token
+            changed = true
             // A new Activity token supersedes any end notification queued for
             // the previous Activity. Keeping the old marker could send an
             // unnecessary none heartbeat with a dead token after a fresh
@@ -138,9 +140,12 @@ final class SyncServerClient {
         }
         if let token = pushToStartToken, token != self.pushToStartToken {
             self.pushToStartToken = token
+            changed = true
             DiagnosticsLog.append("push-to-start token received (\(token.count) hex chars)")
         }
-        await uploadCurrentTokens()
+        if changed {
+            await uploadCurrentTokens()
+        }
     }
 
     /// Removes an update token that belongs to an ended activity. The global

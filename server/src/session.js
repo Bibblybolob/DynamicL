@@ -3,6 +3,7 @@
 // the phone stops reporting healthy data.
 
 const PLAYER_URL = "https://api.spotify.com/v1/me/player";
+const CURRENTLY_PLAYING_URL = `${PLAYER_URL}/currently-playing`;
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const LRCLIB_URL = "https://lrclib.net/api/get";
 const PUSH_HOST_PROD = "https://api.push.apple.com";
@@ -485,14 +486,25 @@ export class PlaybackSessionV2 {
 
   async fetchPlayer() {
     const token = await this.accessToken();
-    let response = await fetchWithTimeout(PLAYER_URL, {
+    let response = await fetchWithTimeout(CURRENTLY_PLAYING_URL, {
       headers: { Authorization: `Bearer ${token}` },
     }, REQUEST_TIMEOUT_MS);
+    if (response.status === 204) {
+      response = await fetchWithTimeout(PLAYER_URL, {
+        headers: { Authorization: `Bearer ${token}` },
+      }, REQUEST_TIMEOUT_MS);
+    }
     if (response.status === 401) {
       await this.state.storage.delete("accessToken");
-      response = await fetchWithTimeout(PLAYER_URL, {
-        headers: { Authorization: `Bearer ${await this.accessToken()}` },
+      const replacement = await this.accessToken();
+      response = await fetchWithTimeout(CURRENTLY_PLAYING_URL, {
+        headers: { Authorization: `Bearer ${replacement}` },
       }, REQUEST_TIMEOUT_MS);
+      if (response.status === 204) {
+        response = await fetchWithTimeout(PLAYER_URL, {
+          headers: { Authorization: `Bearer ${replacement}` },
+        }, REQUEST_TIMEOUT_MS);
+      }
     }
     if (response.status === 429) {
       const seconds = finiteNumber(response.headers.get("Retry-After"), 5);

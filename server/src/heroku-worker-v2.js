@@ -10,6 +10,7 @@ import {
 import { lookupLyrics, lyricCacheTTL } from "./lyrics-v2.js";
 
 const SPOTIFY_PLAYER_URL = "https://api.spotify.com/v1/me/player";
+const SPOTIFY_CURRENTLY_PLAYING_URL = `${SPOTIFY_PLAYER_URL}/currently-playing`;
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const NO_ITEM_CONFIRMATIONS = 2;
 const START_RETRY_MS = 30_000;
@@ -574,10 +575,19 @@ export async function refreshAccessToken(refreshToken, clientID, fetchImpl = fet
 }
 
 export async function fetchPlayer(accessToken, fetchImpl = fetch) {
-  const response = await fetchImpl(SPOTIFY_PLAYER_URL, {
+  let response = await fetchImpl(SPOTIFY_CURRENTLY_PLAYING_URL, {
     headers: { authorization: `Bearer ${accessToken}` },
     signal: AbortSignal.timeout(reliabilityConstants.requestTimeoutMs),
   });
+  // Spotify can briefly disagree across its playback endpoints during device
+  // handoff. Confirm an empty currently-playing response with the full player
+  // state before the worker clears a valid session.
+  if (response.status === 204) {
+    response = await fetchImpl(SPOTIFY_PLAYER_URL, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(reliabilityConstants.requestTimeoutMs),
+    });
+  }
   if (response.status === 204) return { player: null };
   if (response.status === 401) throw spotifyHTTPError("Spotify player", 401);
   if (response.status === 429) {

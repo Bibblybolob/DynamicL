@@ -9,7 +9,7 @@ import {
   mergeSpotifyPlayer,
   sendAPNs,
 } from "../src/reliability-v2.js";
-import { pollInstallation, pollOnce } from "../src/heroku-worker-v2.js";
+import { fetchPlayer, pollInstallation, pollOnce } from "../src/heroku-worker-v2.js";
 
 function key() {
   return crypto.createHash("sha256").update("test-encryption-key").digest();
@@ -45,6 +45,34 @@ test("partial Spotify response preserves the accepted track and artwork", () => 
   assert.equal(partial.player.trackID, "track-1");
   assert.equal(partial.player.albumImageURL, "https://images.test/track-1.jpg");
   assert.equal(partial.player.progressMs, 2_000);
+});
+
+test("player lookup confirms an empty currently-playing response with full state", async () => {
+  const requests = [];
+  const result = await fetchPlayer("access-token", async input => {
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("/currently-playing")) {
+      return new Response(null, { status: 204 });
+    }
+    return Response.json(player());
+  });
+  assert.equal(result.player.item.id, "track-1");
+  assert.deepEqual(requests, [
+    "https://api.spotify.com/v1/me/player/currently-playing",
+    "https://api.spotify.com/v1/me/player",
+  ]);
+});
+
+test("player lookup uses the currently-playing response without a second request", async () => {
+  let requests = 0;
+  const result = await fetchPlayer("access-token", async input => {
+    requests += 1;
+    assert.equal(String(input), "https://api.spotify.com/v1/me/player/currently-playing");
+    return Response.json(player());
+  });
+  assert.equal(result.player.item.id, "track-1");
+  assert.equal(requests, 1);
 });
 
 test("content state uses Unix timestamps and keeps a bounded future schedule", () => {

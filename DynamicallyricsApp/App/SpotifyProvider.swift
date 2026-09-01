@@ -1,7 +1,7 @@
 import Foundation
 import LyricCore
 
-/// Polls Spotify's `/v1/me/player` and publishes the latest track + playback status.
+/// Polls Spotify's playback endpoints and publishes the latest track + playback status.
 @MainActor
 @Observable
 final class SpotifyProvider: PlaybackProvider {
@@ -122,15 +122,22 @@ final class SpotifyProvider: PlaybackProvider {
         // of successful HTTP responses. Network failures and Spotify 429s
         // must not leave the provider in rapid mode forever.
         defer { consumeRapidProbe() }
-        await withTaskGroup(of: Void.self) { group in
+        let completed = await withTaskGroup(of: Bool.self) { group in
             group.addTask { [weak self] in
                 await self?.poll(generation: generation)
+                return true
             }
             group.addTask {
                 try? await Task.sleep(for: .seconds(12))
+                return false
             }
-            await group.next()
+            let result = await group.next() ?? false
             group.cancelAll()
+            return result
+        }
+        if !completed, ownsPoll(generation) {
+            lastPollSummary = "Spotify check timed out. Retrying…"
+            DiagnosticsLog.append("Spotify playback check timed out")
         }
     }
 
@@ -359,7 +366,7 @@ final class SpotifyProvider: PlaybackProvider {
 
                 apply(state)
                 lastSuccessfulPollAt = .now
-                lastPollSummary = state.device?.name.map { "playing on \($0)" } ?? "no device info"
+                lastPollSummary = state.device?.name.map { "playing on \($0)" } ?? "Spotify playback found"
                 DiagnosticsLog.append("poll: item=\(state.item?.name ?? "nil") playing=\(state.isPlaying) pos=\(state.progressMs ?? -1)")
                 lastError = nil
                 // Transition in progress (stale pause-echo or post-command
@@ -430,20 +437,27 @@ final class SpotifyProvider: PlaybackProvider {
         !Task.isCancelled && generation == pollGeneration && isPolling
     }
 
-    /// Performs the `/v1/me/player` request. On a 401 the locally cached token was
-    /// rejected by the server, so force a real refresh and retry once.
+    /// Checks the dedicated currently-playing endpoint first. Some Spotify
+    /// sessions return an active item there while the full player endpoint is
+    /// temporarily empty during a device handoff. A 204 is confirmed against
+    /// the full endpoint before OpenLyrics reports that playback stopped.
+    /// On a 401, force a real token refresh and retry the pair once.
     private func requestPlayerState() async throws -> (Data, HTTPURLResponse) {
         var token = try await auth.validAccessToken()
         var retried401 = false
         while true {
-            var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player")!)
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            request.timeoutInterval = 10
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                throw LyricsLookupError(kind: .network("invalid response"))
+            var result = try await requestSpotifyPlayer(
+                at: URL(string: "https://api.spotify.com/v1/me/player/currently-playing")!,
+                token: token
+            )
+            if result.1.statusCode == 204 {
+                DiagnosticsLog.append("currently-playing returned 204; checking full player state")
+                result = try await requestSpotifyPlayer(
+                    at: URL(string: "https://api.spotify.com/v1/me/player")!,
+                    token: token
+                )
             }
+            let (data, http) = result
             guard http.statusCode == 401, !retried401 else {
                 return (data, http)
             }
@@ -451,6 +465,20 @@ final class SpotifyProvider: PlaybackProvider {
             auth.invalidateAccessToken()
             token = try await auth.validAccessToken()
         }
+    }
+
+    private func requestSpotifyPlayer(
+        at url: URL,
+        token: String
+    ) async throws -> (Data, HTTPURLResponse) {
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LyricsLookupError(kind: .network("invalid response"))
+        }
+        return (data, http)
     }
 
     /// Keeps a local play/pause projection in place while Spotify is still
