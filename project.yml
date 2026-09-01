@@ -2,7 +2,7 @@ name: Dynamicallyrics
 options:
   bundleIdPrefix: com.jonathantran
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "18.0"
     watchOS: "10.0"
   createIntermediateGroups: true
 
@@ -14,7 +14,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "1.2.0"
-    CURRENT_PROJECT_VERSION: "26"
+    CURRENT_PROJECT_VERSION: "34"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 643P4Q6FLQ
 
@@ -24,6 +24,12 @@ targets:
     platform: iOS
     sources:
       - path: DynamicallyricsApp
+        excludes:
+      # LiveActivityIntent and AudioPlaybackIntent types run in the app
+      # process when invoked from a locked Live Activity. Keep the same
+      # definitions in the app and widget targets.
+      - path: LyricWidgets/TogglePlaybackIntent.swift
+      - path: LyricWidgets/RefreshLyricsIntent.swift
     dependencies:
       - package: LyricCore
       - target: LyricWidgets
@@ -50,9 +56,6 @@ targets:
           - UIInterfaceOrientationPortrait
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
-        # Used only by the opt-in Aggressive Background Sync beta mode.
-        UIBackgroundModes:
-          - audio
         ITSAppUsesNonExemptEncryption: false
         UIAppFonts:
           - Bungee-Regular.ttf
@@ -84,7 +87,9 @@ targets:
           CODE_SIGN_ENTITLEMENTS: DynamicallyricsApp/Support/Dynamicallyrics.Debug.entitlements
         Release:
           CODE_SIGN_ENTITLEMENTS: DynamicallyricsApp/Support/Dynamicallyrics.entitlements
-          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: "6EAAD94AEE0469F154208895545F3D6B9C3E0F0A"
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: "OpenLyrics iOS App Store Connect Build 28"
 
   LyricWidgets:
     type: app-extension
@@ -120,7 +125,9 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
       configs:
         Release:
-          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: "6EAAD94AEE0469F154208895545F3D6B9C3E0F0A"
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: "OpenLyrics Widgets App Store Connect Build 28"
 
   LyricWatchWidgets:
     type: app-extension
@@ -149,7 +156,9 @@ targets:
         TARGETED_DEVICE_FAMILY: "4"
       configs:
         Release:
-          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: "6EAAD94AEE0469F154208895545F3D6B9C3E0F0A"
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: "OpenLyrics Watch Widgets App Store Connect Build 28"
 
   DynamicallyricsWatch:
     type: application
@@ -185,7 +194,9 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""
       configs:
         Release:
-          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: "6EAAD94AEE0469F154208895545F3D6B9C3E0F0A"
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: "OpenLyrics Watch App Store Connect Build 28"
 
 schemes:
   Dynamicallyrics:

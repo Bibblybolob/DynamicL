@@ -68,6 +68,9 @@ public struct LyricsActivityAttributes: ActivityAttributes {
         public var scheduledLinesV2: [ActivityScheduledLine]?
         public var karaokeStartEpoch: TimeInterval?
         public var karaokeEndEpoch: TimeInterval?
+        /// A placeholder activity can ask the user to start the local lyric
+        /// session. Optional keeps states from older builds decodable.
+        public var requiresUserStart: Bool?
 
         public init(trackTitle: String, artistName: String, albumImageURL: String? = nil,
                     currentLine: String,
@@ -88,7 +91,8 @@ public struct LyricsActivityAttributes: ActivityAttributes {
                     progressEndEpoch: TimeInterval? = nil,
                     scheduledLinesV2: [ActivityScheduledLine]? = nil,
                     karaokeStartEpoch: TimeInterval? = nil,
-                    karaokeEndEpoch: TimeInterval? = nil) {
+                    karaokeEndEpoch: TimeInterval? = nil,
+                    requiresUserStart: Bool? = nil) {
             self.schemaVersion = schemaVersion
             self.source = source
             self.revision = revision
@@ -113,6 +117,7 @@ public struct LyricsActivityAttributes: ActivityAttributes {
             self.scheduledLinesV2 = scheduledLinesV2
             self.karaokeStartEpoch = karaokeStartEpoch
             self.karaokeEndEpoch = karaokeEndEpoch
+            self.requiresUserStart = requiresUserStart
         }
 
         public var resolvedProgressStart: Date? {
@@ -164,14 +169,35 @@ public struct LyricsActivityAttributes: ActivityAttributes {
             }
 
             if copy.encodedSize > maxBytes {
-                copy.nextLine = copy.nextLine.map { String($0.prefix(400)) }
+                // Keep the visible track and lyric text first. These optional
+                // fields are useful, but they are not worth losing the whole
+                // Activity update when an upstream response contains an
+                // unusually long URL or legacy duplicate dates.
+                copy.nextLine = nil
+                copy.albumDominantRGB = nil
+                copy.progressStart = nil
+                copy.progressEnd = nil
+                copy.karaokeStartDate = nil
+                copy.karaokeEndDate = nil
+                copy.progressStartEpoch = nil
+                copy.progressEndEpoch = nil
+                copy.karaokeStartEpoch = nil
+                copy.karaokeEndEpoch = nil
+            }
+            if copy.encodedSize > maxBytes {
+                copy.albumImageURL = nil
+                copy.trackID = nil
                 copy.currentLine = String(copy.currentLine.prefix(800))
                 copy.trackTitle = String(copy.trackTitle.prefix(200))
                 copy.artistName = String(copy.artistName.prefix(200))
             }
             if copy.encodedSize > maxBytes {
-                copy.nextLine = nil
-                copy.albumDominantRGB = nil
+                // This is a final bounded fallback. Normal Spotify/LRCLIB
+                // data never reaches it, but it guarantees that a malformed
+                // field cannot create an ActivityKit-sized rejection loop.
+                copy.currentLine = String(copy.currentLine.prefix(240))
+                copy.trackTitle = String(copy.trackTitle.prefix(96))
+                copy.artistName = String(copy.artistName.prefix(96))
             }
             return copy
         }

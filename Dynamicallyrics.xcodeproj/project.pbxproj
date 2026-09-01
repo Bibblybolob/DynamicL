@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		009CC8F9FC4D4E9E79912B07 /* SyncedLyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215ADD0345FA34F59D83675B /* SyncedLyricsView.swift */; };
-		02D4DB5F0F6BED7F120994ED /* BackgroundAudioKeeper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */; };
 		0BFE9F9A2D88A9FF686B6B0D /* LyricsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */; };
 		0D78D2406231B09E9DEAB5C0 /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */; };
 		16DEEF986C634B5BF7712AB4 /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4059FBA00502BEBFF30974 /* AppearanceView.swift */; };
@@ -19,6 +18,7 @@
 		34B015BC4285859894148EF7 /* LyricWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C1698CFC6BA00171949EE2 /* LyricWidgetsBundle.swift */; };
 		40A0B0C78A59D5DB0095EA16 /* DynamicallyricsWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED59A6EB0239CFEE501B720 /* DynamicallyricsWatchApp.swift */; };
 		41E75F449CD0E115B148C31B /* WatchSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */; };
+		42D309059E189F5A500752F0 /* OpenLyricsShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCF7FA6E28FC2EF22961BD17 /* OpenLyricsShortcuts.swift */; };
 		4538AD355238ACD4439364F6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 388982BB47D706DC2E5337F8 /* Assets.xcassets */; };
 		4681FD03C1170DA582F6F1C3 /* WatchWidgetStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A13679FF910F6ACFE50B30A /* WatchWidgetStyles.swift */; };
 		4DF3E591080D9A5B3D596161 /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = 296591B01A360C90D2243D26 /* LyricCore */; };
@@ -40,6 +40,8 @@
 		7EA4E0314E51BF2BF517A7BB /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4083C7544C6C54C2403D22F /* RootView.swift */; };
 		889A78B2FB3264300662E034 /* WatchLyricStackWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2643CFE43083020E2CFD9165 /* WatchLyricStackWidget.swift */; };
 		93AEB6C4EC54A424D86A37A2 /* CurrentLineWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7BD9BC79688FAB1D1A127C /* CurrentLineWidget.swift */; };
+		9939CE0EF1D8EB84E626A2AA /* TogglePlaybackIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */; };
+		9DB43B612E83002EF06DEE8C /* RefreshLyricsIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E26031E981FDEFDD6475F308 /* RefreshLyricsIntent.swift */; };
 		A39D7C2D8035DA8C6588D8EB /* DominantColorExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6E4D01DA0CCA1E2BB9A4B54 /* DominantColorExtractor.swift */; };
 		A3EAC2F9C55AC71FFDE2EDBC /* PlayfairDisplay.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2A3BA96C2F5554FBC7549BA8 /* PlayfairDisplay.ttf */; };
 		A4BB10137173CCE619558EFE /* SpotifyConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */; };
@@ -162,7 +164,6 @@
 		8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConfig.swift; sourceTree = "<group>"; };
 		946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncManager.swift; sourceTree = "<group>"; };
 		9A13679FF910F6ACFE50B30A /* WatchWidgetStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWidgetStyles.swift; sourceTree = "<group>"; };
-		9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundAudioKeeper.swift; sourceTree = "<group>"; };
 		9C07680DCE0CB34AE71DE2E4 /* WatchLyricComplicationWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLyricComplicationWidget.swift; sourceTree = "<group>"; };
 		9C8A92CCBCBBBBD7A0E18A9A /* Pacifico-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pacifico-Regular.ttf"; sourceTree = "<group>"; };
 		A3A3F61C414E6C576B7969AB /* Dynamicallyrics.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Dynamicallyrics.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -182,6 +183,7 @@
 		F1B3E2CDC8F59346FBA3CEFC /* Baloo2.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Baloo2.ttf; sourceTree = "<group>"; };
 		F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyProvider.swift; sourceTree = "<group>"; };
 		FA45FDB582EC9BF0DA3D2FA6 /* LyricWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = LyricWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		FCF7FA6E28FC2EF22961BD17 /* OpenLyricsShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenLyricsShortcuts.swift; sourceTree = "<group>"; };
 		FED59A6EB0239CFEE501B720 /* DynamicallyricsWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicallyricsWatchApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -260,7 +262,6 @@
 			children = (
 				1A93E440BBCE4CE76E43D123 /* AlbumArtworkPrefetcher.swift */,
 				8A7C09312579956357A942BA /* AppModel.swift */,
-				9AFA67CC367ACCF07B87F44D /* BackgroundAudioKeeper.swift */,
 				D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */,
 				B6E4D01DA0CCA1E2BB9A4B54 /* DominantColorExtractor.swift */,
 				248CAA9DBAA3A963E7C30BCD /* DynamicallyricsApp.swift */,
@@ -268,6 +269,7 @@
 				5A6D06020DA8782B58A82158 /* LiveActivityController.swift */,
 				0AF723DBC9A4FDFB26CE3F30 /* LyricsService.swift */,
 				ED4AE702F7821F3CDB5FBDE1 /* NowPlayingBridge.swift */,
+				FCF7FA6E28FC2EF22961BD17 /* OpenLyricsShortcuts.swift */,
 				023703132FFF98E22ED6E203 /* SpotifyAuthManager.swift */,
 				8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */,
 				F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */,
@@ -498,19 +500,15 @@
 				TargetAttributes = {
 					49F0B3C3FB31BE5A2F22EAEF = {
 						DevelopmentTeam = 643P4Q6FLQ;
-						ProvisioningStyle = Automatic;
 					};
 					71D9183A94988F2EC670AFA4 = {
 						DevelopmentTeam = 643P4Q6FLQ;
-						ProvisioningStyle = Automatic;
 					};
 					826F5A0AEE2DCE4288B51C96 = {
 						DevelopmentTeam = 643P4Q6FLQ;
-						ProvisioningStyle = Automatic;
 					};
 					C5BAFE5F2C8D5903A21FC586 = {
 						DevelopmentTeam = 643P4Q6FLQ;
-						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -619,7 +617,6 @@
 				69E17BAD3D775BFF4CEA0D7A /* AlbumArtworkPrefetcher.swift in Sources */,
 				7BB6E571255EC8ADD3980380 /* AppModel.swift in Sources */,
 				16DEEF986C634B5BF7712AB4 /* AppearanceView.swift in Sources */,
-				02D4DB5F0F6BED7F120994ED /* BackgroundAudioKeeper.swift in Sources */,
 				0D78D2406231B09E9DEAB5C0 /* DiagnosticsLog.swift in Sources */,
 				A39D7C2D8035DA8C6588D8EB /* DominantColorExtractor.swift in Sources */,
 				CBBA77CACA9F39B9090F8DF6 /* DynamicallyricsApp.swift in Sources */,
@@ -627,6 +624,8 @@
 				6BA9B5D148352AB7DB7C6225 /* LiveActivityController.swift in Sources */,
 				CA6023C68759B1EB2C0BE068 /* LyricsService.swift in Sources */,
 				EFDAC79B9892C4101F973935 /* NowPlayingBridge.swift in Sources */,
+				42D309059E189F5A500752F0 /* OpenLyricsShortcuts.swift in Sources */,
+				9DB43B612E83002EF06DEE8C /* RefreshLyricsIntent.swift in Sources */,
 				7EA4E0314E51BF2BF517A7BB /* RootView.swift in Sources */,
 				C0EEE6068BA4D38786D2718B /* SpotifyAuthManager.swift in Sources */,
 				A4BB10137173CCE619558EFE /* SpotifyConfig.swift in Sources */,
@@ -634,6 +633,7 @@
 				BB47D00E3F12CB6109BF8E6D /* SyncServerClient.swift in Sources */,
 				E8A85F88E762C75110A4448F /* SyncServerRow.swift in Sources */,
 				009CC8F9FC4D4E9E79912B07 /* SyncedLyricsView.swift in Sources */,
+				9939CE0EF1D8EB84E626A2AA /* TogglePlaybackIntent.swift in Sources */,
 				41E75F449CD0E115B148C31B /* WatchSyncManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -663,7 +663,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = LyricWidgets/Support/LyricWidgets.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = 6EAAD94AEE0469F154208895545F3D6B9C3E0F0A;
+				CODE_SIGN_STYLE = Manual;
 				INFOPLIST_FILE = LyricWidgets/Support/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -671,6 +672,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jonathantran.dynamicallyrics.la.widgets;
+				PROVISIONING_PROFILE_SPECIFIER = "OpenLyrics Widgets App Store Connect Build 28";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -697,8 +699,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = DynamicallyricsApp/Support/Dynamicallyrics.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = 6EAAD94AEE0469F154208895545F3D6B9C3E0F0A;
+				CODE_SIGN_STYLE = Manual;
 				INFOPLIST_FILE = DynamicallyricsApp/Support/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -706,6 +708,7 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jonathantran.dynamicallyrics.la;
+				PROVISIONING_PROFILE_SPECIFIER = "OpenLyrics iOS App Store Connect Build 28";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -715,7 +718,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = WatchWidgets/Support/LyricWatchWidgets.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = 6EAAD94AEE0469F154208895545F3D6B9C3E0F0A;
+				CODE_SIGN_STYLE = Manual;
 				INFOPLIST_FILE = WatchWidgets/Support/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -723,6 +727,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jonathantran.dynamicallyrics.la.watchkitapp.widgets;
+				PROVISIONING_PROFILE_SPECIFIER = "OpenLyrics Watch Widgets App Store Connect Build 28";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 4;
@@ -813,7 +818,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 26;
+			CURRENT_PROJECT_VERSION = 34;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -832,7 +837,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.2.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -880,7 +885,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 26;
+			CURRENT_PROJECT_VERSION = 34;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -893,7 +898,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.2.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -911,9 +916,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
 				CODE_SIGN_ENTITLEMENTS = WatchApp/Support/DynamicallyricsWatch.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = 6EAAD94AEE0469F154208895545F3D6B9C3E0F0A;
+				CODE_SIGN_STYLE = Manual;
 				INFOPLIST_FILE = WatchApp/Support/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jonathantran.dynamicallyrics.la.watchkitapp;
+				PROVISIONING_PROFILE_SPECIFIER = "OpenLyrics Watch App Store Connect Build 28";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 4;

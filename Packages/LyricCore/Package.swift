@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "LyricCore",
-    platforms: [.iOS(.v17), .macOS(.v14)],
+    platforms: [.iOS(.v18), .watchOS(.v10), .macOS(.v14)],
     products: [
         .library(name: "LyricCore", targets: ["LyricCore"])
     ],

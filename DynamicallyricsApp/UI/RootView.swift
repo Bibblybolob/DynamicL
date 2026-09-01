@@ -5,6 +5,7 @@ import LyricCore
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @State private var clientIDDraft = SpotifyConfig.clientID
 
     var body: some View {
         NavigationStack {
@@ -26,8 +27,8 @@ struct RootView: View {
         }
         .onAppear {
             // The first scene-phase transition is not guaranteed to fire for
-            // the initial foreground scene. Seed the model so the background
-            // keep-alive is never left running while the app is visible.
+            // the initial foreground scene. Seed the model so polling and
+            // Activity ownership use the correct lifecycle state.
             model.handleScenePhase(scenePhase)
         }
         .onChange(of: scenePhase) { _, phase in
@@ -39,6 +40,10 @@ struct RootView: View {
     private var content: some View {
         VStack(spacing: 0) {
             connectionCard
+
+            if !model.auth.isConnected {
+                clientIDCard
+            }
 
             if !SpotifyConfig.isConfigured {
                 setupCard
@@ -90,11 +95,11 @@ struct RootView: View {
                 get: { model.localSessionEnabled },
                 set: { model.localSessionEnabled = $0 }
             )) {
-                Label("Aggressive background sync (Beta)", systemImage: "bolt.horizontal.circle")
+                Label("Automatic lyrics", systemImage: "bolt.horizontal.circle")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
-            Text("Polls Spotify about once per second after the screen locks. It uses more battery and can reach Spotify rate limits.")
+            Text("Starts lyrics automatically when Spotify playback begins. iOS controls background refresh. Turn this off to use the recovery button.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .padding(.leading, 28)
@@ -106,6 +111,8 @@ struct RootView: View {
     private var settingsCard: some View {
         VStack(spacing: 0) {
             lockScreenToggle
+            Divider().padding(.leading, 48)
+            startSessionButton
             Divider().padding(.leading, 48)
             localSessionToggle
             Divider().padding(.leading, 48)
@@ -120,6 +127,38 @@ struct RootView: View {
         }
         .padding(.horizontal)
         .padding(.top, 8)
+    }
+
+    private var startSessionButton: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Button {
+                model.startLocalLyricsSession()
+            } label: {
+                HStack(spacing: 10) {
+                    Label("Start Lock Screen Lyrics", systemImage: "quote.bubble")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: model.liveActivity.isRecovering
+                        ? "hourglass.circle.fill"
+                        : model.localSessionActive
+                        ? "checkmark.circle.fill"
+                        : "play.circle.fill")
+                        .foregroundStyle(model.liveActivity.isRecovering
+                            ? .orange
+                            : model.localSessionActive ? .green : .pink)
+                }
+            }
+            .disabled((!model.auth.isConnected && !model.demoActive)
+                || model.liveActivity.isRecovering)
+            .accessibilityHint("Starts the Lock Screen lyric session and clears an old dismissal.")
+            Text("Use this if Lock Screen lyrics do not appear.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 28)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
     }
 
     private var appearanceLink: some View {
@@ -196,6 +235,49 @@ struct RootView: View {
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            if model.auth.isConnected {
+                Button {
+                    model.startLocalLyricsSession()
+                } label: {
+                    Label(
+                        model.liveActivity.isRecovering
+                            ? "Starting Lock Screen Lyrics…"
+                            : model.liveActivity.isRunning
+                            ? "Restart Lock Screen Lyrics"
+                            : "Start Lock Screen Lyrics",
+                        systemImage: model.liveActivity.isRecovering
+                            ? "hourglass.circle.fill"
+                            : model.liveActivity.isRunning
+                            ? "arrow.clockwise.circle.fill"
+                            : "quote.bubble.fill"
+                    )
+                        .font(.footnote.bold())
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.pink)
+                .disabled(model.liveActivity.isRecovering)
+                .accessibilityHint("Replaces an old Live Activity session and starts lyrics again.")
+
+                Text(model.liveActivity.isEnabled
+                    ? (model.liveActivity.isRunning
+                        ? "ActivityKit reports an active lyrics card. Tap Restart if it is not visible."
+                        : "No Live Activity is running.")
+                    : "Live Activities are off for OpenLyrics in iPhone Settings.")
+                    .font(.caption2)
+                    .foregroundStyle(
+                        model.liveActivity.isEnabled ? Color.secondary : Color.red
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let activityError = model.liveActivity.lastErrorText {
+                Text(activityError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding()
         .background(.background, in: .rect(cornerRadius: 20))
@@ -213,10 +295,39 @@ struct RootView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("1. Create an app at developer.spotify.com/dashboard")
                 Text("2. Add redirect URI: dynamicallyrics://callback")
-                Text("3. Paste the Client ID into SpotifyConfig.swift")
+                Text("3. Enter the Client ID above")
             }
             .font(.footnote)
             .foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 16))
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
+    private var clientIDCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Spotify Client ID", systemImage: "person.badge.key")
+                .font(.subheadline.weight(.semibold))
+            TextField("Paste Client ID", text: $clientIDDraft)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.footnote.monospaced())
+                .textFieldStyle(.roundedBorder)
+            Text("Use your Spotify developer app. Redirect URI: dynamicallyrics://callback")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Save Client ID") {
+                    SpotifyConfig.saveClientID(clientIDDraft)
+                    clientIDDraft = SpotifyConfig.clientID
+                }
+                .buttonStyle(.bordered)
+                .disabled(clientIDDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -278,7 +389,7 @@ struct RootView: View {
         Group {
             if let urlString = model.provider?.lastAlbumImageURL,
                let url = URL(string: urlString) {
-                if let data = SharedNowPlaying.cachedArtwork(for: urlString),
+                if let data = ArtworkFileCache.data(for: urlString),
                    let image = UIImage(data: data) {
                     Image(uiImage: image)
                         .resizable()

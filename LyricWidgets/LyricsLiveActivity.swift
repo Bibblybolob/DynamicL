@@ -166,62 +166,71 @@ struct LyricsLiveActivity: Widget {
                                        alignment: look.textAlignment.alignment)
                         }
                     }
-                    LAScheduledLyricText(
-                        currentLine: context.state.currentLine,
-                        nextLine: context.state.nextLine,
-                        scheduledLines: scheduledLines,
-                        role: .current,
-                        font: look.fontStyle.laFont(
-                            fixedSize: CGFloat(look.lyricScale.pointSize),
-                            weight: .bold
-                        ),
-                        color: look.text.opacity(context.isStale ? 0.35 : 1),
-                        animations: look.animations && !context.isStale,
-                        pointSize: CGFloat(look.lyricScale.pointSize),
-                        minScale: CGFloat(look.lyricScale.minimumScale),
-                        lineHeight: CGFloat(look.lyricScale.totalHeight),
-                        maxLines: look.lyricScale.maximumLines,
-                        textAlignment: look.textAlignment == .center ? .center : .leading,
-                        karaokeEnabled: look.karaokeEnabled,
-                        karaokeStartDate: context.state.resolvedKaraokeStart,
-                        karaokeEndDate: context.state.resolvedKaraokeEnd,
-                        frozenKaraokeProgress: context.state.frozenKaraokeProgress,
-                        highlightColor: look.accent
-                    )
-                    if look.showNextLine, look.layout != .minimal,
-                       let next = context.state.nextLine {
+                    if context.state.requiresUserStart == true {
+                        StartLyricsActivityButton(
+                            accent: look.accent,
+                            text: look.text
+                        )
+                    } else {
                         LAScheduledLyricText(
                             currentLine: context.state.currentLine,
-                            nextLine: next,
+                            nextLine: context.state.nextLine,
                             scheduledLines: scheduledLines,
-                            role: .next,
-                            font: look.fontStyle.laFont(.footnote),
-                            color: look.text.opacity(0.45),
-                            animations: look.animations,
-                            lineHeight: 20,
-                            maxLines: 1,
-                            textAlignment: look.textAlignment == .center ? .center : .leading
+                            role: .current,
+                            font: look.fontStyle.laFont(
+                                fixedSize: CGFloat(look.lyricScale.pointSize),
+                                weight: .bold
+                            ),
+                            color: look.text.opacity(context.isStale ? 0.35 : 1),
+                            animations: look.animations && !context.isStale,
+                            pointSize: CGFloat(look.lyricScale.pointSize),
+                            minScale: CGFloat(look.lyricScale.minimumScale),
+                            lineHeight: CGFloat(look.lyricScale.totalHeight),
+                            maxLines: look.lyricScale.maximumLines,
+                            textAlignment: look.textAlignment == .center ? .center : .leading,
+                            karaokeEnabled: look.karaokeEnabled,
+                            karaokeStartDate: context.state.resolvedKaraokeStart,
+                            karaokeEndDate: context.state.resolvedKaraokeEnd,
+                            playbackEndDate: context.state.resolvedProgressEnd,
+                            frozenKaraokeProgress: context.state.frozenKaraokeProgress,
+                            highlightColor: look.accent
                         )
-                    }
-                    if look.showProgressBar, look.layout != .minimal {
-                        LAThickBar(
-                            start: context.state.resolvedProgressStart,
-                            end: context.state.resolvedProgressEnd,
-                            frozen: context.state.frozenProgress,
-                            accent: look.accent,
-                            track: look.text.opacity(0.22)
-                        )
-                    }
-                    if look.showsTransport {
-                        HStack(spacing: 0) {
-                            SkipTrackButton(direction: .previous, font: .caption2)
-                            TogglePlaybackButton(isPlaying: context.state.isPlaying, font: .caption2)
-                                .tint(look.text)
-                            SkipTrackButton(direction: .next, font: .caption2)
+                        if look.showNextLine, look.layout != .minimal,
+                           let next = context.state.nextLine {
+                            LAScheduledLyricText(
+                                currentLine: context.state.currentLine,
+                                nextLine: next,
+                                scheduledLines: scheduledLines,
+                                role: .next,
+                                font: look.fontStyle.laFont(.footnote),
+                                color: look.text.opacity(0.45),
+                                animations: look.animations,
+                                lineHeight: 20,
+                                maxLines: 1,
+                                textAlignment: look.textAlignment == .center ? .center : .leading,
+                                playbackEndDate: context.state.resolvedProgressEnd
+                            )
                         }
-                        .foregroundStyle(look.text)
-                        .frame(maxWidth: .infinity,
-                               alignment: look.textAlignment.alignment)
+                        if look.showProgressBar, look.layout != .minimal {
+                            LAThickBar(
+                                start: context.state.resolvedProgressStart,
+                                end: context.state.resolvedProgressEnd,
+                                frozen: context.state.frozenProgress,
+                                accent: look.accent,
+                                track: look.text.opacity(0.22)
+                            )
+                        }
+                        if look.showsTransport {
+                            HStack(spacing: 0) {
+                                SkipTrackButton(direction: .previous, font: .caption2)
+                                TogglePlaybackButton(isPlaying: context.state.isPlaying, font: .caption2)
+                                    .tint(look.text)
+                                SkipTrackButton(direction: .next, font: .caption2)
+                            }
+                            .foregroundStyle(look.text)
+                            .frame(maxWidth: .infinity,
+                                   alignment: look.textAlignment.alignment)
+                        }
                     }
                 }
                 .padding(.horizontal, 4)
@@ -320,51 +329,80 @@ private struct LockScreenLyricsView: View {
                 }
             }
 
-            LAScheduledLyricText(
-                currentLine: context.state.currentLine,
-                nextLine: context.state.nextLine,
-                scheduledLines: scheduledLines,
-                role: .current,
-                font: look.fontStyle.laFont(
-                    fixedSize: CGFloat(min(look.lyricScale.pointSize, 22)),
-                    weight: .heavy
-                ),
-                color: look.text.opacity(context.isStale ? 0.35 : 1),
-                animations: look.animations && !context.isStale,
-                pointSize: CGFloat(min(look.lyricScale.pointSize, 22)),
-                minScale: CGFloat(look.lyricScale.minimumScale),
-                lineHeight: 48,
-                maxLines: 2,
-                textAlignment: look.textAlignment == .center ? .center : .leading,
-                karaokeEnabled: look.karaokeEnabled,
-                karaokeStartDate: context.state.resolvedKaraokeStart,
-                karaokeEndDate: context.state.resolvedKaraokeEnd,
-                frozenKaraokeProgress: context.state.frozenKaraokeProgress,
-                highlightColor: look.accent
-            )
+                    if context.state.requiresUserStart == true {
+                        StartLyricsActivityButton(
+                            accent: look.accent,
+                            text: look.text
+                        )
+                    } else {
+                        LAScheduledLyricText(
+                            currentLine: context.state.currentLine,
+                            nextLine: context.state.nextLine,
+                            scheduledLines: scheduledLines,
+                            role: .current,
+                            font: look.fontStyle.laFont(
+                                fixedSize: CGFloat(min(look.lyricScale.pointSize, 22)),
+                                weight: .heavy
+                            ),
+                            color: look.text.opacity(context.isStale ? 0.35 : 1),
+                            animations: look.animations && !context.isStale,
+                            pointSize: CGFloat(min(look.lyricScale.pointSize, 22)),
+                            minScale: CGFloat(look.lyricScale.minimumScale),
+                            lineHeight: 48,
+                            maxLines: 2,
+                            textAlignment: look.textAlignment == .center ? .center : .leading,
+                            karaokeEnabled: look.karaokeEnabled,
+                            karaokeStartDate: context.state.resolvedKaraokeStart,
+                            karaokeEndDate: context.state.resolvedKaraokeEnd,
+                            playbackEndDate: context.state.resolvedProgressEnd,
+                            frozenKaraokeProgress: context.state.frozenKaraokeProgress,
+                            highlightColor: look.accent
+                        )
 
-            if look.showsTransport {
-                HStack(spacing: 0) {
-                    SkipTrackButton(direction: .previous, font: .caption)
-                    TogglePlaybackButton(isPlaying: context.state.isPlaying, font: .caption)
-                        .tint(look.text)
-                    SkipTrackButton(direction: .next, font: .caption)
+                        if look.showsTransport {
+                            HStack(spacing: 0) {
+                                SkipTrackButton(direction: .previous, font: .caption)
+                                TogglePlaybackButton(isPlaying: context.state.isPlaying, font: .caption)
+                                    .tint(look.text)
+                                SkipTrackButton(direction: .next, font: .caption)
+                            }
+                            .foregroundStyle(look.text)
+                            .frame(maxWidth: .infinity, alignment: look.textAlignment.alignment)
+                            .frame(height: 30)
+                        }
+
+                        if look.showProgressBar, look.layout != .minimal {
+                            LAThickBar(
+                                start: context.state.resolvedProgressStart,
+                                end: context.state.resolvedProgressEnd,
+                                frozen: context.state.frozenProgress,
+                                accent: look.accent,
+                                track: look.text.opacity(0.25)
+                            )
+                        }
+                    }
                 }
-                .foregroundStyle(look.text)
-                .frame(maxWidth: .infinity, alignment: look.textAlignment.alignment)
-                .frame(height: 30)
-            }
-
-            if look.showProgressBar, look.layout != .minimal {
-                LAThickBar(
-                    start: context.state.resolvedProgressStart,
-                    end: context.state.resolvedProgressEnd,
-                    frozen: context.state.frozenProgress,
-                    accent: look.accent,
-                    track: look.text.opacity(0.25)
-                )
-            }
-        }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Interactive first-use and recovery action. The intent foregrounds
+/// OpenLyrics, refreshes Spotify, and changes this placeholder into the active
+/// scheduled lyric card. A 44-point target is required for reliable taps on a
+/// locked Live Activity.
+private struct StartLyricsActivityButton: View {
+    let accent: Color
+    let text: Color
+
+    var body: some View {
+        Button(intent: StartLyricsSessionIntent()) {
+            Label("Show Lyrics", systemImage: "quote.bubble.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(text)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(accent.opacity(0.32), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens OpenLyrics and starts the current Spotify lyrics.")
     }
 }

@@ -114,6 +114,8 @@ public struct SharedPlaybackSnapshotV2: Codable, Hashable, Sendable {
     public var artworkKey: String?
     public var dominantRGB: [Double]?
     public var isPlaying: Bool
+    public var trackDurationSeconds: TimeInterval?
+    public var playbackEndEpoch: TimeInterval?
     public var playbackAnchorEpoch: TimeInterval?
     public var generatedAtEpoch: TimeInterval
     public var revision: Int64
@@ -130,6 +132,8 @@ public struct SharedPlaybackSnapshotV2: Codable, Hashable, Sendable {
         artworkKey: String? = nil,
         dominantRGB: [Double]? = nil,
         isPlaying: Bool,
+        trackDurationSeconds: TimeInterval? = nil,
+        playbackEndEpoch: TimeInterval? = nil,
         playbackAnchorEpoch: TimeInterval? = nil,
         generatedAtEpoch: TimeInterval = Date.now.timeIntervalSince1970,
         revision: Int64 = 0,
@@ -146,6 +150,8 @@ public struct SharedPlaybackSnapshotV2: Codable, Hashable, Sendable {
         self.artworkKey = artworkKey
         self.dominantRGB = dominantRGB
         self.isPlaying = isPlaying
+        self.trackDurationSeconds = trackDurationSeconds
+        self.playbackEndEpoch = playbackEndEpoch
         self.playbackAnchorEpoch = playbackAnchorEpoch
         self.generatedAtEpoch = generatedAtEpoch
         self.revision = revision

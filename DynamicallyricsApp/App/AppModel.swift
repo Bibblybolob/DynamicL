@@ -26,9 +26,11 @@ final class AppModel {
     private var lastLineIndex: Int?
     private var pausedAt: Date?
     private var stoppedAt: Date?
-    private let keeper = BackgroundAudioKeeper.shared
     private var widgetPausedAt: Date?
     private var lastPublishedWidgetKey: String?
+    @ObservationIgnored private var widgetCommandTask: Task<Void, Never>?
+    @ObservationIgnored private var localSessionAuthAttemptedAt: Date?
+    @ObservationIgnored private var localSessionAuthAttemptedRequestAt: TimeInterval?
     @ObservationIgnored private var lastWidgetPublishedPosition: TimeInterval?
     @ObservationIgnored private var lastWidgetPublishedAt: Date?
     @ObservationIgnored private var lastWidgetPublishedRate: Double = 1
@@ -38,23 +40,39 @@ final class AppModel {
     private static let localSessionEnabledKey = "experimentalLocalLyricsSessionEnabled"
     private(set) var localSessionActive = false
 
-    /// Keeps the phone-owned lyric session active after the screen locks.
-    /// This is an explicit beta setting because it uses the audio background
-    /// mode and can increase battery use.
+    /// Enables the phone-owned lyric session while the system permits normal
+    /// background execution. OpenLyrics does not request a location or audio
+    /// workaround to keep this process alive.
     var localSessionEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.localSessionEnabledKey) }
+        get {
+            // Automatic lyrics is the normal private-beta path. Preserve an
+            // explicit opt-out from an older build, but do not make a new
+            // installation press Show Lyrics before every listening session.
+            UserDefaults.standard.object(forKey: Self.localSessionEnabledKey) as? Bool ?? true
+        }
         set {
             UserDefaults.standard.set(newValue, forKey: Self.localSessionEnabledKey)
-            localSessionActive = newValue
-            provider?.setAggressiveBackgroundMode(
-                newValue && localSessionActive && lockScreenLyricsEnabled && scenePhase != .active
-            )
-            if !newValue {
-                keeper.stop()
-            } else {
-                DiagnosticsLog.append("local session enabled")
-                provider?.kick()
+            // Keep this setting for migration compatibility. It is a single
+            // automatic-lyrics consent switch. It does not request extra
+            // background execution from iOS and it never creates a per-song
+            // Show Lyrics gate.
+            if newValue {
+                // Turning Automatic Lyrics on is an explicit recovery action.
+                // Clear an old ActivityKit or server dismissal left by a
+                // previous build before deciding whether this session can run.
+                liveActivity.allowRecoveryStart(reason: "Automatic Lyrics switch")
+                SyncServerClient.shared.resetDismissalForNewSession()
             }
+            localSessionActive = newValue && lockScreenLyricsEnabled && !liveActivity.wasDismissed
+            SyncServerClient.shared.requestImmediateHeartbeat()
+            if newValue {
+                DiagnosticsLog.append("automatic lyrics enabled")
+                provider?.kick()
+            } else if liveActivity.isRunning {
+                liveActivity.end()
+            }
+            SharedNowPlaying.setLiveActivityControlEnabled(localSessionActive)
+            updatePollingProfile()
         }
     }
 
@@ -65,7 +83,16 @@ final class AppModel {
             if !newValue {
                 liveActivity.end()
                 localSessionActive = false
-                keeper.stop()
+                SharedNowPlaying.setLiveActivityControlEnabled(false)
+            } else {
+                // Enabling the preference is the one-time consent. Restore
+                // the local owner immediately and clear a stale ActivityKit
+                // dismissal left by a previous app build.
+                liveActivity.allowRecoveryStart(reason: "Lock Screen Lyrics switch")
+                SyncServerClient.shared.resetDismissalForNewSession()
+                localSessionActive = localSessionEnabled && !liveActivity.wasDismissed
+                SharedNowPlaying.setLiveActivityControlEnabled(localSessionActive)
+                provider?.kick()
             }
             updatePollingProfile()
             if let provider {
@@ -79,6 +106,7 @@ final class AppModel {
                     localRevision: localLARevision,
                     healthy: healthy,
                     autoStartEnabled: newValue,
+                    requiresUserStart: false,
                     force: true
                 )
             }
@@ -86,12 +114,39 @@ final class AppModel {
     }
 
     init() {
+        // Automatic lyrics is a one-time preference. Recover the local owner
+        // after relaunch without requiring a per-session Lock Screen action.
+        // A manual dismissal remains suppressed until a new playback session.
         localSessionActive = localSessionEnabled
+            && lockScreenLyricsEnabled
+            && !liveActivity.wasDismissed
+        if localSessionActive {
+            // Keep old server registrations compatible with the automatic
+            // path. New content states always set this field to false.
+            SyncServerClient.shared.markFirstUseCompleted()
+        }
+        liveActivity.onActivityEnded = { [weak self] in
+            guard let self else { return }
+            // A normal system end is recoverable. A user dismissal remains
+            // suppressed by LiveActivityController until a new playback
+            // session is confirmed.
+            self.localSessionActive = self.localSessionEnabled
+                && self.lockScreenLyricsEnabled
+                && !self.liveActivity.wasDismissed
+            SharedNowPlaying.setLiveActivityControlEnabled(self.localSessionActive)
+            self.updatePollingProfile()
+        }
+        SharedNowPlaying.setLiveActivityControlEnabled(
+            localSessionActive && lockScreenLyricsEnabled
+        )
         startTicker()
         watchSync.activateIfNeeded()
         installNowPlayingBridge()
         if auth.isConnected {
             startPolling()
+            if lockScreenLyricsEnabled && localSessionEnabled {
+                activateLocalLyricsSession(source: "automatic startup")
+            }
             SyncServerClient.shared.refreshRegistration()
         }
         if ProcessInfo.processInfo.arguments.contains("-demoActivity") {
@@ -107,7 +162,10 @@ final class AppModel {
                 guard let self else { return }
                 DiagnosticsLog.append("cmd: toggle")
                 if let current = self.provider?.status {
-                    SharedNowPlaying.setPlayingOverride(current.state != .playing)
+                    SharedNowPlaying.setPlayingOverride(
+                        current.state != .playing,
+                        trackID: self.provider?.lastTrackID
+                    )
                 }
                 Task {
                     let accepted = await self.provider?.togglePlayPause() ?? false
@@ -118,7 +176,7 @@ final class AppModel {
                 guard let self else { return }
                 DiagnosticsLog.append("cmd: play")
                 if self.provider?.status != nil {
-                    SharedNowPlaying.setPlayingOverride(true)
+                    SharedNowPlaying.setPlayingOverride(true, trackID: self.provider?.lastTrackID)
                 }
                 Task {
                     if await self.provider?.play() != true {
@@ -130,7 +188,7 @@ final class AppModel {
                 guard let self else { return }
                 DiagnosticsLog.append("cmd: pause")
                 if self.provider?.status != nil {
-                    SharedNowPlaying.setPlayingOverride(false)
+                    SharedNowPlaying.setPlayingOverride(false, trackID: self.provider?.lastTrackID)
                 }
                 Task {
                     if await self.provider?.pause() != true {
@@ -163,7 +221,7 @@ final class AppModel {
 
     func connect() async {
         guard SpotifyConfig.isConfigured else {
-            connectError = "Add your Spotify Client ID in SpotifyConfig.swift first."
+            connectError = "Enter your Spotify Client ID in the app first."
             return
         }
         isConnecting = true
@@ -172,6 +230,9 @@ final class AppModel {
         do {
             try await auth.connect()
             startPolling()
+            if lockScreenLyricsEnabled && localSessionEnabled {
+                activateLocalLyricsSession(source: "automatic startup")
+            }
             SyncServerClient.shared.refreshRegistration()
         } catch {
             connectError = error.localizedDescription
@@ -188,10 +249,34 @@ final class AppModel {
         lyrics.update(signature: nil, status: nil)
         nowPlaying.clear()
         liveActivity.end()
-        keeper.stop()
+        SharedNowPlaying.setLiveActivityControlEnabled(false)
         SharedNowPlaying.clearAll()
+        SyncServerClient.shared.resetFirstUseGate()
         watchSync.clear()
         reloadWidgetTimelines()
+    }
+
+    /// Starts the phone-owned Live Activity session from a direct user action.
+    /// The same method is used by the in-app button and the Control Center
+    /// request after it is consumed. Keeping this path together is
+    /// important: it enables the local poller, sends an immediate Spotify
+    /// probe, and lets the current ticker create or update the Activity.
+    func startLocalLyricsSession() {
+        guard auth.isConnected || demoActive else {
+            DiagnosticsLog.append("local session ignored: Spotify is not connected")
+            return
+        }
+        // This is a direct recovery action. It must override a dismissal that
+        // belongs to an old TestFlight build or an expired server session.
+        liveActivity.allowRecoveryStart(reason: "Start Lock Screen Lyrics")
+        SyncServerClient.shared.resetDismissalForNewSession()
+        if !lockScreenLyricsEnabled {
+            lockScreenLyricsEnabled = true
+        }
+        activateLocalLyricsSession(source: "user", forceRestart: true)
+        provider?.kick()
+        provider?.burst(count: 10)
+        tick()
     }
 
     func handleScenePhase(_ phase: ScenePhase) {
@@ -201,16 +286,9 @@ final class AppModel {
         case .active:
             if auth.isConnected { startPolling() }
         case .background:
-            // Keep the local writer alive until server takeover is accepted on
-            // a physical device. Without this fallback, iOS can suspend the
-            // app before the phone lease expires and the Live Activity stops
-            // receiving local updates.
-            if localSessionEnabled && localSessionActive && lockScreenLyricsEnabled {
-                provider?.kick()
-                // Start the keep-alive in the scene transition. Waiting for
-                // the 250 ms ticker can allow iOS to suspend the process first.
-                manageKeepAlive()
-            }
+            // The server and ActivityKit schedule provide background recovery.
+            // Do not request a high-power location or audio keep-alive.
+            provider?.kick()
             break
         default:
             break
@@ -245,7 +323,7 @@ final class AppModel {
         lyrics.update(signature: nil, status: nil)
         nowPlaying.clear()
         liveActivity.end()
-        keeper.stop()
+        SharedNowPlaying.setLiveActivityControlEnabled(false)
     }
 
     private func startPolling() {
@@ -257,12 +335,17 @@ final class AppModel {
     }
 
     private func updatePollingProfile() {
-        provider?.setAggressiveBackgroundMode(
-            localSessionEnabled
-                && localSessionActive
-                && lockScreenLyricsEnabled
-                && scenePhase != .active
-        )
+        // iOS background execution is not extended with location or silent
+        // audio. While the user has an active local session and the app is
+        // locked, use a bounded one-second probe profile. This catches
+        // external Spotify/headphone skips, which do not pass through our
+        // command handlers, without keeping the high-power profile while the
+        // app is in the foreground.
+        let aggressive = localSessionActive
+            && localSessionEnabled
+            && lockScreenLyricsEnabled
+            && scenePhase != .active
+        provider?.setAggressiveBackgroundMode(aggressive)
     }
 
     private func startTicker() {
@@ -276,6 +359,8 @@ final class AppModel {
     }
 
     private var tickCount = 0
+    private static let localSessionWarmupLimit: TimeInterval = 15
+    @ObservationIgnored private var localSessionWarmupUntil = Date.distantPast
 
     private func tick() {
         // Heartbeat (throttled to ~5s): proves whether the process is alive &
@@ -284,7 +369,12 @@ final class AppModel {
         if tickCount % 20 == 0 {
             DiagnosticsLog.append("hb \(String(format: "%.1f", lyrics.displayPosition))s doc=\(lyrics.document != nil) la=\(liveActivity.isRunning)")
         }
+        // Process the persistent Control Center state before one-shot start
+        // requests. This prevents a queued start from resurrecting a session
+        // after the user has just switched lyrics off.
+        consumeLiveActivityControlRequest()
         consumeLocalSessionRequest()
+        consumeLiveActivityEnableRequest()
         if let provider {
             if provider.signature != signature {
                 signature = provider.signature
@@ -301,6 +391,15 @@ final class AppModel {
                 trackID: provider.lastTrackID,
                 status: status
             )
+            // A playing Spotify item is the automatic activation event. The
+            // recovery button remains available, but ordinary playback does
+            // not require a per-session Show Lyrics tap.
+            if lockScreenLyricsEnabled,
+               localSessionEnabled,
+               status?.state == .playing,
+               !localSessionActive {
+                activateLocalLyricsSession(source: "Spotify playback")
+            }
         } else if demoActive {
             lyrics.update(signature: signature, status: status)
         }
@@ -309,7 +408,6 @@ final class AppModel {
         lyrics.tick()
         markRecoveredIfSilenceBroken()
         revivePollerIfNeeded()
-        manageKeepAlive()
         publishNowPlayingIfDue()
         syncLiveActivity()
         syncServerHeartbeat()
@@ -318,52 +416,205 @@ final class AppModel {
         consumeWidgetCommand()
     }
 
-    /// Keeps the app alive while an explicit local lyric session owns a Live
-    /// Activity. This is a beta device-testing path. The server remains the
-    /// recovery authority when this setting is disabled.
-    static let pausedKeepAliveLimit: TimeInterval = 600
-    @ObservationIgnored private var lastPlayingAt = Date.distantPast
-
-    private func manageKeepAlive() {
-        guard localSessionEnabled && localSessionActive else {
-            keeper.stop()
+    /// Consumes a request written by the iOS 18 Control Center control or the
+    /// Live Activity Show Lyrics action. This is the same one-shot activation
+    /// as the in-app button. The explicit action starts the phone-owned lyric
+    /// session; the separate high-power beta setting controls background
+    /// polling after lock.
+    private func consumeLocalSessionRequest() {
+        let now = Date.now
+        guard let requestDate = SharedNowPlaying.localSessionStartRequestDate(now: now) else {
+            localSessionAuthAttemptedAt = nil
+            localSessionAuthAttemptedRequestAt = nil
             return
         }
-        if status?.state == .playing {
-            lastPlayingAt = .now
+        // A request expires after two minutes. This covers the Spotify app
+        // authorization round trip. Permit a later user action to start a
+        // fresh authentication attempt, but never launch a new sign-in task
+        // on every 250 ms model tick after one failed attempt.
+        if let attemptedAt = localSessionAuthAttemptedAt,
+           localSessionAuthAttemptedRequestAt == requestDate.timeIntervalSince1970,
+           now.timeIntervalSince(attemptedAt) >= 125 {
+            localSessionAuthAttemptedAt = nil
+            localSessionAuthAttemptedRequestAt = nil
         }
 
-        guard scenePhase != .active else {
-            keeper.stop()
-            return
-        }
-
-        let withinPauseGrace = status?.state == .paused
-            && Date.now.timeIntervalSince(lastPlayingAt) < Self.pausedKeepAliveLimit
-        let shouldRun = (auth.isConnected || demoActive)
-            && lockScreenLyricsEnabled
-            && !liveActivity.wasDismissed
-            && (status?.state == .playing || withinPauseGrace)
-
-        if shouldRun {
-            keeper.start()
-            if !keeper.isPlayerAlive {
-                keeper.resurrect()
+        // Do not consume the request before Spotify authentication is ready.
+        // The first-use Live Activity action opens the app, and authentication
+        // may finish a few seconds later. Keeping the request in the shared
+        // mailbox lets the next tick complete the same handoff without asking
+        // the user to press Show Lyrics a second time.
+        guard auth.isConnected || demoActive else {
+            // A cold launch can reach the model ticker before SwiftUI has
+            // installed a key window. Wait for the active scene before asking
+            // AuthenticationServices to present Spotify sign-in.
+            guard scenePhase == .active else { return }
+            // Repeated taps can arrive while the first Spotify authorization
+            // sheet is still being presented. Do not start a second
+            // authentication task or let two callbacks race the same
+            // first-use request.
+            guard !isConnecting else { return }
+            guard localSessionAuthAttemptedAt == nil
+                    || localSessionAuthAttemptedRequestAt != requestDate.timeIntervalSince1970 else {
+                return
             }
-            keeper.setLoud(status?.state == .playing)
-        } else {
-            keeper.stop()
+            localSessionAuthAttemptedAt = now
+            localSessionAuthAttemptedRequestAt = requestDate.timeIntervalSince1970
+            DiagnosticsLog.append("local session request opening Spotify sign-in")
+            Task { [weak self] in
+                guard let self else { return }
+                await self.connect()
+                // Do not clear the attempt marker after a cancelled or failed
+                // authorization. The request is still one-shot: reopening the
+                // sign-in sheet on every 250 ms model tick is disruptive and
+                // can make the Live Activity appear frozen. A later tap writes
+                // a new request date and is allowed to try again; otherwise
+                // the existing request expires with its normal two-minute TTL.
+            }
+            return
         }
+        localSessionAuthAttemptedAt = nil
+        localSessionAuthAttemptedRequestAt = nil
+        // A Live Activity action is bound to the card that the user pressed.
+        // Control Center and Shortcuts leave this optional, so they continue
+        // to use the same path without an Activity identity.
+        guard SharedNowPlaying.consumeLocalSessionStartRequest(
+            activityID: liveActivity.activityID
+        ) else { return }
+        liveActivity.allowRecoveryStart(reason: "Control or Shortcut")
+        SyncServerClient.shared.resetDismissalForNewSession()
+        if !lockScreenLyricsEnabled {
+            lockScreenLyricsEnabled = true
+        }
+        activateLocalLyricsSession(source: "control or shortcut")
+        provider?.kick()
+        provider?.burst(count: 10)
     }
 
-    /// Consumes a request written by the iOS 18 Control Center control or a
-    /// Shortcuts automation. The request also enables the explicit beta
-    /// setting because the user initiated it from a system control.
-    private func consumeLocalSessionRequest() {
-        guard SharedNowPlaying.consumeLocalSessionStartRequest() else { return }
-        localSessionEnabled = true
+    /// Consumes the iOS 18 Control Center on/off request. The actual start is
+    /// still performed by `consumeLocalSessionRequest`, which preserves the
+    /// Spotify authorization round trip. Turning the control off is handled
+    /// here because it must cancel any pending start before the next ticker.
+    private func consumeLiveActivityControlRequest() {
+        guard let enabled = SharedNowPlaying.consumeLiveActivityControlRequest() else {
+            return
+        }
+
+        if enabled {
+            // The intent also writes a one-shot local-session request. If a
+            // caller only sent the state request, start immediately when the
+            // app already has Spotify access.
+            if auth.isConnected || demoActive,
+               !localSessionActive,
+               !SharedNowPlaying.hasLocalSessionStartRequest() {
+                // A state-only request can arrive after the user turned the
+                // control off. Restore the preference before starting so the
+                // next sync tick does not immediately end the new Activity.
+                if !lockScreenLyricsEnabled {
+                    lockScreenLyricsEnabled = true
+                }
+                activateLocalLyricsSession(source: "control center")
+                provider?.kick()
+                provider?.burst(count: 10)
+            }
+            DiagnosticsLog.append("Live Activity control enabled")
+            return
+        }
+
+        // Consume a queued start request before ending the session. This
+        // makes an off tap authoritative even if it follows an old on tap.
+        SharedNowPlaying.discardLocalSessionStartRequest()
+        localSessionActive = false
+        SharedNowPlaying.setLiveActivityControlEnabled(false)
+        if lockScreenLyricsEnabled {
+            lockScreenLyricsEnabled = false
+        } else {
+            liveActivity.end()
+            updatePollingProfile()
+        }
+        DiagnosticsLog.append("Live Activity control disabled")
+    }
+
+    /// Handles the Shortcuts automation path. It enables the same one-time
+    /// automatic session as ordinary Spotify playback. The request is idempotent.
+    private func consumeLiveActivityEnableRequest() {
+        guard SharedNowPlaying.consumeLiveActivityEnableRequest() else { return }
+        liveActivity.allowRecoveryStart(reason: "Shortcut")
+        SyncServerClient.shared.resetDismissalForNewSession()
+        if !lockScreenLyricsEnabled {
+            lockScreenLyricsEnabled = true
+        }
+        if auth.isConnected || demoActive {
+            activateLocalLyricsSession(source: "Shortcut")
+            provider?.kick()
+            provider?.burst(count: 10)
+            SyncServerClient.shared.wake(reason: "shortcut")
+        }
+        DiagnosticsLog.append("Live Activity enabled by Shortcut")
+    }
+
+    private func activateLocalLyricsSession(
+        source: String,
+        forceRestart: Bool = false
+    ) {
+        // Drop any older coalesced state before the phone becomes the local
+        // owner, so a late placeholder cannot hide newly loaded lyrics.
+        liveActivity.interruptPendingUpdates(reason: "automatic lyric session started")
+        // This path does not request Location permission or change the device
+        // power profile. The short warm-up only covers the first Spotify poll.
+        localSessionWarmupUntil = .now.addingTimeInterval(Self.localSessionWarmupLimit)
+        // Announce the ownership change on the next model tick. This prevents
+        // a server fallback update from racing the first phone lyric state.
+        SyncServerClient.shared.requestImmediateHeartbeat()
+        SyncServerClient.shared.markFirstUseCompleted()
         localSessionActive = true
-        DiagnosticsLog.append("local session requested by control or shortcut")
+        if let activityID = liveActivity.activityID {
+            SharedNowPlaying.markLiveActivityFirstUseCompleted(for: activityID)
+        }
+        SharedNowPlaying.setLiveActivityControlEnabled(true)
+        // Do not wait for Spotify's player endpoint or the lyric provider
+        // before asking ActivityKit for a card. The bootstrap state is small
+        // and visible immediately; the normal sync path replaces it with the
+        // current track as soon as playback arrives.
+        startBootstrapLiveActivity(forceRestart: forceRestart)
+        // Refresh after the session becomes active, including when this action
+        // is invoked from the Lock Screen or Control Center.
+        updatePollingProfile()
+        DiagnosticsLog.append("local session started by \(source)")
+    }
+
+    /// Creates a minimal ActivityKit surface before Spotify has returned its
+    /// first player sample. Previously the start request lived only inside
+    /// `syncLiveActivity`, after valid playback metadata was available. A slow
+    /// or failed Spotify request therefore looked exactly like Live Activity
+    /// was broken and left no Lock Screen recovery action.
+    private func startBootstrapLiveActivity(forceRestart: Bool = false) {
+        guard lockScreenLyricsEnabled,
+              (!liveActivity.isRunning || forceRestart),
+              !liveActivity.wasDismissed else { return }
+
+        let playing = status?.state == .playing
+        let state = stamped(
+            LyricsActivityAttributes.ContentState(
+                trackTitle: signature?.title ?? "OpenLyrics",
+                artistName: signature?.artist ?? "Spotify",
+                albumImageURL: provider?.lastAlbumImageURL,
+                currentLine: signature == nil
+                    ? "Connecting to Spotify…"
+                    : "Finding lyrics…",
+                isPlaying: playing,
+                schemaVersion: 2,
+                source: .phone,
+                trackID: provider?.lastTrackID,
+                requiresUserStart: false
+            )
+        )
+        DiagnosticsLog.append("LA bootstrap requested")
+        if forceRestart {
+            liveActivity.restartForRecovery(state: state)
+        } else {
+            liveActivity.start(state: state)
+        }
     }
 
     private func syncServerHeartbeat() {
@@ -371,8 +622,13 @@ final class AppModel {
         // Lease ownership follows the local poll loop, not the last successful
         // Spotify response. A temporary Spotify or network failure must not
         // make the server race the phone while the phone can still render its
-        // already-loaded lyric schedule.
+        // already-loaded lyric schedule. Immediately after Show Lyrics is
+        // pressed, the poller can be running before its first sample stamps
+        // lastLoopActivityAt; count that short startup interval as healthy so
+        // an older server state cannot win the handoff.
+        let withinSessionWarmup = Date.now < localSessionWarmupUntil
         let healthy = provider.isLoopLikelyAlive
+            || (withinSessionWarmup && localSessionActive && provider.isPolling)
         SyncServerClient.shared.heartbeat(
             activityState: liveActivity.syncActivityState,
             trackID: provider.lastTrackID,
@@ -380,7 +636,8 @@ final class AppModel {
             localRevision: localLARevision,
             healthy: healthy,
             autoStartEnabled: lockScreenLyricsEnabled,
-            albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] }
+            albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
+            requiresUserStart: false
         )
     }
 
@@ -403,9 +660,14 @@ final class AppModel {
 
     /// Picks up play/pause + refresh requests made from widgets / Live Activity buttons.
     private func consumeWidgetCommand() {
+        // Transport calls are asynchronous. Serialize them so rapid taps do
+        // not run Spotify commands concurrently and apply responses out of
+        // order. The queue retains later commands until the current one ends.
+        guard widgetCommandTask == nil else { return }
         guard let envelope = PlaybackCommandBus.consumeEnvelope() else { return }
         DiagnosticsLog.append("cmd bus: \(envelope.command.rawValue) id=\(envelope.id.uuidString.prefix(8))")
-        Task { [weak self] in
+        widgetCommandTask = Task { [weak self] in
+            defer { self?.widgetCommandTask = nil }
             guard let self else { return }
 
             // The running app is the lowest-latency Spotify client. Use it as
@@ -421,7 +683,10 @@ final class AppModel {
                 switch envelope.command {
                 case .togglePlayPause:
                     if let current = localProvider.status {
-                        SharedNowPlaying.setPlayingOverride(current.state != .playing)
+                        SharedNowPlaying.setPlayingOverride(
+                            current.state != .playing,
+                            trackID: localProvider.lastTrackID
+                        )
                     }
                     accepted = await localProvider.togglePlayPause()
                 case .next:
@@ -481,11 +746,15 @@ final class AppModel {
         // previous song's timeline until WidgetKit's reload budget allows an
         // update. The full snapshot with scheduled lines follows once lyrics land.
         if let signature,
-           status?.state == .playing,
+           status?.state == .playing || status?.state == .paused,
            lyrics.document?.track != signature {
             let artworkURL = provider?.lastAlbumImageURL
-            let artworkReady = artworkURL == nil || SharedNowPlaying.cachedArtwork(for: artworkURL) != nil
-            let key = "interim|\(signature.title)|\(signature.artist)|\(artworkURL ?? "")|\(artworkReady)"
+            let snapshotNow = Date.now
+            let artworkReady = artworkURL == nil
+                || artworkURL.flatMap(ArtworkFileCache.data(for:)) != nil
+            let durationKey = signature.duration.map { String(format: "%.3f", $0) } ?? "-"
+            let accentKey = albumAccent.map { "\($0.r),\($0.g),\($0.b)" } ?? "-"
+            let key = "interim|\(provider?.lastTrackID ?? "-")|\(signature.title)|\(signature.artist)|\(durationKey)|\(artworkURL ?? "")|\(artworkReady)|\(accentKey)|playing=\(status?.state == .playing)|loading=\(lyrics.isLoading)"
             guard key != lastPublishedWidgetKey else { return }
             lastPublishedWidgetKey = key
             widgetIdlePublished = false
@@ -494,13 +763,17 @@ final class AppModel {
                     trackTitle: signature.title,
                     artistName: signature.artist,
                     albumImageURL: artworkURL,
-                    artworkKey: artworkURL.map(SharedNowPlaying.artworkKey),
+                    artworkKey: artworkURL.flatMap(ArtworkFileCache.key),
                     albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
                     trackID: provider?.lastTrackID,
+                    lyricOffsetMs: Int((lyrics.userOffset * 1_000).rounded()),
                     trackDuration: signature.duration,
-                    playbackEndEpoch: playbackEndEpoch(for: signature, at: .now),
+                    playbackEndEpoch: status?.state == .playing
+                        ? playbackEndEpoch(for: signature, at: snapshotNow) : nil,
+                    playbackAnchorEpoch: status?.state == .playing
+                        ? playbackAnchorEpoch(at: snapshotNow) : nil,
                     currentLine: lyrics.isLoading ? "Loading lyrics…" : "♪",
-                    isPlaying: true
+                    isPlaying: status?.state == .playing
                 )
             )
             if artworkReady { reloadWidgetTimelines() }
@@ -538,7 +811,8 @@ final class AppModel {
         let index = lyrics.currentIndex ?? -1
         let offsetKey = String(format: "%.3f", lyrics.userOffset)
         let artworkURL = provider?.lastAlbumImageURL
-        let artworkReady = artworkURL == nil || SharedNowPlaying.cachedArtwork(for: artworkURL) != nil
+        let artworkReady = artworkURL == nil
+            || artworkURL.flatMap(ArtworkFileCache.data(for:)) != nil
         let now = Date.now
         let scheduled = scheduledLines(
             for: document,
@@ -559,7 +833,9 @@ final class AppModel {
         let correctionKey = seekCorrection
             ? String(format: "seek=%.1f", currentPosition)
             : "steady"
-        let key = "\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(offsetKey)|\(artworkURL ?? "")|\(artworkReady)|\(correctionKey)"
+        let durationKey = signature.duration.map { String(format: "%.3f", $0) } ?? "-"
+        let accentKey = albumAccent.map { "\($0.r),\($0.g),\($0.b)" } ?? "-"
+        let key = "\(provider?.lastTrackID ?? "-")|\(signature.title)|\(signature.artist)|\(index)|\(isPlaying)|\(document.lines.count)|\(durationKey)|\(offsetKey)|\(artworkURL ?? "")|\(artworkReady)|\(accentKey)|\(correctionKey)"
         guard key != lastPublishedWidgetKey else { return }
         lastPublishedWidgetKey = key
         widgetIdlePublished = false
@@ -570,11 +846,13 @@ final class AppModel {
                 trackTitle: signature.title,
                 artistName: signature.artist,
                 albumImageURL: artworkURL,
-                artworkKey: artworkURL.map(SharedNowPlaying.artworkKey),
+                artworkKey: artworkURL.flatMap(ArtworkFileCache.key),
                 albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
                 trackID: provider?.lastTrackID,
+                lyricOffsetMs: Int((lyrics.userOffset * 1_000).rounded()),
                 trackDuration: signature.duration,
-                playbackEndEpoch: playbackEndEpoch(for: signature, at: now),
+                playbackEndEpoch: isPlaying ? playbackEndEpoch(for: signature, at: now) : nil,
+                playbackAnchorEpoch: isPlaying ? playbackAnchorEpoch(at: now) : nil,
                 currentLine: current,
                 isPlaying: isPlaying,
                 updatedAt: .now,
@@ -588,7 +866,7 @@ final class AppModel {
         // play state). The daily reload budget cannot sustain per-line reloads;
         // between reloads the widget steps through its precomputed timeline
         // locally without talking to us.
-        let reloadKey = "\(signature.title)|\(signature.artist)|\(isPlaying)|\(scheduled.isEmpty ? "nosched" : "sched")|\(artworkURL ?? "")|\(artworkReady)"
+        let reloadKey = "\(provider?.lastTrackID ?? "-")|\(signature.title)|\(signature.artist)|\(durationKey)|\(isPlaying)|\(scheduled.isEmpty ? "nosched" : "sched")|\(artworkURL ?? "")|\(artworkReady)|\(accentKey)"
         if reloadKey != lastReloadedWidgetKey {
             lastReloadedWidgetKey = reloadKey
             reloadWidgetTimelines()
@@ -602,7 +880,7 @@ final class AppModel {
     /// image without depending on a network request during a timeline refresh.
     private func prefetchAlbumArtworkIfNeeded() {
         guard let urlString = provider?.lastAlbumImageURL else { return }
-        guard SharedNowPlaying.cachedArtwork(for: urlString) == nil else { return }
+        guard ArtworkFileCache.data(for: urlString) == nil else { return }
 
         let now = Date.now
         if urlString == lastArtworkPrefetchURL,
@@ -668,7 +946,8 @@ final class AppModel {
     /// Mirrors the complete widget snapshot to a paired Apple Watch. The watch
     /// stores it in its own app group so complications can advance locally.
     private func syncWatchSnapshot() {
-        guard let signature, let document = lyrics.document, status?.state != .stopped else {
+        guard let signature,
+              status?.state == .playing || status?.state == .paused else {
             return
         }
         if status?.state == .paused,
@@ -676,6 +955,36 @@ final class AppModel {
            Date.now.timeIntervalSince(pauseDate) > Self.liveActivityPauseGrace {
             return
         }
+
+        // Publish the new track before its lyrics arrive. Without this
+        // interim packet, the Watch keeps the previous song and its schedule
+        // until the lyric request completes. This is the same handoff used by
+        // the widget and Live Activity paths.
+        if lyrics.document?.track != signature {
+            let artworkURL = provider?.lastAlbumImageURL
+            let snapshotNow = Date.now
+            watchSync.publish(
+                WidgetLyricSnapshot(
+                    trackTitle: signature.title,
+                    artistName: signature.artist,
+                    albumImageURL: artworkURL,
+                    artworkKey: artworkURL.flatMap(ArtworkFileCache.key),
+                    albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
+                    trackID: provider?.lastTrackID,
+                    lyricOffsetMs: Int((lyrics.userOffset * 1_000).rounded()),
+                    trackDuration: signature.duration,
+                    playbackEndEpoch: status?.state == .playing
+                        ? playbackEndEpoch(for: signature, at: snapshotNow) : nil,
+                    playbackAnchorEpoch: status?.state == .playing
+                        ? playbackAnchorEpoch(at: snapshotNow) : nil,
+                    currentLine: lyrics.isLoading ? "Loading lyrics…" : "♪",
+                    isPlaying: status?.state == .playing
+                )
+            )
+            return
+        }
+
+        guard let document = lyrics.document else { return }
         let index = lyrics.currentIndex ?? -1
         let current = index >= 0 && index < document.lines.count ? document.lines[index].text : "♪"
         let artworkURL = provider?.lastAlbumImageURL
@@ -684,11 +993,15 @@ final class AppModel {
                 trackTitle: signature.title,
                 artistName: signature.artist,
                 albumImageURL: artworkURL,
-                artworkKey: artworkURL.map(SharedNowPlaying.artworkKey),
+                artworkKey: artworkURL.flatMap(ArtworkFileCache.key),
                 albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
                 trackID: provider?.lastTrackID,
+                lyricOffsetMs: Int((lyrics.userOffset * 1_000).rounded()),
                 trackDuration: signature.duration,
-                playbackEndEpoch: playbackEndEpoch(for: signature, at: .now),
+                playbackEndEpoch: status?.state == .playing
+                    ? playbackEndEpoch(for: signature, at: .now) : nil,
+                playbackAnchorEpoch: status?.state == .playing
+                    ? playbackAnchorEpoch(at: .now) : nil,
                 currentLine: current,
                 isPlaying: status?.state == .playing,
                 scheduledLines: scheduledLines(
@@ -745,10 +1058,16 @@ final class AppModel {
     @ObservationIgnored private var lastNowPlayingPublishAt: Date?
 
     private func syncLiveActivity() {
-        guard lockScreenLyricsEnabled, auth.isConnected || demoActive else {
+        // A remotely started Activity can wake the app before Spotify auth has
+        // finished restoring its session. Preserve that adopted Activity while
+        // auth loads; ending it here would defeat server recovery and force a
+        // new first-use handoff on every cold launch. An explicit feature
+        // disable still ends it immediately.
+        guard lockScreenLyricsEnabled else {
             if liveActivity.isRunning { liveActivity.end() }
             return
         }
+        guard auth.isConnected || demoActive else { return }
 
         switch status?.state {
         case .stopped:
@@ -789,24 +1108,34 @@ final class AppModel {
             liveActivity.suppressForCurrentPlaybackSession()
             return
         }
+        // The platform can report a dismissed activity for a short time after
+        // the user swipes it away. Do not spend every model tick attempting a
+        // new start against that same playback session.
+        if liveActivity.wasDismissed {
+            return
+        }
 
         let style = loadLAStyle()
         let styleKey = "\(style.prefs.theme.rawValue)|\(style.prefs.layout.rawValue)|\(style.prefs.artworkStyle.rawValue)|\(style.prefs.surfaceStyle.rawValue)|\(style.prefs.textAlignment.rawValue)|\(style.prefs.fontStyle.rawValue)|\(style.prefs.lyricScale.rawValue)|\(style.prefs.showTrackInfo)|\(style.prefs.showControls)|\(style.prefs.showNextLine)|\(style.prefs.showProgressBar)|\(style.prefs.animationsEnabled)|\(style.prefs.karaokeEnabled)"
 
-        guard let signature else {
-            if liveActivity.isRunning { liveActivity.end() }
-            return
-        }
+        // Preserve the bootstrap card while Spotify has playback state but
+        // has not supplied complete track metadata. Ending it here made the
+        // Activity flash briefly and disappear during a slow player response.
+        // A confirmed stop and the feature toggle remain the only paths that
+        // remove this metadata-independent placeholder.
+        guard let signature else { return }
         let artworkURL = provider?.lastAlbumImageURL
-        let artworkReady = artworkURL == nil || SharedNowPlaying.cachedArtwork(for: artworkURL) != nil
+        let artworkReady = artworkURL == nil
+            || artworkURL.flatMap(ArtworkFileCache.data(for:)) != nil
         // Publish the new track before the lyrics request completes. Waiting
         // for LRCLIB here leaves the old card or music-note placeholder visible
-        // during the whole network lookup.
+        // during the whole network lookup. The placeholder is a normal
+        // automatic state, not a per-session Show Lyrics gate.
         guard let document = lyrics.document else {
             // Update the placeholder at most once per state change. ActivityKit
             // rate-limits repeated updates, and the app tick runs four times a
             // second.
-            let placeholderKey = "\(provider?.lastTrackID ?? "-")|\(signature.title)|\(signature.artist)|\(provider?.lastAlbumImageURL ?? "-")|\(status?.state == .playing)|\(lyrics.isAwaitingLyrics)|\(artworkReady)|\(styleKey)|\(String(format: "%.3f", lyrics.userOffset))"
+            let placeholderKey = "\(provider?.lastTrackID ?? "-")|\(signature.title)|\(signature.artist)|\(provider?.lastAlbumImageURL ?? "-")|\(status?.state == .playing)|\(lyrics.isAwaitingLyrics)|\(artworkReady)|\(styleKey)|\(String(format: "%.3f", lyrics.userOffset))|start=\(localSessionActive)"
             let anchors = status.map { PlaybackAnchors(status: $0, duration: signature.duration) }
             let placeholderState: LyricsActivityAttributes.ContentState = stamped({
                 LyricsActivityAttributes.ContentState(
@@ -822,7 +1151,8 @@ final class AppModel {
                     source: .phone,
                     trackID: provider?.lastTrackID,
                     progressStartEpoch: anchors?.startDate.timeIntervalSince1970,
-                    progressEndEpoch: anchors?.endDate?.timeIntervalSince1970
+                    progressEndEpoch: anchors?.endDate?.timeIntervalSince1970,
+                    requiresUserStart: false
                 )
             }())
 
@@ -864,6 +1194,7 @@ final class AppModel {
                 lastSentLASchedule = []
                 lastAppliedLAOffset = lyrics.userOffset
                 lastAppliedLAProgressStartEpoch = placeholderState.progressStartEpoch
+                lastAppliedPlaybackChangeAt = provider?.lastPlaybackChangeAt
             }
             return
         }
@@ -881,7 +1212,7 @@ final class AppModel {
             lastLineIndex = lyrics.currentIndex
             lastLAUpdateAt = .now
             lastLASentIsPlaying = startState.isPlaying
-            lastLASentTrack = "\(startState.trackID ?? "-")|\(startState.trackTitle)|\(startState.artistName)|\(startState.albumImageURL ?? "-")|\(document.lines.count)"
+            lastLASentTrack = "\(startState.trackID ?? "-")|\(startState.trackTitle)|\(startState.artistName)|\(startState.albumImageURL ?? "-")|\(document.lines.count)|duration=\(signature.duration.map { String(format: "%.3f", $0) } ?? "-")"
             lastLAArtworkReady = artworkReady
             lastSentLAHash = laContentHash(startState)
             lastAppliedStyleKey = styleKey
@@ -889,6 +1220,7 @@ final class AppModel {
             lastAppliedLAOffset = lyrics.userOffset
             lastSentLASchedule = startState.resolvedScheduledLines
             lastAppliedLAProgressStartEpoch = startState.progressStartEpoch
+            lastAppliedPlaybackChangeAt = provider?.lastPlaybackChangeAt
             return
         }
 
@@ -899,7 +1231,8 @@ final class AppModel {
         // anything. The progress bar advances itself via TimelineView on the
         // widget's own clock.
         let targetState = contentState(document: document, style: style.prefs, albumAccent: style.accent)
-        let trackKey = "\(targetState.trackID ?? "-")|\(targetState.trackTitle)|\(targetState.artistName)|\(targetState.albumImageURL ?? "-")|\(document.lines.count)"
+        let durationKey = signature.duration.map { String(format: "%.3f", $0) } ?? "-"
+        let trackKey = "\(targetState.trackID ?? "-")|\(targetState.trackTitle)|\(targetState.artistName)|\(targetState.albumImageURL ?? "-")|\(document.lines.count)|duration=\(durationKey)"
         let trackChanged = trackKey != lastLASentTrack
         let lineChanged = lyrics.currentIndex != lastLineIndex
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
@@ -909,6 +1242,7 @@ final class AppModel {
         // appearance picks land within one tick.
         let accentChanged = targetState.albumDominantRGB != lastSentAccent
         let styleChanged = styleKey != lastAppliedStyleKey
+        let playbackEventChanged = provider?.lastPlaybackChangeAt != lastAppliedPlaybackChangeAt
         let offsetChanged = lastAppliedLAOffset.map {
             abs($0 - lyrics.userOffset) > 0.001
         } ?? false
@@ -920,7 +1254,7 @@ final class AppModel {
             }
         }()
         let urgent = trackChanged || playChanged || artworkChanged || accentChanged
-            || styleChanged || offsetChanged || anchorChanged
+            || styleChanged || offsetChanged || anchorChanged || playbackEventChanged
         let sinceLastSend = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast)
         let remainingSchedule = lastSentLASchedule.filter { $0.date > now }
         let targetSchedule = targetState.resolvedScheduledLines
@@ -975,6 +1309,7 @@ final class AppModel {
             lastAppliedLAOffset = lyrics.userOffset
             lastSentLASchedule = sentState.resolvedScheduledLines
             lastAppliedLAProgressStartEpoch = sentState.progressStartEpoch
+            lastAppliedPlaybackChangeAt = provider?.lastPlaybackChangeAt
             recordLASendRate()
         }
     }
@@ -1023,6 +1358,7 @@ final class AppModel {
     @ObservationIgnored private var lastSentAccent: [Double]?
     @ObservationIgnored private var lastSentLASchedule: [WidgetLyricSnapshot.ScheduledLine] = []
     @ObservationIgnored private var lastAppliedLAProgressStartEpoch: TimeInterval?
+    @ObservationIgnored private var lastAppliedPlaybackChangeAt: Date?
     @ObservationIgnored private var localLARevision: Int64 = 0
     /// Starting an Activity can fail while iOS is changing scene state. Do not
     /// retry on every 250 ms model tick because that can create a start storm.
@@ -1128,7 +1464,8 @@ final class AppModel {
             progressEndEpoch: anchors?.endDate?.timeIntervalSince1970,
             scheduledLinesV2: scheduled.isEmpty ? nil : scheduled,
             karaokeStartEpoch: karaoke.start?.timeIntervalSince1970,
-            karaokeEndEpoch: karaoke.end?.timeIntervalSince1970
+            karaokeEndEpoch: karaoke.end?.timeIntervalSince1970,
+            requiresUserStart: false
         )
     }
 
@@ -1218,5 +1555,15 @@ final class AppModel {
         let position = max(0, status?.position(at: date) ?? lyrics.displayPosition)
         let rate = max(status?.rate ?? 1, 0.001)
         return date.timeIntervalSince1970 + max(0, duration - position) / rate
+    }
+
+    /// Returns the Unix time at which the current playing position was zero.
+    /// Widgets, Watch, and Live Activity timelines can then project playback
+    /// from one common clock while the app is suspended.
+    private func playbackAnchorEpoch(at date: Date) -> TimeInterval? {
+        guard status?.state == .playing else { return nil }
+        let position = max(0, status?.position(at: date) ?? lyrics.displayPosition)
+        let rate = max(status?.rate ?? 1, 0.001)
+        return date.timeIntervalSince1970 - position / rate
     }
 }

@@ -266,7 +266,7 @@ public struct LAAlbumDisc: View {
     }()
 
     private var cachedArtworkImage: Image? {
-        let data = imageData ?? SharedNowPlaying.cachedArtwork(for: urlString)
+        let data = imageData ?? urlString.flatMap(ArtworkFileCache.data(for:))
         guard let data else { return nil }
 
         if let urlString,
@@ -314,6 +314,10 @@ public struct LAScheduledLyricText: View {
     let karaokeEnabled: Bool
     let karaokeStartDate: Date?
     let karaokeEndDate: Date?
+    /// The wall-clock time at which the current track ends. A schedule can
+    /// contain only a look-ahead window, so the renderer needs this separate
+    /// boundary to avoid holding the final lyric after playback finishes.
+    let playbackEndDate: Date?
     let frozenKaraokeProgress: Double?
     let highlightColor: Color
 
@@ -332,6 +336,7 @@ public struct LAScheduledLyricText: View {
                 karaokeEnabled: Bool = false,
                 karaokeStartDate: Date? = nil,
                 karaokeEndDate: Date? = nil,
+                playbackEndDate: Date? = nil,
                 frozenKaraokeProgress: Double? = nil,
                 highlightColor: Color? = nil) {
         self.currentLine = currentLine
@@ -349,6 +354,7 @@ public struct LAScheduledLyricText: View {
         self.karaokeEnabled = karaokeEnabled
         self.karaokeStartDate = karaokeStartDate
         self.karaokeEndDate = karaokeEndDate
+        self.playbackEndDate = playbackEndDate
         self.frozenKaraokeProgress = frozenKaraokeProgress
         self.highlightColor = highlightColor ?? color
     }
@@ -377,10 +383,11 @@ public struct LAScheduledLyricText: View {
         let boundaries = scheduledLines.flatMap { line in
             [line.date, line.endDate].compactMap { $0 }
         }
+        let trackEnd = playbackEndDate.map { [$0] } ?? []
         // ActivityKit can coalesce duplicate timeline dates. Give it an
         // ordered set of explicit line boundaries, including the final end,
         // so lyric selection does not depend on a throttled periodic timer.
-        return Array(Set([now] + boundaries.filter { $0 > now })).sorted()
+        return Array(Set([now] + boundaries + trackEnd).filter { $0 >= now }).sorted()
     }
 
     @ViewBuilder
@@ -432,6 +439,38 @@ public struct LAScheduledLyricText: View {
     }
 
     private func resolvedLines(at date: Date) -> ResolvedLines {
+        Self.resolveLines(
+            currentLine: currentLine,
+            nextLine: nextLine,
+            scheduledLines: scheduledLines,
+            karaokeStartDate: karaokeStartDate,
+            karaokeEndDate: karaokeEndDate,
+            playbackEndDate: playbackEndDate,
+            at: date
+        )
+    }
+
+    static func resolveLines(
+        currentLine: String,
+        nextLine: String?,
+        scheduledLines: [WidgetLyricSnapshot.ScheduledLine],
+        karaokeStartDate: Date?,
+        karaokeEndDate: Date?,
+        playbackEndDate: Date?,
+        at date: Date
+    ) -> ResolvedLines {
+        // The final scheduled line can remain in the ActivityKit state until
+        // the next phone/server update. Clear it at the explicit track end so
+        // a completed song cannot leave stale lyrics on the Lock Screen.
+        if let playbackEndDate, date >= playbackEndDate {
+            return ResolvedLines(
+                current: "♪",
+                next: nil,
+                startDate: nil,
+                endDate: nil
+            )
+        }
+
         var current = currentLine
         var next = nextLine
         var passedCount = 0
@@ -474,7 +513,7 @@ public struct LAScheduledLyricText: View {
         return min(max(date.timeIntervalSince(start) / end.timeIntervalSince(start), 0), 1)
     }
 
-    private struct ResolvedLines {
+    struct ResolvedLines: Equatable {
         let current: String
         let next: String?
         let startDate: Date?

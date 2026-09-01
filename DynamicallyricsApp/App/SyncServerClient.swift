@@ -25,12 +25,35 @@ final class SyncServerClient {
     private(set) var updateToken: String?
     private(set) var pushToStartToken: String?
     private(set) var serverSessionDismissed = false
+    /// An explicit Start or Restart action supersedes a dismissal stored by an
+    /// older server session. Registration and heartbeat requests can overlap,
+    /// so ignore that old value until the server acknowledges the reset. A
+    /// later ActivityKit dismissal clears this guard and remains authoritative.
+    private var dismissalResetPending = false
 
     private var pendingUploadTask: Task<Void, Never>?
+    /// Registration can be triggered by the global push-to-start stream, an
+    /// activity update-token stream, Spotify sign-in, and the heartbeat path at
+    /// nearly the same time. Keep bootstrap registration single-flight. Two
+    /// concurrent bootstrap requests can make the server reject the second
+    /// pairing and leave one of the tokens unregistered.
+    private var uploadInFlight = false
+    private var uploadQueued = false
+    private var queuedUploadIsForced = false
     private var heartbeatTask: Task<Void, Never>?
     private var lastHeartbeatAt: Date?
     private var lastLyricOffsetMs = 0
     private var lastAlbumDominantRGB: [Double]?
+    private var pendingActivityEnd = false
+    /// Keep the ended Activity token for one explicit end heartbeat. The
+    /// current token is cleared immediately so later updates cannot target a
+    /// dead Activity, but the server still needs the old token to remove its
+    /// APNs route when no push-to-start token is available.
+    private var activityEndToken: String?
+    private var activityEndGeneration: UInt64 = 0
+    /// Kept for compatibility with older registrations. New installations use
+    /// one-time automatic-lyrics consent and never receive a per-session gate.
+    private var requiresUserStart = false
 
     private init() {
         migrateLegacyServerSettings()
@@ -55,9 +78,9 @@ final class SyncServerClient {
     /// paired, registration obtains a private server token automatically.
     func checkConnection() async -> SyncServerCheckResult {
         guard configuredBaseURL() != nil else { return .missingURL }
-        if serverAuthTokenString.isEmpty {
-            await uploadCurrentTokens(force: true)
-        }
+        // Re-register on every manual check. This also repairs a token that
+        // became invalid after a server migration or key rotation.
+        await uploadCurrentTokens(force: true)
         guard !serverAuthTokenString.isEmpty else { return .missingAccessToken }
         guard let url = URL(string: endpoint(path: "status")) else { return .invalidURL }
 
@@ -103,6 +126,14 @@ final class SyncServerClient {
     func record(updateToken: String?, pushToStartToken: String?) async {
         if let token = updateToken, token != self.updateToken {
             self.updateToken = token
+            // A new Activity token supersedes any end notification queued for
+            // the previous Activity. Keeping the old marker could send an
+            // unnecessary none heartbeat with a dead token after a fresh
+            // Activity has already started.
+            if pendingActivityEnd {
+                pendingActivityEnd = false
+                activityEndToken = nil
+            }
             DiagnosticsLog.append("push update token received (\(token.count) hex chars)")
         }
         if let token = pushToStartToken, token != self.pushToStartToken {
@@ -115,15 +146,69 @@ final class SyncServerClient {
     /// Removes an update token that belongs to an ended activity. The global
     /// push-to-start token remains registered for the next playback session.
     func noteActivityEnded(dismissed: Bool) {
+        if let updateToken, !updateToken.isEmpty {
+            activityEndToken = updateToken
+        }
         updateToken = nil
-        if dismissed { serverSessionDismissed = true }
+        if dismissed {
+            dismissalResetPending = false
+            serverSessionDismissed = true
+        }
+        pendingActivityEnd = true
+        activityEndGeneration &+= 1
         lastHeartbeatAt = .distantPast
         DiagnosticsLog.append(dismissed ? "sync: activity dismissed" : "sync: activity ended")
     }
 
     func resetDismissalForNewSession() {
         serverSessionDismissed = false
+        dismissalResetPending = true
         lastHeartbeatAt = .distantPast
+    }
+
+    func markFirstUseCompleted() {
+        requiresUserStart = false
+        // Do not wait for the next five-second heartbeat. The first-use tap
+        // changes which side owns the activity, so the server must learn the
+        // new gate promptly before its fallback poll can publish a placeholder.
+        scheduleUpload()
+    }
+
+    func resetFirstUseGate() {
+        requiresUserStart = false
+        SharedNowPlaying.resetLiveActivityFirstUse()
+    }
+
+    /// Makes the next heartbeat announce a local ownership change immediately.
+    /// This is used after the user presses Show Lyrics. Without the barrier,
+    /// the server may still believe it owns the activity for up to five
+    /// seconds and can deliver an older fallback state over the fresh phone
+    /// state.
+    func requestImmediateHeartbeat() {
+        lastHeartbeatAt = .distantPast
+    }
+
+    /// Wakes the background worker for a Shortcut or automatic Spotify start.
+    /// The endpoint is idempotent and does not send a second playback command.
+    func wake(reason: String = "shortcut") {
+        guard configuredBaseURL() != nil, !serverAuthTokenString.isEmpty,
+              let url = URL(string: endpoint(path: "wake")) else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(serverAuthTokenString)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["reason": reason])
+        Task { [weak self] in
+            do {
+                let (_, response) = try await URLSession.shared.data(for: request)
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                DiagnosticsLog.append("sync: wake HTTP \(code)")
+            } catch {
+                DiagnosticsLog.append("sync: wake failed")
+                self?.requestImmediateHeartbeat()
+            }
+        }
     }
 
     /// Renews the phone's writer lease. If this call stops because iOS
@@ -137,16 +222,25 @@ final class SyncServerClient {
         healthy: Bool,
         autoStartEnabled: Bool,
         albumDominantRGB: [Double]? = nil,
+        requiresUserStart: Bool = false,
         force: Bool = false
     ) {
-        guard healthy else { return }
+        // An explicit local end or dismissal must still reach the server during
+        // a Spotify or network failure. Without this exception, disabling Live
+        // Activity while the poller is unhealthy leaves the server's APNs route
+        // alive until its lease expires, which can keep a stale card on screen.
+        // The pending flag is cleared after one accepted heartbeat below.
+        guard healthy || pendingActivityEnd else { return }
         lastLyricOffsetMs = Int((lyricOffset * 1_000).rounded())
         lastAlbumDominantRGB = albumDominantRGB
+        self.requiresUserStart = requiresUserStart
         let now = Date.now
         guard force || now.timeIntervalSince(lastHeartbeatAt ?? .distantPast) >= 5 else { return }
         guard heartbeatTask == nil else { return }
         guard configuredBaseURL() != nil, !serverAuthTokenString.isEmpty else { return }
-        guard updateToken != nil || pushToStartToken != nil else { return }
+        guard updateToken?.isEmpty == false
+                || pushToStartToken?.isEmpty == false
+                || pendingActivityEnd else { return }
         lastHeartbeatAt = now
 
         heartbeatTask = Task { [weak self] in
@@ -160,11 +254,25 @@ final class SyncServerClient {
                 "localRevision": localRevision,
                 "lyricOffsetMs": self.lastLyricOffsetMs,
                 "autoStartEnabled": autoStartEnabled,
+                "requiresUserStart": self.requiresUserStart,
             ]
+            let pendingGeneration = self.pendingActivityEnd
+                ? self.activityEndGeneration
+                : nil
+            if activityState == .none, pendingGeneration != nil {
+                // A plain `none` can mean that the app has not adopted a
+                // remotely started activity yet. This flag identifies the
+                // separate explicit local end that may remove the server's
+                // valid update token.
+                body["activityEnded"] = true
+            }
             if let albumDominantRGB = self.lastAlbumDominantRGB {
                 body["albumDominantRGB"] = albumDominantRGB
             }
             if let updateToken = self.updateToken { body["updateToken"] = updateToken }
+            else if activityState == .none, let activityEndToken = self.activityEndToken {
+                body["updateToken"] = activityEndToken
+            }
             if let trackID { body["trackID"] = trackID }
 
             var request = URLRequest(url: url)
@@ -180,6 +288,13 @@ final class SyncServerClient {
                 if (200...299).contains(code),
                    let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     self.applyServerState(object)
+                    if let pendingGeneration,
+                       self.pendingActivityEnd,
+                       self.activityEndGeneration == pendingGeneration,
+                       object["accepted"] as? Bool != false {
+                        self.pendingActivityEnd = false
+                        self.activityEndToken = nil
+                    }
                     let writer = object["writer"] as? String ?? "phone"
                     DiagnosticsLog.append("sync: heartbeat ok writer=\(writer)")
                 } else {
@@ -237,6 +352,27 @@ final class SyncServerClient {
     }
 
     private func uploadCurrentTokens(force: Bool = false) async {
+        if uploadInFlight {
+            uploadQueued = true
+            queuedUploadIsForced = queuedUploadIsForced || force
+            return
+        }
+        uploadInFlight = true
+        defer {
+            uploadInFlight = false
+            if uploadQueued {
+                let nextForce = queuedUploadIsForced
+                uploadQueued = false
+                queuedUploadIsForced = false
+                Task { [weak self] in
+                    await self?.uploadCurrentTokens(force: nextForce)
+                }
+            }
+        }
+        await performUploadCurrentTokens(force: force)
+    }
+
+    private func performUploadCurrentTokens(force: Bool) async {
         // A push-to-start token must be accepted before the first activity
         // exists. Requiring an update token here made automatic start
         // impossible on a fresh installation.
@@ -264,11 +400,23 @@ final class SyncServerClient {
         }
         var body: [String: Any] = [
             "clientSchemaVersion": 2,
+            // The private-beta server must use the same Spotify application
+            // that completed PKCE on this device. This is public OAuth
+            // metadata, not a credential.
+            "spotifyClientID": SpotifyConfig.clientID,
             "spotifyRefreshToken": refreshToken,
             "supportsRemoteStart": supportsRemoteStart,
-            "supportsInputPushToken": ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 18,
+            // Push-to-start is available from iOS 17.2. The input-push-token
+            // option is only available from iOS 18, so do not ask APNs for
+            // that newer handoff on iOS 17.2–17.x. Those devices still wake
+            // the app and provide the normal Activity update token.
+            "supportsInputPushToken": {
+                if #available(iOS 18.0, *) { return true }
+                return false
+            }(),
             "lyricOffsetMs": lastLyricOffsetMs,
             "autoStartEnabled": UserDefaults.standard.object(forKey: "lockScreenLyricsEnabled") as? Bool ?? true,
+            "requiresUserStart": requiresUserStart,
         ]
         if let lastAlbumDominantRGB {
             body["albumDominantRGB"] = lastAlbumDominantRGB
@@ -289,8 +437,27 @@ final class SyncServerClient {
             DiagnosticsLog.append("sync: server paired automatically")
         }
 
-        guard !serverAuthTokenString.isEmpty else { return }
-        let result = await sendRegistration(body: body, authToken: serverAuthTokenString)
+        guard let authToken = KeychainStore.string(forKey: Self.authTokenKey), !authToken.isEmpty else { return }
+        var result = await sendRegistration(body: body, authToken: authToken)
+        if result?.0 == 401 {
+            // The server token is installation-specific. It can become stale
+            // after a backend migration or a server-side key rotation. Do not
+            // make the user reinstall the app or disconnect Spotify: clear
+            // only the rejected server token, bootstrap a new pairing, and
+            // retry this same registration once.
+            KeychainStore.set(nil, forKey: Self.authTokenKey)
+            DiagnosticsLog.append("sync: server token rejected; renewing pairing")
+            var bootstrapBody = body
+            bootstrapBody["bootstrap"] = true
+            guard let (_, bootstrapObject) = await sendRegistration(body: bootstrapBody),
+                  let generatedToken = bootstrapObject["authToken"] as? String,
+                  !generatedToken.isEmpty else {
+                if force { DiagnosticsLog.append("sync: renewed pairing failed") }
+                return
+            }
+            KeychainStore.set(generatedToken, forKey: Self.authTokenKey)
+            result = await sendRegistration(body: body, authToken: generatedToken)
+        }
         if let (code, object) = result, (200...299).contains(code) {
             applyServerState(object)
             DiagnosticsLog.append("sync: tokens registered (\(code))")
@@ -343,7 +510,7 @@ final class SyncServerClient {
 
     private func endpoint(path: String) -> String {
         guard let base = configuredBaseURL() else { return path }
-        return base.appending("/\(path)")
+        return base.appending("/v1/\(path)")
     }
 
     private func migrateLegacyServerSettings() {
@@ -363,6 +530,17 @@ final class SyncServerClient {
         if let dismissed = object["playbackSessionDismissed"] as? Bool {
             if !dismissed {
                 serverSessionDismissed = false
+                dismissalResetPending = false
+                return
+            }
+
+            // A direct Start or Restart action has already created a newer
+            // local session. A registration or heartbeat for the prior token
+            // can finish later and return its obsolete dismissal bit. Do not
+            // let that response end the replacement Activity one second after
+            // it starts.
+            if dismissalResetPending {
+                DiagnosticsLog.append("sync: ignored dismissal from pre-recovery session")
                 return
             }
 

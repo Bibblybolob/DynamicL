@@ -108,7 +108,11 @@ private actor LyricsCacheRepository {
 
     func save(_ cache: [TrackSignature: CachedLyrics]) {
         writeTask?.cancel()
-        writeTask = Task.detached(priority: .utility) {
+        // Keep the delayed write on this actor. A detached writer can pass its
+        // sleep at the same time as a newer save and finish last, restoring an
+        // older lyric cache after relaunch even though the newer save won the
+        // in-memory race.
+        writeTask = Task { [cache] in
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
             LyricsCacheStore.save(cache)
@@ -195,8 +199,14 @@ final class LyricsService {
         let lookupKey = Self.lookupKey(trackID: trackID, signature: signature)
         guard lookupKey != currentLookupKey else {
             // Same Spotify item, but a later complete response can fill album
-            // or duration fields that were absent in an earlier sample.
+            // or duration fields that were absent in an earlier sample. Keep
+            // the already-fetched lyric lines, but refresh the document
+            // metadata so AppModel does not mistake valid lyrics for an
+            // in-progress lookup and publish an interim widget forever.
             currentSignature = signature
+            if let signature, let document, document.track != signature {
+                apply(LyricsDocument(track: signature, lines: document.lines))
+            }
             return
         }
         currentLookupKey = lookupKey
@@ -291,8 +301,11 @@ final class LyricsService {
             }
         case .notFound:
             Self.log.error("lookup notFound: \(signature.title) — \(signature.artist)")
-            failedSignatures.insert(signature)
+            // A stale request must not blacklist a track that is no longer
+            // visible. The same track can return later, and the next lookup
+            // must be allowed to try again after provider metadata changes.
             if ownsVisibleLookup {
+                failedSignatures.insert(signature)
                 lookupStatus = "No lyrics found for this track"
                 isLoading = false
                 isAwaitingLyrics = false

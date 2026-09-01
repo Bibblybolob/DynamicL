@@ -152,6 +152,8 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
     private func exchange(code: String, verifier: String) async throws {
         var request = URLRequest(url: URL(string: "https://accounts.spotify.com/api/token")!)
         request.httpMethod = "POST"
+        // Keep an interrupted sign-in request bounded as well.
+        request.timeoutInterval = 10
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let body: [String: String] = [
             "grant_type": "authorization_code",
@@ -173,6 +175,9 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
     private func refresh(using refresh: String) async throws -> String {
         var request = URLRequest(url: URL(string: "https://accounts.spotify.com/api/token")!)
         request.httpMethod = "POST"
+        // Token refresh runs from the background poll loop. Keep a stalled
+        // network request from holding the provider's scheduler indefinitely.
+        request.timeoutInterval = 10
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let body: [String: String] = [
             "grant_type": "refresh_token",

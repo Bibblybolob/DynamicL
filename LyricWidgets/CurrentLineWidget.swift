@@ -38,10 +38,7 @@ struct LyricEntry: TimelineEntry {
 /// Applies the optimistic play/pause flip (if any) written by the widget's
 /// toggle button, so widgets react instantly instead of waiting for Spotify.
 func effectiveIsPlaying(_ snapshot: WidgetLyricSnapshot) -> Bool {
-    if let override = SharedNowPlaying.playingOverride() {
-        return override
-    }
-    return snapshot.isPlaying
+    SharedNowPlaying.effectiveIsPlaying(snapshot)
 }
 
 struct WidgetStyle {
@@ -136,7 +133,10 @@ struct CurrentLineProvider: TimelineProvider {
 
     func getSnapshot(in context: Context, completion: @escaping (LyricEntry) -> Void) {
         if let snapshot = SharedNowPlaying.load() {
-            completion(LyricEntry(snapshot: snapshot, date: .now, line: snapshot.currentLine))
+            let now = Date.now
+            let expired = effectiveIsPlaying(snapshot)
+                && snapshot.playbackEndEpoch.map { $0 <= now.timeIntervalSince1970 } == true
+            completion(expired ? .idle : LyricEntry(snapshot: snapshot, date: now, line: snapshot.currentLine))
         } else {
             completion(.idle)
         }
@@ -148,17 +148,30 @@ struct CurrentLineProvider: TimelineProvider {
             return
         }
 
-        var entries = [LyricEntry(snapshot: snapshot, date: .now, line: snapshot.currentLine)]
-        for line in snapshot.scheduledLines where line.date > .now {
-            entries.append(LyricEntry(snapshot: snapshot, date: line.date, line: line.text))
+        let now = Date.now
+        let isPlaying = effectiveIsPlaying(snapshot)
+        if isPlaying,
+           let endEpoch = snapshot.playbackEndEpoch,
+           endEpoch <= now.timeIntervalSince1970 {
+            completion(Timeline(entries: [.idle], policy: .after(now.addingTimeInterval(900))))
+            return
+        }
+        var entries = [LyricEntry(snapshot: snapshot, date: now, line: snapshot.currentLine)]
+        // A widget command can optimistically pause the player before the next
+        // Spotify sample arrives. Do not keep applying a playing schedule to a
+        // paused card during that short window.
+        if isPlaying {
+            for line in snapshot.scheduledLines where line.date > now {
+                entries.append(LyricEntry(snapshot: snapshot, date: line.date, line: line.text))
+            }
         }
 
         // If the phone is suspended at the end of a song, no new snapshot can
         // arrive to clear the last lyric. Add an explicit idle boundary to
         // every timeline that has a predicted track end.
-        if snapshot.isPlaying {
+        if isPlaying {
             let endDate = snapshot.playbackEndEpoch.map(Date.init(timeIntervalSince1970:))
-            if let endDate, endDate > .now {
+            if let endDate, endDate > now {
                 // User offsets can place a lyric boundary after the real
                 // playback end. The idle boundary must always be the final
                 // timeline entry so the widget cannot revive stale lyrics.
@@ -177,7 +190,16 @@ struct CurrentLineProvider: TimelineProvider {
         }
 
         let lastDate = entries.last?.date ?? .now
-        let refresh = lastDate.addingTimeInterval(entries.last?.isPlaying == false ? 900 : 30)
+        let normalRefresh = lastDate.addingTimeInterval(entries.last?.isPlaying == false ? 900 : 30)
+        // Re-read the shared snapshot when the optimistic play/pause window
+        // ends. Without this boundary, WidgetKit can keep a generated playing
+        // schedule even after the command failed or the override expired.
+        let refresh = [normalRefresh, SharedNowPlaying.playingOverrideExpiration()]
+            .compactMap { date in
+                guard let date, date > now else { return nil }
+                return date
+            }
+            .min() ?? normalRefresh
         completion(Timeline(entries: entries, policy: .after(refresh)))
     }
 }
@@ -192,7 +214,7 @@ private extension LyricEntry {
             nextLine: snapshot.scheduledLines.first(where: { $0.date > date })?.text,
             albumImageURL: snapshot.albumImageURL,
             albumImageData: snapshot.albumImageData
-                ?? SharedNowPlaying.cachedArtwork(for: snapshot.albumImageURL),
+                ?? snapshot.albumImageURL.flatMap(ArtworkFileCache.data(for:)),
             isPlaying: effectiveIsPlaying(snapshot)
         )
     }
@@ -244,12 +266,17 @@ struct HomeScreenLyricView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if style.showsArtwork {
-                LAAlbumDisc(
-                    urlString: entry.albumImageURL,
-                    size: family == .systemSmall ? 62 : 82,
-                    imageData: entry.albumImageData,
-                    style: style.prefs.artworkStyle
-                )
+                Button(intent: RefreshLyricsActivityIntent()) {
+                    LAAlbumDisc(
+                        urlString: entry.albumImageURL,
+                        size: family == .systemSmall ? 62 : 82,
+                        imageData: entry.albumImageData,
+                        style: style.prefs.artworkStyle
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Refresh lyrics")
+                .accessibilityHint("Opens OpenLyrics and refreshes the current song.")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -494,6 +521,7 @@ struct LyricFocusWidgetView: View {
                     .font(.caption2)
                     .foregroundStyle(style.palette.text.color.opacity(0.55))
                     .lineLimit(1)
+                RefreshLyricsWidgetButton(tint: style.palette.text.color.opacity(0.7))
             }
 
             Spacer(minLength: 0)
@@ -648,6 +676,8 @@ struct AlbumCardWidgetView: View {
                 }
             }
             .padding(11)
+            RefreshLyricsWidgetButton(tint: .white.opacity(0.9))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .clipShape(.rect(cornerRadius: 16))
         .containerBackground(for: .widget) {

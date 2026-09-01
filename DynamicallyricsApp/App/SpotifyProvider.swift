@@ -13,25 +13,41 @@ final class SpotifyProvider: PlaybackProvider {
 
     private let auth: SpotifyAuthManager
     private var pollTask: Task<Void, Never>?
+    /// Wakes the current scheduler without cancelling an in-flight Spotify
+    /// request. Repeated transport commands are coalesced by AsyncStream.
+    private var pollWakeContinuation: AsyncStream<Void>.Continuation?
     /// Every scheduler restart owns a new generation. A request from a
     /// cancelled scheduler can still finish at the URLSession boundary; this
     /// value prevents that old response from overwriting a newer track,
     /// position, or play state.
     private var pollGeneration: UInt64 = 0
     private var metadata = NowPlayingMetadata()
+    /// Canonical playback reducer shared with the server and fixture tests.
+    /// Transport-specific stale-echo checks run first; accepted samples then
+    /// update this reducer for stable identity, metadata merging, and seek
+    /// classification.
+    private var unifiedPlayback = PlaybackStateReducer()
+    private(set) var canonicalPlaybackRevision: Int64 = 0
 
     init(auth: SpotifyAuthManager) {
         self.auth = auth
     }
 
     func start() {
-        // Idempotent (re)start: cancelling a dead/hung scheduler and rebuilding
-        // is always safe; the watchdog relies on being able to call this freely.
+        // Rebuild only when the caller explicitly starts a new polling session
+        // or the watchdog has found a dead loop. A normal kick wakes the current
+        // scheduler and does not cancel its in-flight request.
         pollTask?.cancel()
+        pollWakeContinuation?.finish()
+        pollWakeContinuation = nil
         pollGeneration &+= 1
         let generation = pollGeneration
+        let wakePair = AsyncStream<Void>.makeStream(
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        pollWakeContinuation = wakePair.continuation
         isPolling = true
-        pollTask = Task { [weak self] in
+        pollTask = Task { [weak self, stream = wakePair.stream] in
             while !Task.isCancelled {
                 await self?.pollCycle(generation: generation)
                 guard !Task.isCancelled,
@@ -48,8 +64,31 @@ final class SpotifyProvider: PlaybackProvider {
                     : aggressive
                         ? (notPlaying ? 0.8 : 1.0)
                         : (notPlaying ? 1.2 : 3.0)
-                try? await Task.sleep(for: .seconds(interval))
+                await Self.waitForNextPoll(
+                    interval: .seconds(interval),
+                    wakeStream: stream
+                )
             }
+        }
+    }
+
+    /// Waits for the regular cadence or an immediate wake request. The stream
+    /// has a one-value buffer so a command that arrives during a poll is not
+    /// lost before the scheduler reaches this wait.
+    private static func waitForNextPoll(
+        interval: Duration,
+        wakeStream: AsyncStream<Void>
+    ) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try? await Task.sleep(for: interval)
+            }
+            group.addTask {
+                var iterator = wakeStream.makeAsyncIterator()
+                _ = await iterator.next()
+            }
+            _ = await group.next()
+            group.cancelAll()
         }
     }
 
@@ -60,6 +99,10 @@ final class SpotifyProvider: PlaybackProvider {
         // Heartbeat for liveness checks: a fresh stamp at each iteration start.
         guard ownsPoll(generation) else { return }
         lastLoopActivityAt = .now
+        // A recovery burst is a bounded number of poll cycles, not a number
+        // of successful HTTP responses. Network failures and Spotify 429s
+        // must not leave the provider in rapid mode forever.
+        defer { consumeRapidProbe() }
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
                 await self?.poll(generation: generation)
@@ -83,10 +126,16 @@ final class SpotifyProvider: PlaybackProvider {
         return Date.now.timeIntervalSince(last) < Self.loopStaleThreshold
     }
 
-    /// Immediate poll: restarts the scheduling loop so the next request fires
-    /// now instead of after the current inter-poll sleep. Safe to call freely.
+    /// Immediate poll: wakes the current scheduling loop so the next request
+    /// fires now instead of after the current inter-poll sleep. It does not
+    /// cancel an in-flight request; this is important during skip bursts.
     func kick() {
-        start()
+        burst()
+        if isPolling, isLoopLikelyAlive {
+            pollWakeContinuation?.yield(())
+        } else {
+            start()
+        }
     }
 
     /// Changes the polling profile without starting a second loop. Callers
@@ -100,7 +149,7 @@ final class SpotifyProvider: PlaybackProvider {
 
     private(set) var usesRapidProbe = false
     /// Opt-in high-power polling used while the app keeps its background
-    /// audio session alive. The local Live Activity schedule still renders
+    /// background session alive. The local Live Activity schedule still renders
     /// between polls; this mode is for faster play, pause, skip, and seek
     /// detection when the phone is locked.
     private(set) var aggressiveBackgroundMode = false
@@ -110,6 +159,12 @@ final class SpotifyProvider: PlaybackProvider {
     private var lastAppliedPositionMs: Int?
     /// Timestamp of the last successful (HTTP 200) player-state fetch.
     private(set) var lastSuccessfulPollAt: Date?
+    /// Spotify's event clock for the accepted player state. This changes on
+    /// play, pause, skip, scrub, and a new item. It lets the app distinguish a
+    /// real transport event from a normal progress sample without using the
+    /// event date as the progress observation date.
+    private(set) var lastPlaybackChangeAt: Date?
+    private var lastPlaybackChangeTimestampMs: Int64?
 
     // MARK: Post-skip stale-echo rejection
     // After a commanded skip, /v1/me/player keeps serving the PREVIOUS track
@@ -146,12 +201,40 @@ final class SpotifyProvider: PlaybackProvider {
     }
     private var pendingTransportState: PendingTransportState?
     static let transportConfirmationWindow: TimeInterval = 8
+    /// A backward sample up to this size can be transport jitter. A larger
+    /// change is a user seek and must reach the lyric clock immediately.
+    private static let positionJitterThresholdMs = 750
+
+    /// Spotify transport requests are asynchronous and the system can deliver
+    /// several headphone, Lock Screen, or widget commands before the first
+    /// response arrives. Running them concurrently lets responses complete in
+    /// the wrong order, restarts the poller repeatedly, and leaves skip echo
+    /// protection attached to the wrong command. Keep one FIFO tail for all
+    /// transport commands so each command observes the state produced by the
+    /// previous command.
+    private var transportQueueTail: Task<Bool, Never>?
+    private var transportQueueGeneration: UInt64 = 0
 
     /// Schedules N fast polls so a user-initiated change (transport command,
     /// audio interruption) shows up in ≤N×0.7s instead of waiting out the 3s cadence.
     func burst(count: Int = 6) {
         rapidProbesLeft = max(rapidProbesLeft, count)
         usesRapidProbe = true
+    }
+
+    private func consumeRapidProbe() {
+        guard rapidProbesLeft > 0 else { return }
+        rapidProbesLeft -= 1
+        guard rapidProbesLeft == 0 else { return }
+
+        usesRapidProbe = false
+        // A real pause and a stale pause look identical after the bounded
+        // probe window. Return to normal polling so a later play transition
+        // is detected without a permanent high-rate request loop.
+        stalePauseProbeArmed = false
+        isStalledPause = false
+        stalledPauseCount = 0
+        didLogStall = false
     }
 
     // MARK: Stalled stale-API pause detection
@@ -183,8 +266,14 @@ final class SpotifyProvider: PlaybackProvider {
     func stop() {
         pollGeneration &+= 1
         pollTask?.cancel()
+        pollWakeContinuation?.finish()
+        pollWakeContinuation = nil
         pollTask = nil
         isPolling = false
+        // A cancelled loop must stop renewing the phone ownership lease
+        // immediately. Keeping the old stamp makes the server believe the
+        // phone is still authoritative during the stale threshold.
+        lastLoopActivityAt = nil
     }
 
     private func poll(generation: UInt64) async {
@@ -196,7 +285,30 @@ final class SpotifyProvider: PlaybackProvider {
             }
             switch http.statusCode {
             case 200:
-                let state = try JSONDecoder().decode(SpotifyPlayerState.self, from: data)
+                var state = try JSONDecoder().decode(SpotifyPlayerState.self, from: data)
+                // Spotify can return a partial player object during a device
+                // transition. Do not treat an omitted field as a real pause
+                // or a jump to zero. Merge only with the accepted same-track
+                // state before stall, skip, and lyric scheduling logic runs.
+                let incomingItem = state.item
+                let incomingTitle = incomingItem?.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let incomingArtist = incomingItem?.artists?.first?.name
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let sameAcceptedTrack = PlaybackTransitionPolicy.isSameTrack(
+                    incomingID: incomingItem?.id,
+                    acceptedID: metadata.trackID,
+                    incomingTitle: incomingTitle,
+                    incomingArtist: incomingArtist,
+                    acceptedSignature: metadata.signature
+                )
+                if let existingStatus = status, sameAcceptedTrack {
+                    if !state.isPlayingWasReported {
+                        state.isPlaying = existingStatus.state == .playing
+                    }
+                    if !state.progressWasReported, existingStatus.state != .stopped {
+                        state.progressMs = Int(max(0, existingStatus.position(at: .now)) * 1_000)
+                    }
+                }
                 // Only count frozen paused samples while a stale-pause probe is
                 // armed. Counting every normal pause made the provider stay in
                 // rapid-poll mode forever. Spotify then rate-limited requests,
@@ -235,19 +347,6 @@ final class SpotifyProvider: PlaybackProvider {
                 // what actually played and flips us onto the real track fast.
                 await maybeCrossCheckRecentlyPlayed(generation: generation)
                 guard ownsPoll(generation) else { return }
-                if rapidProbesLeft > 0 {
-                    rapidProbesLeft -= 1
-                    if rapidProbesLeft == 0 {
-                        usesRapidProbe = false
-                        // A real pause and a stale pause look identical after
-                        // the bounded probe window. Return to normal polling
-                        // so the next play is detected reliably.
-                        stalePauseProbeArmed = false
-                        isStalledPause = false
-                        stalledPauseCount = 0
-                        didLogStall = false
-                    }
-                }
             case 204:
                 stalePauseProbeArmed = false
                 isStalledPause = false
@@ -324,8 +423,10 @@ final class SpotifyProvider: PlaybackProvider {
             && (metadata.signature?.album == nil
                 || state.item?.album?.name == nil
                 || metadata.signature?.album == state.item?.album?.name)
+        let observedStableID = state.item?.id?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let acceptedStableID = metadata.trackID?.trimmingCharacters(in: .whitespacesAndNewlines)
         let sameTrack = observedKey == pending.trackKey
-            || sameTextualTrack
+            || (sameTextualTrack && (observedStableID?.isEmpty != false || acceptedStableID?.isEmpty != false))
         guard sameTrack else {
             pendingTransportState = nil
             DiagnosticsLog.append("transport confirmed track change")
@@ -373,6 +474,27 @@ final class SpotifyProvider: PlaybackProvider {
     }
 
     private func apply(_ state: SpotifyPlayerState) {
+        // The item key can be absent during a Spotify device transition. Keep
+        // the accepted track and artwork until Spotify explicitly returns
+        // item:null. This also keeps the canonical reducer from interpreting
+        // a partial response as a stop.
+        if !state.itemWasReported {
+            guard let existingStatus = status, signature != nil else { return }
+            let playing = state.isPlayingWasReported
+                ? state.isPlaying
+                : existingStatus.state == .playing
+            let position = state.progressWasReported
+                ? TimeInterval(state.progressMs ?? 0) / 1_000
+                : existingStatus.position(at: .now)
+            status = PlaybackStatus(
+                state: playing ? .playing : .paused,
+                position: max(0, position),
+                rate: playing ? max(existingStatus.rate, 1) : 0
+            )
+            DiagnosticsLog.append("partial Spotify response preserved current item")
+            return
+        }
+
         // Post-skip echo rejection runs before anything else: a poll that
         // still shows the pre-skip track carries zero information, so don't
         // let it touch stall bookkeeping, the lie guard, or status/signature.
@@ -413,12 +535,10 @@ final class SpotifyProvider: PlaybackProvider {
            let identityKey, identityKey == lastAppliedItemKey {
             beginRapidProbe(staleItem: itemName)
         }
-        guard let identityKey, let item = state.item, let nextSignature = state.signature else {
-            if state.item == nil {
-                stalePauseProbeArmed = false
-                isStalledPause = false
-                stalledPauseCount = 0
-            }
+        guard let identityKey, let item = state.item else {
+            stalePauseProbeArmed = false
+            isStalledPause = false
+            stalledPauseCount = 0
             status = state.status
             if isPlaybackConfirmedStopped || metadata.observeStopped() {
                 isPlaybackConfirmedStopped = true
@@ -428,10 +548,61 @@ final class SpotifyProvider: PlaybackProvider {
                 lastAppliedItemKey = nil
                 lastAppliedPositionMs = nil
             }
+            recordPlaybackChange(from: state)
             return
         }
 
-        isPlaybackConfirmedStopped = state.isCompleted
+        guard let nextSignature = state.signature else {
+            // An item can be present while Spotify is still filling in its
+            // metadata during a device or track transition. It is not a stop.
+            // If the stable ID is the accepted ID, retain the trusted title,
+            // artist, album, and artwork instead of feeding the partial sample
+            // into the stopped-sample counter.
+            let sameAcceptedItem = metadata.trackKey == identityKey
+                || (item.id != nil && item.id == metadata.trackID)
+            if sameAcceptedItem, let existingStatus = status {
+                let playing = state.isPlayingWasReported
+                    ? state.isPlaying
+                    : existingStatus.state == .playing
+                let position = state.progressWasReported
+                    ? state.status.position
+                    : existingStatus.position(at: .now)
+                status = PlaybackStatus(
+                    state: playing ? .playing : .paused,
+                    position: position,
+                    rate: playing ? max(existingStatus.rate, 1) : 0
+                )
+                DiagnosticsLog.append("partial Spotify item preserved: \(identityKey)")
+            } else {
+                // A stable ID for a different item is enough to reject the
+                // previous artwork. Wait for complete metadata before loading
+                // lyrics, but do not show the old album for the new track.
+                status = state.status
+                signature = nil
+                lastAlbumImageURL = nil
+                lastTrackID = item.id
+                lastAppliedItemKey = identityKey
+            }
+            recordPlaybackChange(from: state)
+            return
+        }
+
+        let canonicalReduction = unifiedPlayback.reduce(
+            state.playbackObservation(receivedAt: .now)
+        )
+        if canonicalReduction.kind == .ignoredStale {
+            DiagnosticsLog.append("canonical playback reducer rejected stale sample")
+            return
+        }
+        canonicalPlaybackRevision = canonicalReduction.snapshot?.revision
+            ?? canonicalPlaybackRevision
+
+        // A paused item near its duration is ambiguous. Spotify can return
+        // this sample both after natural completion and after the user pauses
+        // during the final fraction of a song. Do not end the session from
+        // that one sample. A confirmed stop requires the separate no-item
+        // response path below, which also protects the artwork and LA state.
+        isPlaybackConfirmedStopped = false
 
         // Position-lie guard: while playing on the SAME track, a frozen or
         // slightly-backwards position is a stale seek/scrub echo, not truth —
@@ -439,7 +610,8 @@ final class SpotifyProvider: PlaybackProvider {
         let newPos = state.progressMs
         if state.isPlaying, identityKey == lastAppliedItemKey,
            let newPos, let last = lastAppliedPositionMs,
-           newPos <= last, abs(newPos - last) < 1500 {
+           newPos <= last,
+           abs(newPos - last) <= Self.positionJitterThresholdMs {
             staleSeekCount += 1
             if staleSeekCount >= 3 {
                 if suppressedLieSamples < 40 {
@@ -466,24 +638,26 @@ final class SpotifyProvider: PlaybackProvider {
                 position: existingStatus.position(at: .now),
                 rate: state.isPlaying ? max(existingStatus.rate, 0.001) : 0
             )
+        } else if state.isCompleted {
+            // Spotify's value-level status maps this sample to stopped for
+            // compatibility. The provider keeps it paused until Spotify
+            // confirms that there is no active item, so a manual near-end
+            // pause does not remove the Live Activity.
+            status = PlaybackStatus(
+                state: .paused,
+                position: TimeInterval(state.progressMs ?? 0) / 1_000,
+                rate: 0
+            )
         } else {
             status = state.status
         }
-        // Spotify can omit the item ID in a short same-track response. Keep
-        // the accepted ID as the primary identity when the stable text still
-        // matches; otherwise the response would look like a new track and
-        // clear valid artwork.
-        let effectiveIdentityKey: String
-        if item.id == nil,
-           metadata.signature?.title == nextSignature.title,
-           metadata.signature?.artist == nextSignature.artist,
-           let acceptedKey = metadata.trackKey {
-            effectiveIdentityKey = acceptedKey
-        } else {
-            effectiveIdentityKey = identityKey
-        }
+        // Spotify can omit the item ID in a short same-track response. Pass
+        // the response's complete textual key to the shared reducer. It
+        // preserves the accepted ID for compatible partial data, but rejects
+        // an explicitly different album or duration instead of inheriting the
+        // previous track's artwork.
         metadata.accept(
-            trackKey: effectiveIdentityKey,
+            trackKey: identityKey,
             trackID: item.id,
             signature: nextSignature,
             albumImageURL: state.albumImageURL
@@ -492,6 +666,36 @@ final class SpotifyProvider: PlaybackProvider {
         lastTrackID = metadata.trackID
         signature = metadata.signature
         lastAlbumImageURL = metadata.albumImageURL
+        recordPlaybackChange(from: state)
+    }
+
+    /// Records Spotify's monotonic event timestamp after a sample is accepted.
+    /// The API can return an invalid zero value or a small future value while
+    /// clocks are settling; those values must not cause repeated urgent sends.
+    private func recordPlaybackChange(from state: SpotifyPlayerState) {
+        guard let timestampMs = state.timestampMs, timestampMs > 0 else { return }
+        if let previous = lastPlaybackChangeTimestampMs, timestampMs < previous {
+            DiagnosticsLog.append("stale Spotify event timestamp rejected")
+            return
+        }
+        guard timestampMs != lastPlaybackChangeTimestampMs else { return }
+        let date = Date(timeIntervalSince1970: TimeInterval(timestampMs) / 1_000)
+        guard date.timeIntervalSince1970.isFinite,
+              date <= Date.now.addingTimeInterval(60) else {
+            DiagnosticsLog.append("invalid Spotify event timestamp rejected")
+            return
+        }
+        let isFollowUpEvent = lastPlaybackChangeTimestampMs != nil
+        lastPlaybackChangeTimestampMs = timestampMs
+        lastPlaybackChangeAt = date
+        DiagnosticsLog.append("Spotify playback event: \(timestampMs)")
+        // An event timestamp changes for play, pause, seek, and track changes.
+        // Start a short probe window even when the command came from Spotify
+        // or headphones, because those actions do not pass through our own
+        // command handlers and therefore cannot arm skip-echo protection.
+        if isFollowUpEvent {
+            burst(count: 8)
+        }
     }
 
     @ObservationIgnored private var staleSeekCount = 0
@@ -507,10 +711,37 @@ final class SpotifyProvider: PlaybackProvider {
 
     // MARK: Transport commands (remote command center / widget buttons)
 
+    private func enqueueTransport(_ operation: @escaping () async -> Bool) async -> Bool {
+        let previous = transportQueueTail
+        transportQueueGeneration &+= 1
+        let generation = transportQueueGeneration
+        let task = Task { @MainActor [weak self] in
+            _ = await previous?.value
+            guard !Task.isCancelled, self != nil else { return false }
+            return await operation()
+        }
+        transportQueueTail = task
+
+        let result = await task.value
+        // Only the final queued command clears the tail. Earlier commands can
+        // finish while later commands are still waiting behind them.
+        if transportQueueGeneration == generation {
+            transportQueueTail = nil
+        }
+        return result
+    }
+
     /// Seeks Spotify playback to the given position. Returns true when the
     /// request was accepted (204).
     @discardableResult
     func seek(to position: TimeInterval) async -> Bool {
+        await enqueueTransport { [weak self] in
+            guard let self else { return false }
+            return await self.performSeek(to: position)
+        }
+    }
+
+    private func performSeek(to position: TimeInterval) async -> Bool {
         let optimisticID = beginOptimisticSeek(to: position)
         let ok = await transportCall(
             url: URL(string: "https://api.spotify.com/v1/me/player/seek?position_ms=\(Int(max(0, position) * 1000))")!
@@ -524,6 +755,13 @@ final class SpotifyProvider: PlaybackProvider {
     /// Skips to the next track.
     @discardableResult
     func next() async -> Bool {
+        await enqueueTransport { [weak self] in
+            guard let self else { return false }
+            return await self.performNext()
+        }
+    }
+
+    private func performNext() async -> Bool {
         let optimisticID = beginPendingSkip()
         let ok = await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/next")!, method: "POST")
         if !ok, let optimisticID {
@@ -535,6 +773,13 @@ final class SpotifyProvider: PlaybackProvider {
     /// Skips back to the previous track.
     @discardableResult
     func previous() async -> Bool {
+        await enqueueTransport { [weak self] in
+            guard let self else { return false }
+            return await self.performPrevious()
+        }
+    }
+
+    private func performPrevious() async -> Bool {
         let optimisticID = beginPendingSkip()
         let ok = await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/previous")!, method: "POST")
         if !ok, let optimisticID {
@@ -655,13 +900,28 @@ final class SpotifyProvider: PlaybackProvider {
     // different track flips us onto the real song immediately instead of
     // counting up the dead one until /me/player catches up.
     private var lastRecentlyPlayedCheckAt: Date?
+    private static let aggressiveRecentlyPlayedInterval: TimeInterval = 5
 
     private func maybeCrossCheckRecentlyPlayed(generation: UInt64) async {
         guard ownsPoll(generation) else { return }
-        guard isStalledPause || rapidProbesLeft > 0 else { return }
+        // A commanded skip already has echo protection. External skips do not
+        // pass through this process, so the aggressive session needs a small
+        // bounded history check as well. The five-second interval keeps this
+        // useful while locked without turning the one-second player poll into
+        // a second high-rate Spotify request stream.
+        let isTransition = isStalledPause || rapidProbesLeft > 0
+        guard isTransition || aggressiveBackgroundMode else { return }
         if let last = lastRecentlyPlayedCheckAt,
-           Date.now.timeIntervalSince(last) < 2.5 { return }
-        lastRecentlyPlayedCheckAt = .now
+           Date.now.timeIntervalSince(last) < (isTransition ? 2.5 : Self.aggressiveRecentlyPlayedInterval) {
+            return
+        }
+
+        // The history endpoint has no playback-state field. Only use it to
+        // repair a track that the player endpoint still reports as playing;
+        // a paused user may simply have an older recently-played entry.
+        guard status?.state == .playing || isStalledPause else { return }
+        let now = Date.now
+        lastRecentlyPlayedCheckAt = now
 
         guard let token = try? await auth.validAccessToken(),
               ownsPoll(generation) else { return }
@@ -674,7 +934,8 @@ final class SpotifyProvider: PlaybackProvider {
               let decoded = try? JSONDecoder().decode(RecentlyPlayedResponse.self, from: data),
               let newest = decoded.items.first else { return }
 
-        guard let name = newest.track?.name else { return }
+        guard let name = newest.track?.name,
+              let playedAt = newest.playedAt else { return }
         let recentlyPlayedKey = itemKey(
             id: newest.track?.id,
             name: name,
@@ -683,9 +944,17 @@ final class SpotifyProvider: PlaybackProvider {
         )
         guard recentlyPlayedKey != lastAppliedItemKey else { return } // no skip happened
         // Only fresh plays count as skips; older history entries are noise.
-        guard let playedAt = newest.playedAt,
-              Date.now.timeIntervalSince(playedAt) < 60 else {
-            DiagnosticsLog.append("recently-played: \(name) too old to trust")
+        // Also require the entry to be newer than the estimated start of the
+        // track that /me/player still reports. This prevents a previously
+        // played song from replacing a legitimate long-running track merely
+        // because it is still inside the freshness window.
+        guard let currentStatus = status,
+              PlaybackTransitionPolicy.acceptsRecentlyPlayed(
+                  playedAt: playedAt,
+                  now: now,
+                  currentTrackPosition: max(0, currentStatus.position(at: now))
+              ) else {
+            DiagnosticsLog.append("recently-played: \(name) outside current-track window")
             return
         }
         applyOptimisticFlip(entry: newest)
@@ -748,7 +1017,7 @@ final class SpotifyProvider: PlaybackProvider {
         guard let item else { return nil }
         return itemKey(
             id: item.id,
-            name: item.name,
+            name: item.name ?? "",
             artist: item.artists?.first?.name ?? "",
             album: item.album?.name
         )
@@ -795,6 +1064,13 @@ final class SpotifyProvider: PlaybackProvider {
     /// went out and got accepted (204); false when there was nothing to control.
     @discardableResult
     func togglePlayPause() async -> Bool {
+        await enqueueTransport { [weak self] in
+            guard let self else { return false }
+            return await self.performTogglePlayPause()
+        }
+    }
+
+    private func performTogglePlayPause() async -> Bool {
         let base = URL(string: "https://api.spotify.com/v1/me/player")!
         let target: URL
         let targetState: PlaybackStatus.State
@@ -816,6 +1092,13 @@ final class SpotifyProvider: PlaybackProvider {
 
     @discardableResult
     func play() async -> Bool {
+        await enqueueTransport { [weak self] in
+            guard let self else { return false }
+            return await self.performPlay()
+        }
+    }
+
+    private func performPlay() async -> Bool {
         let optimisticID = beginOptimisticPlayback(to: .playing)
         let ok = await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/play")!, method: "PUT")
         if let optimisticID {
@@ -826,6 +1109,13 @@ final class SpotifyProvider: PlaybackProvider {
 
     @discardableResult
     func pause() async -> Bool {
+        await enqueueTransport { [weak self] in
+            guard let self else { return false }
+            return await self.performPause()
+        }
+    }
+
+    private func performPause() async -> Bool {
         let optimisticID = beginOptimisticPlayback(to: .paused)
         let ok = await transportCall(url: URL(string: "https://api.spotify.com/v1/me/player/pause")!, method: "PUT")
         if let optimisticID {
@@ -846,6 +1136,7 @@ protocol PlaybackProvider: AnyObject {
     var lastPollSummary: String? { get }
     var isPolling: Bool { get }
     var lastSuccessfulPollAt: Date? { get }
+    var lastPlaybackChangeAt: Date? { get }
     var lastAlbumImageURL: String? { get }
     var lastTrackID: String? { get }
     var isPlaybackConfirmedStopped: Bool { get }
@@ -880,7 +1171,18 @@ private struct RecentlyPlayedResponse: Codable, Sendable {
             var artists: [Artist]?
             var album: Album?
 
-            struct Artist: Codable, Sendable { var name: String }
+            struct Artist: Codable, Sendable {
+                var name: String
+
+                init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+                }
+
+                private enum CodingKeys: String, CodingKey {
+                    case name
+                }
+            }
             struct Album: Codable, Sendable {
                 var name: String?
                 var images: [Image]?

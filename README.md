@@ -7,8 +7,8 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current beta build is version 1.2.0, build 26.
-- Build 26 is Beta 3.
+- The current beta build is version 1.2.0, build 34.
+- Build 34 is a private beta build.
 - TestFlight distributes this build for beta testing.
 
 | Feature | Status |
@@ -28,7 +28,21 @@ Development continues.
 
 ## Current release candidate
 
-Build 26, version 1.2.0, is Beta 3 and includes these changes:
+Build 34, version 1.2.0, is a private beta and includes these changes:
+
+- A new Live Activity clears an obsolete server dismissal.
+- The app ignores a dismissal response from a session that existed before a direct restart.
+- Repeated taps cannot start overlapping ActivityKit replacement tasks.
+- The start button shows when recovery is in progress.
+
+- The app ignores dismissed Live Activities left by an earlier TestFlight build.
+- A direct start clears stale phone and server dismissal gates.
+- The main screen has a visible Start Lock Screen Lyrics recovery button.
+- The app shows a Live Activity start error when ActivityKit rejects a request.
+
+- Rapid skip commands run in order.
+- A skip wakes the current Spotify poll without cancelling an in-flight poll.
+- Live Activity updates keep the newest track during a rapid skip sequence.
 
 - The app rejects a Spotify response from an old or canceled poll.
 - A lyric request uses the Spotify track ID as its primary identity.
@@ -54,8 +68,6 @@ Build 26, version 1.2.0, is Beta 3 and includes these changes:
 - Widget and server commands use IDs and expire after eight seconds.
 - The sync server status reports owner, readiness, payload size, and delivery state.
 - Watch lyrics advance from the last received local schedule.
-- Silent background audio is used only by the opt-in Aggressive Background Sync
-  beta mode.
 - The app can share a rotated diagnostic log from the sync server settings.
 
 - The app uses the OpenLyrics name.
@@ -117,12 +129,26 @@ Activity update token.
 - A verified new track cannot use artwork from the previous track.
 - A track that reaches its duration returns widgets, Watch, and Live Activity
   surfaces to idle.
-- Silent audio is disabled by default. Aggressive Background Sync can keep the
-  local writer active after screen lock, while ActivityKit and the sync server
-  provide the normal recovery path.
+- Automatic Lyrics is enabled by default. It starts the phone-owned lyric
+  session when Spotify playback begins. iOS controls background refresh.
 - The Live Activity remains available during a pause for up to 10 minutes.
-- The iOS 18 OpenLyrics control can request a local lyrics session when the
-  app is opened by Control Center or Shortcuts.
+- The recovery button starts one phone-owned lyrics session and sends an
+  immediate Spotify probe when automatic activation is unavailable.
+- Play, pause, next, previous, and refresh actions use the phone first and the
+  server as a fallback. Commands have an ID and expire after eight seconds.
+- The iOS 18 OpenLyrics control is a toggle. Turn it on to start the local
+  lyrics session immediately. Turn it off to end the phone-owned session.
+  The Open Live Activity Lyrics Shortcut enables automatic lyrics without a
+  per-session Show Lyrics action.
+- The Start Lyrics Shortcut starts the local lyrics session immediately. You
+  can use it in a Shortcuts personal automation when Spotify opens.
+- Automatic Lyrics starts the Live Activity after the first Spotify playback
+  sample. The recovery button is available when automatic activation is not
+  ready. iOS can still suspend the app, so the server remains the recovery
+  authority.
+- Home Screen artwork and lyric widgets have a **Refresh lyrics** action. Use
+  it after a track change when WidgetKit has not yet reloaded its timeline.
+- The automatic lyrics request is consumed only once for each shortcut event.
 - Pause, play, seek, and skip commands update the local playback state before
   the Spotify response arrives. The app uses the local Spotify client first
   while it is running and uses the server as a fallback.
@@ -229,11 +255,10 @@ xcodegen generate   # Regenerates Dynamicallyrics.xcodeproj from project.yml
 open Dynamicallyrics.xcodeproj
 ```
 
-The iOS target requires iOS 17 or later.
+The iOS target requires iOS 18 or later.
 The watchOS target requires watchOS 10 or later.
 
-Set the Spotify client ID in
-`DynamicallyricsApp/App/SpotifyConfig.swift`.
+Enter the Spotify client ID in the app.
 Use `dynamicallyrics://callback` as the redirect URI.
 
 ## Run the tests

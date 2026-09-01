@@ -25,7 +25,7 @@ public struct NowPlayingMetadata: Equatable, Sendable {
         let cleanURL = albumImageURL?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let samePartialTrack = trackID == nil && self.signature.map {
-            $0.title == signature.title && $0.artist == signature.artist
+            isCompatiblePartialTrack(existing: $0, incoming: signature)
         } == true
         if self.trackKey != trackKey && !samePartialTrack {
             self.trackKey = trackKey
@@ -91,5 +91,34 @@ public struct NowPlayingMetadata: Equatable, Sendable {
                 ? incoming.album : existing.album,
             duration: incoming.duration.flatMap { $0 > 0 ? $0 : nil } ?? existing.duration
         )
+    }
+
+    /// A response without an ID can still be a partial response for the
+    /// current item. Title and artist are not sufficient identity because
+    /// different releases can contain the same recording name. Keep the old
+    /// artwork only when explicitly reported album and duration values do not
+    /// conflict with the accepted item.
+    private func isCompatiblePartialTrack(
+        existing: TrackSignature,
+        incoming: TrackSignature
+    ) -> Bool {
+        guard existing.title == incoming.title,
+              existing.artist == incoming.artist else { return false }
+
+        let existingAlbum = existing.album?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let incomingAlbum = incoming.album?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let existingAlbum, !existingAlbum.isEmpty,
+           let incomingAlbum, !incomingAlbum.isEmpty,
+           existingAlbum != incomingAlbum {
+            return false
+        }
+
+        if let existingDuration = existing.duration, existingDuration > 0,
+           let incomingDuration = incoming.duration, incomingDuration > 0,
+           abs(existingDuration - incomingDuration) > 2.0 {
+            return false
+        }
+
+        return true
     }
 }

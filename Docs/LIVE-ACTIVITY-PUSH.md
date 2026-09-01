@@ -55,6 +55,14 @@ curl -v \
 - The app captures the **push-to-start token** and registers it even when no
   Live Activity exists. The worker sends one complete `event: start` payload
   when playback begins and the server owns the session.
+- Automatic Lyrics starts the phone-owned session after the first Spotify
+  playback sample. The recovery button and the iOS 18 OpenLyrics control can
+  start the same session when automatic activation is not ready. The app sends
+  an immediate Spotify probe. iOS can still suspend the app, so the server
+  remains the recovery authority.
+- A phone heartbeat with `activityState: "none"` does not remove a server
+  update token by itself. The app sends `activityEnded: true` only after a
+  confirmed local activity end or dismissal.
 - APNs auth: JWT signed with your team's key (.p8) — standard stuff.
 
 Server side: a poller hitting Spotify's `/me/player` every ~5 seconds per
@@ -65,9 +73,9 @@ so `LyricsLiveActivity.swift` needs zero changes.
 ## 4. What becomes unnecessary
 
 The server is the fallback authority after the phone lease expires. The app
-still starts locally while it is running, and iOS 17.0–17.1 use local starts
-because remote start is not available there. Silent background audio is not
-used.
+starts locally while it is running. iOS 17.0–17.1 use local starts because
+remote start is not available there. OpenLyrics does not use location or
+silent-audio workarounds to extend background execution.
 
 ## 5. Effort estimate
 

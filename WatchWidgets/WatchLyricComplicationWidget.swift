@@ -47,20 +47,32 @@ struct WatchLyricProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WatchLyricEntry>) -> Void) {
-        guard let snapshot = SharedNowPlaying.load() else {
+        guard let snapshot = SharedNowPlaying.loadWatch() else {
             completion(Timeline(entries: [WatchLyricEntry.idle], policy: .after(.now.addingTimeInterval(900))))
             return
         }
 
-        var entries = [entry(from: snapshot, at: .now)]
-        for line in snapshot.scheduledLines where line.date > .now {
-            entries.append(entry(from: snapshot, at: line.date, line: line.text))
+        let now = Date.now
+        let isPlaying = SharedNowPlaying.effectiveIsPlaying(snapshot)
+        if isPlaying,
+           let endEpoch = snapshot.playbackEndEpoch,
+           Date(timeIntervalSince1970: endEpoch) <= now {
+            completion(Timeline(entries: [WatchLyricEntry.idle], policy: .after(now.addingTimeInterval(900))))
+            return
         }
 
-        if snapshot.isPlaying,
+        var entries = [entry(from: snapshot, at: now)]
+        if isPlaying {
+            for line in snapshot.scheduledLines where line.date > now {
+            entries.append(entry(from: snapshot, at: line.date, line: line.text))
+            }
+        }
+
+        if isPlaying,
            let endEpoch = snapshot.playbackEndEpoch {
             let endDate = Date(timeIntervalSince1970: endEpoch)
-            if endDate > .now, entries.last?.date ?? .distantPast < endDate {
+            if endDate > now {
+                entries.removeAll { $0.date >= endDate }
                 entries.append(.init(
                     date: endDate,
                     trackTitle: "No music",
@@ -71,13 +83,25 @@ struct WatchLyricProvider: TimelineProvider {
         }
 
         let lastDate = entries.last?.date ?? .now
-        let refresh = lastDate.addingTimeInterval(entries.last?.isPlaying == false ? 900 : 30)
+        let normalRefresh = lastDate.addingTimeInterval(entries.last?.isPlaying == false ? 900 : 30)
+        let refresh = [normalRefresh, SharedNowPlaying.playingOverrideExpiration()]
+            .compactMap { date in
+                guard let date, date > now else { return nil }
+                return date
+            }
+            .min() ?? normalRefresh
         completion(Timeline(entries: entries, policy: .after(refresh)))
     }
 
     private func currentEntry() -> WatchLyricEntry {
-        guard let snapshot = SharedNowPlaying.load() else { return .idle }
-        return entry(from: snapshot, at: .now)
+        guard let snapshot = SharedNowPlaying.loadWatch() else { return .idle }
+        let now = Date.now
+        if SharedNowPlaying.effectiveIsPlaying(snapshot),
+           let endEpoch = snapshot.playbackEndEpoch,
+           endEpoch <= now.timeIntervalSince1970 {
+            return .idle
+        }
+        return entry(from: snapshot, at: now)
     }
 
     private func entry(from snapshot: WidgetLyricSnapshot, at date: Date, line: String? = nil) -> WatchLyricEntry {
@@ -85,11 +109,11 @@ struct WatchLyricProvider: TimelineProvider {
             date: date,
             trackTitle: snapshot.trackTitle,
             currentLine: line ?? snapshot.currentLine,
-            isPlaying: snapshot.isPlaying,
+            isPlaying: SharedNowPlaying.effectiveIsPlaying(snapshot),
             artistName: snapshot.artistName,
             nextLine: snapshot.scheduledLines.first(where: { $0.date > date })?.text,
             albumImageData: snapshot.albumImageData
-                ?? SharedNowPlaying.cachedArtwork(for: snapshot.albumImageURL)
+                ?? snapshot.albumImageURL.flatMap(ArtworkFileCache.data(for:))
         )
     }
 }

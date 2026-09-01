@@ -3,34 +3,36 @@ import SwiftUI
 import AppIntents
 import LyricCore
 
-/// Starts a phone-owned lyric session from Control Center or a Shortcuts
-/// automation. The app consumes this one-shot request when it opens.
-@available(iOS 18.0, *)
-struct StartLyricsSessionIntent: AppIntent {
-    static let title: LocalizedStringResource = "Start Lyrics Session"
-    static let description = IntentDescription("Starts the OpenLyrics Live Activity for the current Spotify song.")
-    static let openAppWhenRun = true
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        SharedNowPlaying.requestLocalSessionStart()
-        PlaybackCommandBus.send(.refresh)
-        return .result()
-    }
-}
-
-/// A direct iOS 18 entry point. It avoids the first-use "Show Lyrics" step
-/// after the user adds the control and permits the same action in Shortcuts.
+/// Shows or hides the phone-owned lyric session from Control Center. The app
+/// consumes the request so Spotify authorization and ActivityKit work stay in
+/// one serialized pipeline.
 @available(iOS 18.0, *)
 struct StartLyricsSessionControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "com.jonathantran.dynamicallyrics.start-lyrics") {
-            ControlWidgetButton(action: StartLyricsSessionIntent()) {
-                Label("Start Lyrics", systemImage: "quote.bubble")
+        StaticControlConfiguration(
+            kind: "com.jonathantran.dynamicallyrics.start-lyrics",
+            provider: LiveActivityControlValueProvider()
+        ) { isOn in
+            ControlWidgetToggle(
+                isOn: isOn,
+                action: LiveActivityControlIntent()
+            ) {
+                Label("Lyrics", systemImage: "quote.bubble")
+            } valueLabel: { enabled in
+                Text(enabled ? "On" : "Off")
             }
         }
         .displayName("OpenLyrics")
-        .description("Start lyrics for the current Spotify song.")
+        .description("Show or hide lyrics on the Lock Screen and Dynamic Island.")
+    }
+}
+
+@available(iOS 18.0, *)
+private struct LiveActivityControlValueProvider: ControlValueProvider {
+    var previewValue: Bool { false }
+
+    func currentValue() async throws -> Bool {
+        SharedNowPlaying.liveActivityControlEnabled()
     }
 }
 

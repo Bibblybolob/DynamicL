@@ -63,6 +63,48 @@ final class NowPlayingMetadataTests: XCTestCase {
         XCTAssertEqual(metadata.albumImageURL, "https://example.com/art.jpg")
     }
 
+    func testSameTitleAndArtistWithDifferentAlbumIsNewTrack() {
+        var metadata = NowPlayingMetadata()
+        metadata.accept(
+            trackKey: "track-1",
+            trackID: "track-1",
+            signature: .init(title: "Song", artist: "Artist", album: "Original Album", duration: 180),
+            albumImageURL: "https://example.com/original.jpg"
+        )
+
+        metadata.accept(
+            trackKey: "Song|Artist|remix",
+            trackID: nil,
+            signature: .init(title: "Song", artist: "Artist", album: "Remix Album", duration: 181),
+            albumImageURL: nil
+        )
+
+        XCTAssertEqual(metadata.trackKey, "Song|Artist|remix")
+        XCTAssertNil(metadata.trackID)
+        XCTAssertEqual(metadata.signature?.album, "Remix Album")
+        XCTAssertNil(metadata.albumImageURL)
+    }
+
+    func testSameTitleAndArtistWithMissingAlbumStillKeepsArtwork() {
+        var metadata = NowPlayingMetadata()
+        metadata.accept(
+            trackKey: "track-1",
+            trackID: "track-1",
+            signature: .init(title: "Song", artist: "Artist", album: "Album", duration: 180),
+            albumImageURL: "https://example.com/art.jpg"
+        )
+
+        metadata.accept(
+            trackKey: "Song|Artist|",
+            trackID: nil,
+            signature: .init(title: "Song", artist: "Artist", album: nil, duration: nil),
+            albumImageURL: nil
+        )
+
+        XCTAssertEqual(metadata.trackKey, "track-1")
+        XCTAssertEqual(metadata.albumImageURL, "https://example.com/art.jpg")
+    }
+
     func testVerifiedNewTrackDoesNotUseOldArtwork() {
         var metadata = NowPlayingMetadata()
         metadata.accept(

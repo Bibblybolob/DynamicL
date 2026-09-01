@@ -65,6 +65,13 @@ struct VinylProvider: TimelineProvider {
         guard let snapshot = SharedNowPlaying.load() else {
             return Timeline(entries: [.idle], policy: .after(.now.addingTimeInterval(600)))
         }
+        let now = Date.now
+        let isPlaying = SharedNowPlaying.effectiveIsPlaying(snapshot)
+        if isPlaying,
+           let endEpoch = snapshot.playbackEndEpoch,
+           endEpoch <= now.timeIntervalSince1970 {
+            return Timeline(entries: [.idle], policy: .after(now.addingTimeInterval(600)))
+        }
 
         // Resolve artwork once per timeline. Re-fetching from every one of the
         // 60 spin entries can create a request storm when the network is down.
@@ -85,24 +92,40 @@ struct VinylProvider: TimelineProvider {
         )
 
         // Paused / stopped: single static entry.
-        guard base.isPlaying, style.prefs.animationsEnabled else {
-            return Timeline(entries: [base], policy: .after(.now.addingTimeInterval(300)))
+        guard isPlaying, style.prefs.animationsEnabled else {
+            var entries = [base]
+            if let endEpoch = snapshot.playbackEndEpoch {
+                let endDate = Date(timeIntervalSince1970: endEpoch)
+                if endDate > now {
+                    entries.append(.idleAt(endDate))
+                }
+            }
+            let refresh = entries.last?.date.addingTimeInterval(300) ?? now.addingTimeInterval(300)
+            return Timeline(entries: entries, policy: .after(refresh))
         }
 
         // WidgetKit cannot run an unbounded animation. Keep a short phase
-        // window and let each entry resolve artwork from the shared cache;
-        // embedding the same image in every archived entry causes memory spikes.
+        // window. Carry the already-resolved image through each phase entry
+        // so one failed app-group read cannot turn a valid album into a music
+        // note halfway through the rotation. `Data` uses copy-on-write, and
+        // the image was reduced to a small 128px payload above.
         var entries: [VinylEntry] = []
         entries.reserveCapacity(20)
-        let start = Date.now
+        let start = now
+        let endDate = snapshot.playbackEndEpoch.map(Date.init(timeIntervalSince1970:))
         for step in 0..<20 {
+            let date = start.addingTimeInterval(Double(step))
+            if let endDate, date >= endDate { break }
             entries.append(entry(
                 from: snapshot,
                 rotation: Double(step) * 24,
-                date: start.addingTimeInterval(Double(step)),
-                imageData: nil,
+                date: date,
+                imageData: artworkData,
                 showsArtwork: showsArtwork
             ))
+        }
+        if let endDate, endDate > start {
+            entries.append(.idleAt(endDate))
         }
         let refreshAt = (entries.last?.date ?? .now).addingTimeInterval(1)
         return Timeline(entries: entries.isEmpty ? [base] : entries, policy: .after(refreshAt))
@@ -110,6 +133,11 @@ struct VinylProvider: TimelineProvider {
 
     private func currentEntry() async -> VinylEntry? {
         guard let snapshot = SharedNowPlaying.load() else { return nil }
+        if SharedNowPlaying.effectiveIsPlaying(snapshot),
+           let endEpoch = snapshot.playbackEndEpoch,
+           endEpoch <= Date.now.timeIntervalSince1970 {
+            return .idle
+        }
         let style = WidgetStyle()
         let showsArtwork = style.prefs.artworkStyle != .hidden
         let artworkData: Data?
@@ -164,6 +192,21 @@ struct VinylProvider: TimelineProvider {
         let payload = small.jpegData(compressionQuality: 0.85)
         if let payload { await ArtworkRepository.shared.save(payload, for: urlString) }
         return payload
+    }
+}
+
+private extension VinylEntry {
+    static func idleAt(_ date: Date) -> VinylEntry {
+        VinylEntry(
+            date: date,
+            rotation: 0,
+            imageData: nil,
+            albumImageURL: nil,
+            showsArtwork: false,
+            trackTitle: "No music",
+            artistName: "OpenLyrics",
+            isPlaying: false
+        )
     }
 }
 
@@ -230,7 +273,7 @@ struct VinylWidgetView: View {
     @ViewBuilder
     private func record(size: CGFloat) -> some View {
         let data = entry.showsArtwork
-            ? entry.imageData ?? SharedNowPlaying.cachedArtwork(for: entry.albumImageURL)
+            ? entry.imageData ?? entry.albumImageURL.flatMap(ArtworkFileCache.data(for:))
             : nil
         if let data, let image = UIImage(data: data) {
             disc(image: image, size: size)
