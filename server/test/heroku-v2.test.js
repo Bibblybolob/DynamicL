@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { start } from "../src/heroku-v2.js";
+import { embeddedWorkerEnabled, start } from "../src/heroku-v2.js";
+
+test("the production web dyno runs the polling worker by default", () => {
+  assert.equal(embeddedWorkerEnabled({ NODE_ENV: "production" }), true);
+  assert.equal(embeddedWorkerEnabled({ NODE_ENV: "production", EMBEDDED_WORKER_ENABLED: "false" }), false);
+  assert.equal(embeddedWorkerEnabled({ NODE_ENV: "test" }), false);
+});
 
 async function withServer(fn) {
   const { server } = await start({

@@ -34,6 +34,7 @@ Build 36, version 1.2.0, is a private beta and includes these changes:
 - Server lyric-line changes use APNs priority 10.
 - The Live Activity uses a positive relevance score for Lock Screen and Dynamic Island presentation.
 - Routine schedule refills and keepalive updates remain low priority.
+- The existing Heroku web dyno runs the polling loop when a separate worker dyno is off.
 
 - The iPhone sends a direct Live Activity update at each lyric boundary while the app process runs.
 - Each direct update keeps a future lyric schedule for app suspension.

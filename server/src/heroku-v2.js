@@ -878,7 +878,22 @@ export async function start({ env = process.env, port = Number(process.env.PORT)
     handleRequest(request, response, runtime);
   });
   await new Promise(resolve => server.listen(port, "0.0.0.0", resolve));
-  return { server, runtime };
+  let stopPolling = null;
+  if (embeddedWorkerEnabled(env)) {
+    // Run the polling authority in the already-paid web dyno. This avoids a
+    // freeze after the phone lease expires when Heroku's worker formation is
+    // scaled to zero. A dynamic import avoids a module-initialization cycle.
+    const { startPollingLoop } = await import("./heroku-worker-v2.js");
+    stopPolling = startPollingLoop(runtime);
+    console.log("OpenLyrics embedded polling worker started");
+  }
+  server.once("close", () => stopPolling?.());
+  return { server, runtime, stopPolling };
+}
+
+export function embeddedWorkerEnabled(env = process.env) {
+  const configured = String(env.EMBEDDED_WORKER_ENABLED ?? "true").trim().toLowerCase();
+  return env.NODE_ENV === "production" && !["0", "false", "off", "no"].includes(configured);
 }
 
 if (process.argv[1] && process.argv[1].endsWith("heroku-v2.js")) {

@@ -634,13 +634,41 @@ function safeError(error) {
   return String(error?.message ?? error).replace(/(Bearer\s+)[^\s]+/gi, "$1[redacted]").slice(0, 500);
 }
 
-if (process.argv[1] && process.argv[1].endsWith("heroku-worker-v2.js")) {
-  createRuntime().then(async runtime => {
-    const run = async () => {
+/**
+ * Run the due-installation poller inside either a dedicated worker dyno or
+ * the existing web dyno. PostgreSQL row locks make this safe if a dedicated
+ * worker is enabled later.
+ */
+export function startPollingLoop(runtime, options = {}) {
+  const intervalMs = Math.max(250, finiteNumber(
+    options.intervalMs,
+    reliabilityConstants.fastPollMs,
+  ));
+  const reportError = options.onError ?? (error => console.error(safeError(error)));
+  let stopped = false;
+  let timer = null;
+
+  const run = async () => {
+    if (stopped) return;
+    try {
       await pollOnce(runtime);
-      setTimeout(run, reliabilityConstants.fastPollMs);
-    };
-    await run();
+    } catch (error) {
+      reportError(error);
+    } finally {
+      if (!stopped) timer = setTimeout(run, intervalMs);
+    }
+  };
+
+  void run();
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
+}
+
+if (process.argv[1] && process.argv[1].endsWith("heroku-worker-v2.js")) {
+  createRuntime().then(runtime => {
+    startPollingLoop(runtime);
   }).catch(error => {
     console.error(error.message);
     process.exitCode = 1;
