@@ -7,8 +7,8 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current beta build is version 1.2.0, build 34.
-- Build 34 is a private beta build.
+- The current beta build is version 1.2.0, build 35.
+- Build 35 is a private beta build.
 - TestFlight distributes this build for beta testing.
 
 | Feature | Status |
@@ -28,7 +28,11 @@ Development continues.
 
 ## Current release candidate
 
-Build 34, version 1.2.0, is a private beta and includes these changes:
+Build 35, version 1.2.0, is a private beta and includes these changes:
+
+- The iPhone sends a direct Live Activity update at each lyric boundary while the app process runs.
+- Each direct update keeps a future lyric schedule for app suspension.
+- Dense lyrics use a bounded update rate to reduce ActivityKit throttling.
 
 - A new Live Activity clears an obsolete server dismissal.
 - The app ignores a dismissal response from a session that existed before a direct restart.

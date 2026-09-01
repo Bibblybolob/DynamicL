@@ -1267,11 +1267,17 @@ final class AppModel {
             && canExtendSchedule
             && sinceLastSend >= Self.minimumScheduleRefillInterval
 
-        // A valid schedule changes the lyric inside the extension. A direct
-        // line update is only a fallback for tracks without future boundaries.
-        let minGapPassed = sinceLastSend >= 0.5
-        let lineSend = lineChanged && targetSchedule.isEmpty
-            && minGapPassed && !throttleCapped(now: now)
+        // Send the current line directly while the phone process is alive.
+        // Keep the future schedule in the same state so the extension can
+        // continue by timestamp when iOS suspends the app. Relying only on
+        // TimelineView boundaries allowed the Lock Screen card to lag behind
+        // widgets when iOS coalesced its timeline refreshes.
+        recentLASends.removeAll { now.timeIntervalSince($0) > 60 }
+        let lineSend = LiveActivityUpdatePolicy.shouldSendLineChange(
+            lineChanged: lineChanged,
+            timeSinceLastSend: sinceLastSend,
+            sendsInLastMinute: recentLASends.count
+        )
         let keepAliveSend = status?.state == .playing
             && targetSchedule.isEmpty
             && !urgent
@@ -1288,6 +1294,11 @@ final class AppModel {
         }
         if scheduleRefill {
             DiagnosticsLog.append("la schedule refill: remaining=\(remainingSchedule.count)")
+        }
+        if lineSend && !urgent {
+            DiagnosticsLog.append(
+                "la direct line update: index=\(lyrics.currentIndex.map { String($0) } ?? "-") fallback=\(targetSchedule.count)"
+            )
         }
         if urgent || scheduleRefill || lineSend || keepAliveSend || reconciling {
             if urgent {
@@ -1330,13 +1341,6 @@ final class AppModel {
             lastRateWarningAt = now
             DiagnosticsLog.append("la rate warning: \(recentLASends.count) sends/min — throttle risk")
         }
-    }
-
-    /// Soft app-side cap: skip storms and dense lyrics cannot park the
-    /// activity. ActivityKit still owns the final device-level budget.
-    private func throttleCapped(now: Date) -> Bool {
-        recentLASends.removeAll { now.timeIntervalSince($0) > 60 }
-        return recentLASends.count >= 20
     }
 
     @ObservationIgnored private var lastLAPlaceholderKey: String?
