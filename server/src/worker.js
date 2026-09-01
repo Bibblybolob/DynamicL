@@ -5,19 +5,22 @@ export { PlaybackSessionV2 };
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // Keep the unversioned routes for existing beta builds while accepting
+    // the versioned contract used by new iOS clients.
+    const routePath = url.pathname.replace(/^\/v1(?=\/|$)/, "") || "/";
 
-    if (url.pathname === "/health") {
+    if (routePath === "/health") {
       return json({ ok: true, service: "dynamicallyrics-sync" });
     }
 
-    const protectedRoute = ["/register", "/heartbeat", "/command", "/status", "/reset"]
-      .includes(url.pathname);
+    const protectedRoute = ["/register", "/heartbeat", "/command", "/status", "/reset", "/wake"]
+      .includes(routePath);
     if (protectedRoute) {
-      const authError = await authorize(request, env, url.pathname);
+      const authError = await authorize(request, env, routePath);
       if (authError) return authError;
     }
 
-    if (request.method === "POST" && url.pathname === "/register") {
+    if (request.method === "POST" && routePath === "/register") {
       let body;
       try {
         body = await request.json();
@@ -49,13 +52,16 @@ export default {
           lyricOffsetMs: body.lyricOffsetMs ?? 0,
           albumDominantRGB: validRGB(body.albumDominantRGB) ? body.albumDominantRGB : null,
           autoStartEnabled: body.autoStartEnabled !== false,
+          ...(Object.prototype.hasOwnProperty.call(body, "requiresUserStart")
+            ? { requiresUserStart: body.requiresUserStart === true }
+            : {}),
           bootstrap: !request.headers.get("authorization"),
         }),
       });
       return json(await resp.json(), resp.status);
     }
 
-    if (request.method === "POST" && url.pathname === "/heartbeat") {
+    if (request.method === "POST" && routePath === "/heartbeat") {
       let body;
       try {
         body = await request.json();
@@ -67,6 +73,7 @@ export default {
           !isHexToken(body.updateToken, true) || !validOptionalNumber(body.sentAtMs) ||
           !validOptionalNumber(body.localRevision) || !validOptionalNumber(body.lyricOffsetMs) ||
           !validSchemaVersion(body.clientSchemaVersion) ||
+          (body.activityEnded != null && typeof body.activityEnded !== "boolean") ||
           (body.trackID != null && (typeof body.trackID !== "string" || body.trackID.length > 256))) {
         return json({ error: "invalid heartbeat payload" }, 400);
       }
@@ -80,7 +87,11 @@ export default {
         lyricOffsetMs: body.lyricOffsetMs ?? 0,
         clientSchemaVersion: body.clientSchemaVersion,
         autoStartEnabled: body.autoStartEnabled !== false,
+        ...(body.activityEnded === true ? { activityEnded: true } : {}),
       };
+      if (Object.prototype.hasOwnProperty.call(body, "requiresUserStart")) {
+        heartbeatBody.requiresUserStart = body.requiresUserStart === true;
+      }
       if (Object.prototype.hasOwnProperty.call(body, "albumDominantRGB") &&
           validRGB(body.albumDominantRGB)) {
         heartbeatBody.albumDominantRGB = body.albumDominantRGB;
@@ -92,7 +103,7 @@ export default {
       return json(await resp.json(), resp.status);
     }
 
-    if (request.method === "POST" && url.pathname === "/command") {
+    if (request.method === "POST" && routePath === "/command") {
       let body;
       try {
         body = await request.json();
@@ -119,12 +130,30 @@ export default {
       return json(await resp.json(), resp.status);
     }
 
-    if (request.method === "GET" && url.pathname === "/status") {
+    if (request.method === "POST" && routePath === "/wake") {
+      let body = {};
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "invalid JSON" }, 400);
+      }
+      if (body != null && (typeof body !== "object" || Array.isArray(body))) {
+        return json({ error: "invalid wake payload" }, 400);
+      }
+      const stub = env.SESSION.get(env.SESSION.idFromName("main"));
+      const resp = await stub.fetch("https://session/wake", {
+        method: "POST",
+        body: JSON.stringify({ reason: typeof body?.reason === "string" ? body.reason : "shortcut" }),
+      });
+      return json(await resp.json(), resp.status);
+    }
+
+    if (request.method === "GET" && routePath === "/status") {
       const stub = env.SESSION.get(env.SESSION.idFromName("main"));
       return json(await (await stub.fetch("https://session/status")).json());
     }
 
-    if (request.method === "POST" && url.pathname === "/reset") {
+    if (request.method === "POST" && routePath === "/reset") {
       const stub = env.SESSION.get(env.SESSION.idFromName("main"));
       const resp = await stub.fetch("https://session/reset", { method: "POST" });
       return json(await resp.json(), resp.status);

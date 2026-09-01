@@ -1,7 +1,8 @@
 # OpenLyrics sync server
 
-This Cloudflare Worker polls Spotify and sends Live Activity updates through APNs.
-It is a fallback for the iPhone app.
+The private-beta server stores one installation per tester. It uses PostgreSQL
+for durable state and a separate worker for Spotify polling. It is a fallback
+for the iPhone app.
 
 The phone sends a heartbeat every five seconds.
 The heartbeat gives the phone a 15-second update lease.
@@ -19,20 +20,13 @@ remain. It does not send one push for every lyric line.
 ```sh
 cd server
 npm install
-npx wrangler login
-npx wrangler deploy
 ```
 
 ## Set the secrets
 
-Use these commands. Enter each value when Wrangler asks for it.
-
-```sh
-npx wrangler secret put APNS_KEY_P8
-npx wrangler secret put APNS_KEY_ID
-npx wrangler secret put APNS_TEAM_ID
-npx wrangler secret put SPOTIFY_CLIENT_ID
-```
+Set these values as Heroku config variables. Also set
+`TOKEN_ENCRYPTION_KEY` to a random secret with at least 32 bytes of entropy.
+The server refuses registration without token encryption.
 
 `APNS_HOST` uses the production APNs host by default.
 TestFlight and App Store builds use the production host.
@@ -45,12 +39,12 @@ Spotify tokens private.
 ## Register the phone
 
 OpenLyrics contains the managed server URL. The user only needs to configure
-the Spotify Client ID in `SpotifyConfig.swift` and sign in to Spotify.
-The app sends `POST /register` with the Spotify refresh token and at least one
-Activity token. The first registration validates the Spotify token and returns
-a private per-install server token. The app stores this token in Keychain.
+the Spotify Client ID in the app and sign in to Spotify. The app sends
+`POST /v1/register` with the Spotify refresh token and at least one Activity
+token. The first registration returns a private per-install server token. The
+app stores this token in Keychain.
 
-The app sends `POST /heartbeat` while its Spotify data is healthy.
+The app sends `POST /v1/heartbeat` while its Spotify data is healthy.
 The request includes the Activity state, track ID, lyric offset, schema version,
 and phone revision.
 
@@ -60,13 +54,13 @@ but new deployments do not need it.
 
 ## Check the service
 
-`GET /status` reports the current update source, phone lease, playback session,
+`GET /v1/status` reports the current update source, phone lease, playback session,
 start result, payload size, lyric schedule, and artwork state.
 
-Use this command to view live logs:
+Use the Heroku dashboard or the Heroku CLI to view live logs:
 
 ```sh
-npx wrangler tail
+heroku logs --tail -a open-lyrics
 ```
 
 ## Run tests
@@ -77,9 +71,11 @@ npm test
 
 ## Deploy to Heroku
 
-The Heroku app is `open-lyrics`. The Heroku runtime uses `src/heroku.js` and
-the `DATABASE` Postgres add-on. The Cloudflare Worker remains available with
-the Wrangler commands above.
+The Heroku app is `open-lyrics`. The Heroku runtime uses `src/heroku-v2.js`
+for the web process and `src/heroku-worker-v2.js` for the worker process.
+Postgres is required for durable multi-user state. Do not deploy the worker
+until the database and the required config variables are ready. The Cloudflare
+Worker remains available for backward-compatible migration.
 
 From the repository root, deploy only the `server` directory:
 
@@ -96,8 +92,9 @@ APNS_KEY_P8=<Apple private key contents>
 APNS_KEY_ID=<Apple key ID>
 APNS_TEAM_ID=<Apple team ID>
 SPOTIFY_CLIENT_ID=<Spotify client ID>
+TOKEN_ENCRYPTION_KEY=<random 32-byte-or-longer secret>
 ```
 
-`DATABASE_URL` is supplied automatically by Heroku Postgres. The service
-requires this variable so that session state survives a dyno restart. Do not
-add `SYNC_AUTH_TOKEN` when using the built-in app pairing flow.
+`DATABASE_URL` is supplied automatically by Heroku Postgres. The service uses
+per-installation bearer tokens. Do not add `SYNC_AUTH_TOKEN` for new
+deployments unless a migration requires the legacy shared token.

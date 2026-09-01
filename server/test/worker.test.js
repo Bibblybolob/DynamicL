@@ -106,6 +106,7 @@ test("registration validates input and forwards authenticated requests", async (
         spotifyRefreshToken: "refresh-token-123",
         clientSchemaVersion: 2,
         lyricOffsetMs: 250,
+        requiresUserStart: false,
       }),
     }),
     testEnv({
@@ -122,6 +123,7 @@ test("registration validates input and forwards authenticated requests", async (
   assert.equal(forwarded.body.updateToken, "0123456789abcdef0123456789abcdef");
   assert.equal(forwarded.body.clientSchemaVersion, 2);
   assert.equal(forwarded.body.lyricOffsetMs, 250);
+  assert.equal(forwarded.body.requiresUserStart, false);
 });
 
 test("registration accepts only a push-to-start token", async () => {
@@ -170,6 +172,7 @@ test("heartbeat validates and forwards the phone writer lease", async () => {
         trackID: "track-1",
         lyricOffsetMs: -300,
         clientSchemaVersion: 2,
+        requiresUserStart: true,
       }),
     }),
     testEnv({
@@ -183,6 +186,7 @@ test("heartbeat validates and forwards the phone writer lease", async () => {
   assert.equal(forwarded.input, "https://session/heartbeat");
   assert.equal(forwarded.body.activityState, "active");
   assert.equal(forwarded.body.localRevision, 8);
+  assert.equal(forwarded.body.requiresUserStart, true);
 });
 
 test("heartbeat rejects an unknown activity state", async () => {
@@ -194,6 +198,59 @@ test("heartbeat rejects an unknown activity state", async () => {
         "content-type": "application/json",
       },
       body: JSON.stringify({ activityState: "hidden", clientSchemaVersion: 2 }),
+    }),
+    testEnv()
+  );
+  assert.equal(response.status, 400);
+});
+
+test("heartbeat forwards an explicit activity end separately from a plain none state", async () => {
+  let forwarded;
+  const response = await worker.fetch(
+    new Request("https://sync.test/heartbeat", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        activityState: "none",
+        activityEnded: true,
+        sentAtMs: Date.now(),
+        localRevision: 9,
+        lyricOffsetMs: 0,
+        clientSchemaVersion: 2,
+      }),
+    }),
+    testEnv({
+      sessionFetch: async (input, init) => {
+        forwarded = { input, body: JSON.parse(init.body) };
+        return json({ ok: true, accepted: true });
+      },
+    })
+  );
+  assert.equal(response.status, 200);
+  assert.equal(forwarded.input, "https://session/heartbeat");
+  assert.equal(forwarded.body.activityState, "none");
+  assert.equal(forwarded.body.activityEnded, true);
+});
+
+test("heartbeat rejects a non-boolean activity end flag", async () => {
+  const response = await worker.fetch(
+    new Request("https://sync.test/heartbeat", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        activityState: "none",
+        activityEnded: "true",
+        sentAtMs: Date.now(),
+        localRevision: 9,
+        lyricOffsetMs: 0,
+        clientSchemaVersion: 2,
+      }),
     }),
     testEnv()
   );

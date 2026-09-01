@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/heroku.js",
+    "start": "node src/heroku-v2.js",
     "test": "node --test",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail"

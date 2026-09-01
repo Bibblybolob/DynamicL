@@ -1,1 +1,2 @@
-web: node src/heroku.js
+web: node src/heroku-v2.js
+worker: node src/heroku-worker-v2.js
