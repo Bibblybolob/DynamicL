@@ -26,11 +26,16 @@ struct LiveActivityUpdatePolicyTests {
     }
 
     @Test
-    func lineUpdatesStopAtTheMinuteLimit() {
+    func lineUpdatesSlowAtTheMinuteLimit() {
         #expect(!LiveActivityUpdatePolicy.shouldSendLineChange(
             lineChanged: true,
+            timeSinceLastSend: 1,
+            sendsInLastMinute: 48
+        ))
+        #expect(LiveActivityUpdatePolicy.shouldSendLineChange(
+            lineChanged: true,
             timeSinceLastSend: 2,
-            sendsInLastMinute: 20
+            sendsInLastMinute: 48
         ))
     }
 }

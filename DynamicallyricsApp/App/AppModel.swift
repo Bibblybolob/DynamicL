@@ -34,6 +34,7 @@ final class AppModel {
     @ObservationIgnored private var lastWidgetPublishedPosition: TimeInterval?
     @ObservationIgnored private var lastWidgetPublishedAt: Date?
     @ObservationIgnored private var lastWidgetPublishedRate: Double = 1
+    @ObservationIgnored private var lastWidgetTransitionHoldKey: String?
     private var widgetIdlePublished = false
 
     private(set) var demoActive = false
@@ -619,16 +620,23 @@ final class AppModel {
 
     private func syncServerHeartbeat() {
         guard auth.isConnected, let provider else { return }
-        // Lease ownership follows the local poll loop, not the last successful
-        // Spotify response. A temporary Spotify or network failure must not
-        // make the server race the phone while the phone can still render its
-        // already-loaded lyric schedule. Immediately after Show Lyrics is
-        // pressed, the poller can be running before its first sample stamps
-        // lastLoopActivityAt; count that short startup interval as healthy so
-        // an older server state cannot win the handoff.
+        // The phone owns updates only while it is foreground-active and has a
+        // fresh Spotify sample. A background task can continue to tick for a
+        // short time after the user leaves the app, but local ActivityKit
+        // updates can already be deferred. Let the APNs worker take over in
+        // that state instead of renewing the phone lease indefinitely.
         let withinSessionWarmup = Date.now < localSessionWarmupUntil
-        let healthy = provider.isLoopLikelyAlive
-            || (withinSessionWarmup && localSessionActive && provider.isPolling)
+        let lastSuccessfulPollAge = provider.lastSuccessfulPollAt.map {
+            Date.now.timeIntervalSince($0)
+        }
+        let healthy = SyncOwnershipPolicy.phoneLeaseIsHealthy(
+            isForeground: scenePhase == .active,
+            loopIsAlive: provider.isLoopLikelyAlive,
+            lastSuccessfulPollAge: lastSuccessfulPollAge,
+            isWarmingUp: withinSessionWarmup
+                && localSessionActive
+                && provider.isPolling
+        )
         SyncServerClient.shared.heartbeat(
             activityState: liveActivity.syncActivityState,
             trackID: provider.lastTrackID,
@@ -803,9 +811,22 @@ final class AppModel {
         }
 
         guard let signature, let document = lyrics.document else {
+            // Spotify can report active playback before it finishes the new
+            // track metadata. Keep the last valid snapshot during that short
+            // transition. A complete sample will publish the new track, and
+            // a confirmed stop remains the only active path to the idle card.
+            if status?.state == .playing || status?.state == .paused {
+                let holdKey = "\(provider?.lastTrackID ?? "-")|\(status?.state == .playing)"
+                if holdKey != lastWidgetTransitionHoldKey {
+                    lastWidgetTransitionHoldKey = holdKey
+                    DiagnosticsLog.append("widget snapshot retained during partial track transition")
+                }
+                return
+            }
             clearWidgetSnapshot()
             return
         }
+        lastWidgetTransitionHoldKey = nil
 
         let isPlaying = status?.state == .playing
         let index = lyrics.currentIndex ?? -1
@@ -908,27 +929,9 @@ final class AppModel {
     }
 
     private func reloadWidgetTimelines() {
-        // All styles use the same shared snapshot. Reload each kind when the
-        // track or artwork changes, otherwise a newly added style can keep the
-        // previous track until WidgetKit performs an unrelated refresh.
-        let kinds = [
-            "CurrentLineWidget",
-            "AlbumPlayerWidget",
-            "LyricFocusWidget",
-            "MinimalLyricsWidget",
-            "AlbumCardWidget",
-            "KaraokeFocusWidget",
-            "LyricsPosterWidget",
-            "WaveformPlayerWidget",
-            "AlbumStackWidget",
-            "LockscreenLyricWidget",
-            "LockscreenAlbumWidget",
-            "LockscreenQuoteWidget",
-            "VinylWidget",
-        ]
-        for kind in kinds {
-            WidgetCenter.shared.reloadTimelines(ofKind: kind)
-        }
+        // Every style reads the same app-group snapshot. One request avoids
+        // thirteen back-to-back reloads that WidgetKit can coalesce or defer.
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func clearWidgetSnapshot() {
@@ -938,6 +941,7 @@ final class AppModel {
         lastWidgetPublishedPosition = nil
         lastWidgetPublishedAt = nil
         lastWidgetPublishedRate = 1
+        lastWidgetTransitionHoldKey = nil
         SharedNowPlaying.clear()
         reloadWidgetTimelines()
         watchSync.clear()

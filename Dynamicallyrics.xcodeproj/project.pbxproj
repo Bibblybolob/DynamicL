@@ -38,6 +38,7 @@
 		78CB701C55BE1A7869624939 /* Bungee-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8064C257A318E778B7E2B0F6 /* Bungee-Regular.ttf */; };
 		7BB6E571255EC8ADD3980380 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7C09312579956357A942BA /* AppModel.swift */; };
 		7EA4E0314E51BF2BF517A7BB /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4083C7544C6C54C2403D22F /* RootView.swift */; };
+		85B27AE2C422ADBF1F6F16CD /* ArtworkRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A912214B48CF43CED2AB5B /* ArtworkRepository.swift */; };
 		889A78B2FB3264300662E034 /* WatchLyricStackWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2643CFE43083020E2CFD9165 /* WatchLyricStackWidget.swift */; };
 		93AEB6C4EC54A424D86A37A2 /* CurrentLineWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7BD9BC79688FAB1D1A127C /* CurrentLineWidget.swift */; };
 		9939CE0EF1D8EB84E626A2AA /* TogglePlaybackIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */; };
@@ -125,6 +126,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00A912214B48CF43CED2AB5B /* ArtworkRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkRepository.swift; sourceTree = "<group>"; };
 		023703132FFF98E22ED6E203 /* SpotifyAuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyAuthManager.swift; sourceTree = "<group>"; };
 		0AF723DBC9A4FDFB26CE3F30 /* LyricsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsService.swift; sourceTree = "<group>"; };
 		0D4059FBA00502BEBFF30974 /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
@@ -262,6 +264,7 @@
 			children = (
 				1A93E440BBCE4CE76E43D123 /* AlbumArtworkPrefetcher.swift */,
 				8A7C09312579956357A942BA /* AppModel.swift */,
+				00A912214B48CF43CED2AB5B /* ArtworkRepository.swift */,
 				D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */,
 				B6E4D01DA0CCA1E2BB9A4B54 /* DominantColorExtractor.swift */,
 				248CAA9DBAA3A963E7C30BCD /* DynamicallyricsApp.swift */,
@@ -617,6 +620,7 @@
 				69E17BAD3D775BFF4CEA0D7A /* AlbumArtworkPrefetcher.swift in Sources */,
 				7BB6E571255EC8ADD3980380 /* AppModel.swift in Sources */,
 				16DEEF986C634B5BF7712AB4 /* AppearanceView.swift in Sources */,
+				85B27AE2C422ADBF1F6F16CD /* ArtworkRepository.swift in Sources */,
 				0D78D2406231B09E9DEAB5C0 /* DiagnosticsLog.swift in Sources */,
 				A39D7C2D8035DA8C6588D8EB /* DominantColorExtractor.swift in Sources */,
 				CBBA77CACA9F39B9090F8DF6 /* DynamicallyricsApp.swift in Sources */,
@@ -818,7 +822,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-			CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -885,7 +889,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-			CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_NS_ASSERTIONS = NO;

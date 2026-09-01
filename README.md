@@ -7,8 +7,8 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current beta build is version 1.2.0, build 36.
-- Build 36 is a private beta build.
+- The current beta build is version 1.2.0, build 37.
+- Build 37 is a private beta build.
 - TestFlight distributes this build for beta testing.
 
 | Feature | Status |
@@ -28,7 +28,13 @@ Development continues.
 
 ## Current release candidate
 
-Build 36, version 1.2.0, is a private beta and includes these changes:
+Build 37, version 1.2.0, is a private beta and includes these changes:
+
+- A partial Spotify response cannot clear a valid widget snapshot during a track change.
+- The app sends one WidgetKit reload request for all widget styles.
+- The Live Activity does not stop direct lyric updates after a dense lyric minute.
+- A background phone yields update ownership to the APNs server.
+- A foreground phone keeps ownership only while Spotify data is current.
 
 - Lyric-line changes use the urgent local ActivityKit queue.
 - Server lyric-line changes use APNs priority 10.

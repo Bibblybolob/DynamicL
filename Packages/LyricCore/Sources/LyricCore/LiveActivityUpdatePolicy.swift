@@ -7,16 +7,21 @@ public enum LiveActivityUpdatePolicy {
         lineChanged: Bool,
         timeSinceLastSend: TimeInterval,
         sendsInLastMinute: Int,
-        minimumInterval: TimeInterval = 0.5,
-        maximumSendsPerMinute: Int = 20
+        minimumInterval: TimeInterval = 0.35,
+        maximumSendsPerMinute: Int = 48,
+        throttledRecoveryInterval: TimeInterval = 2
     ) -> Bool {
         guard lineChanged,
               timeSinceLastSend.isFinite,
               timeSinceLastSend >= minimumInterval,
-              sendsInLastMinute >= 0,
-              sendsInLastMinute < maximumSendsPerMinute else {
+              sendsInLastMinute >= 0 else {
             return false
         }
-        return true
+        if sendsInLastMinute < maximumSendsPerMinute {
+            return true
+        }
+        // Do not enter a hard freeze after a lyric-heavy minute. Slow direct
+        // updates while the timestamp schedule remains the primary path.
+        return timeSinceLastSend >= throttledRecoveryInterval
     }
 }
