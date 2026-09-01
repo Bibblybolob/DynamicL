@@ -34,6 +34,22 @@ final class SpotifyProvider: PlaybackProvider {
     }
 
     func start() {
+        let loopAge = lastLoopActivityAt.map { Date.now.timeIntervalSince($0) }
+        if PlaybackPollingLifecyclePolicy.shouldReuseLoop(
+            isPolling: isPolling,
+            lastLoopActivityAge: loopAge,
+            staleAfter: Self.loopStaleThreshold
+        ) {
+            // App activation and SwiftUI onAppear can request polling during
+            // the same launch. Wake the existing scheduler instead of
+            // cancelling its first Spotify request and leaving a visible
+            // "cancelled" state before any player sample arrives.
+            if lastError == URLError(.cancelled).localizedDescription {
+                lastError = nil
+            }
+            pollWakeContinuation?.yield(())
+            return
+        }
         // Rebuild only when the caller explicitly starts a new polling session
         // or the watchdog has found a dead loop. A normal kick wakes the current
         // scheduler and does not cancel its in-flight request.
@@ -379,9 +395,30 @@ final class SpotifyProvider: PlaybackProvider {
             lastError = error.errorDescription
         } catch is CancellationError {
         } catch {
+            if Self.isRequestCancellation(error) {
+                guard ownsPoll(generation) else { return }
+                // URLSession can report NSURLErrorCancelled when iOS moves the
+                // scene between active and inactive states. This is a retry
+                // signal, not a Spotify failure. Keep the scheduler alive and
+                // do not leave "cancelled" as the permanent user-facing state.
+                lastError = nil
+                burst(count: 3)
+                pollWakeContinuation?.yield(())
+                DiagnosticsLog.append("Spotify request cancelled; retry queued")
+                return
+            }
             guard ownsPoll(generation) else { return }
             lastError = error.localizedDescription
         }
+    }
+
+    private static func isRequestCancellation(_ error: Error) -> Bool {
+        if let urlError = error as? URLError, urlError.code == .cancelled {
+            return true
+        }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain
+            && nsError.code == NSURLErrorCancelled
     }
 
     private func ownsPoll(_ generation: UInt64) -> Bool {

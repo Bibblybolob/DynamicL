@@ -573,11 +573,18 @@ final class AppModel {
             SharedNowPlaying.markLiveActivityFirstUseCompleted(for: activityID)
         }
         SharedNowPlaying.setLiveActivityControlEnabled(true)
-        // Do not wait for Spotify's player endpoint or the lyric provider
-        // before asking ActivityKit for a card. The bootstrap state is small
-        // and visible immediately; the normal sync path replaces it with the
-        // current track as soon as playback arrives.
-        startBootstrapLiveActivity(forceRestart: forceRestart)
+        // Do not create a metadata-free card. If the first Spotify request is
+        // delayed or cancelled, that card can remain on "Connecting" while a
+        // real song is already playing. A valid track starts the Activity from
+        // `syncLiveActivity` on the same tick that playback arrives.
+        if signature != nil {
+            startBootstrapLiveActivity(forceRestart: forceRestart)
+        } else {
+            if forceRestart, liveActivity.isRunning {
+                liveActivity.end()
+            }
+            DiagnosticsLog.append("LA start deferred until Spotify track is ready")
+        }
         // Refresh after the session becomes active, including when this action
         // is invoked from the Lock Screen or Control Center.
         updatePollingProfile()
@@ -620,11 +627,9 @@ final class AppModel {
 
     private func syncServerHeartbeat() {
         guard auth.isConnected, let provider else { return }
-        // The phone owns updates only while it is foreground-active and has a
-        // fresh Spotify sample. A background task can continue to tick for a
-        // short time after the user leaves the app, but local ActivityKit
-        // updates can already be deferred. Let the APNs worker take over in
-        // that state instead of renewing the phone lease indefinitely.
+        // The phone owns updates while it can get current Spotify data. When
+        // iOS suspends the app, polling and heartbeats stop. The existing
+        // lease then expires and the APNs worker takes ownership.
         let withinSessionWarmup = Date.now < localSessionWarmupUntil
         let lastSuccessfulPollAge = provider.lastSuccessfulPollAt.map {
             Date.now.timeIntervalSince($0)
@@ -1017,17 +1022,19 @@ final class AppModel {
         )
     }
 
-    /// Status says playing but data went quiet: something killed polling
-    /// (revoked audio session, hung socket). Revive only when the loop is
-    /// genuinely dead/hung — restarting a live loop cancels its in-flight
-    /// request and, at tick frequency, starves recovery forever.
+    /// Recover polling even when the first request never produced a playback
+    /// state. Requiring `status == playing` made an initial cancellation
+    /// permanent: the watchdog needed a status that only the dead poller could
+    /// provide.
     @ObservationIgnored private var lastReviveAt: Date?
     private func revivePollerIfNeeded() {
-        guard status?.state == .playing, let provider else { return }
-        guard provider.isPolling else { return } // signed out: stay stopped
-        guard !provider.isLoopLikelyAlive else { return }
-        guard let last = provider.lastSuccessfulPollAt,
-              Date.now.timeIntervalSince(last) > 8 else { return }
+        guard let provider,
+              PlaybackPollingLifecyclePolicy.shouldRunWatchdog(
+                isConnected: auth.isConnected,
+                isForeground: scenePhase == .active,
+                localSessionActive: localSessionActive
+              ) else { return }
+        guard !provider.isPolling || !provider.isLoopLikelyAlive else { return }
         if let lastRevive = lastReviveAt,
            Date.now.timeIntervalSince(lastRevive) < 3 { return }
         lastReviveAt = .now

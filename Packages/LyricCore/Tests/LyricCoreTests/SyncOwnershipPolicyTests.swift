@@ -13,11 +13,21 @@ struct SyncOwnershipPolicyTests {
     }
 
     @Test
-    func backgroundPhoneYieldsToServer() {
-        #expect(!SyncOwnershipPolicy.phoneLeaseIsHealthy(
+    func backgroundPhoneOwnsWhileSpotifyDataIsFresh() {
+        #expect(SyncOwnershipPolicy.phoneLeaseIsHealthy(
             isForeground: false,
             loopIsAlive: true,
             lastSuccessfulPollAge: 1,
+            isWarmingUp: false
+        ))
+    }
+
+    @Test
+    func backgroundPhoneYieldsWhenItsPollIsStale() {
+        #expect(!SyncOwnershipPolicy.phoneLeaseIsHealthy(
+            isForeground: false,
+            loopIsAlive: true,
+            lastSuccessfulPollAge: 9,
             isWarmingUp: false
         ))
     }

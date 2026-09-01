@@ -7,8 +7,8 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current beta build is version 1.2.0, build 37.
-- Build 37 is a private beta build.
+- The current beta build is version 1.2.0, build 38.
+- Build 38 is a private beta build.
 - TestFlight distributes this build for beta testing.
 
 | Feature | Status |
@@ -28,7 +28,14 @@ Development continues.
 
 ## Current release candidate
 
-Build 37, version 1.2.0, is a private beta and includes these changes:
+Build 38, version 1.2.0, is a private beta and includes these changes:
+
+- App activation does not cancel a working Spotify polling loop.
+- A canceled Spotify request retries and does not remain as an error.
+- The polling watchdog can recover before the first playback sample arrives.
+- The Live Activity waits for current Spotify track data before it starts.
+- The phone remains the update owner while its Spotify data is current.
+- The server takes ownership after the phone heartbeat stops.
 
 - A partial Spotify response cannot clear a valid widget snapshot during a track change.
 - The app sends one WidgetKit reload request for all widget styles.
