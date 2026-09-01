@@ -13,9 +13,15 @@ final class SpotifyProvider: PlaybackProvider {
 
     private let auth: SpotifyAuthManager
     private var pollTask: Task<Void, Never>?
-    /// Wakes the current scheduler without cancelling an in-flight Spotify
-    /// request. Repeated transport commands are coalesced by AsyncStream.
-    private var pollWakeContinuation: AsyncStream<Void>.Continuation?
+    /// Only the inter-poll delay is cancellable. A transport event sets one
+    /// pending wake bit, so repeated events cannot create parallel requests or
+    /// turn the scheduler into a tight loop.
+    private var pollDelayTask: Task<Void, Never>?
+    private var pollWakePending = false
+    /// A dedicated session prevents an old hung Spotify connection from
+    /// poisoning unrelated app traffic. The timeout path replaces this
+    /// session before the next request.
+    private var playerSession = SpotifyProvider.makePlayerSession()
     /// Every scheduler restart owns a new generation. A request from a
     /// cancelled scheduler can still finish at the URLSession boundary; this
     /// value prevents that old response from overwriting a newer track,
@@ -47,26 +53,23 @@ final class SpotifyProvider: PlaybackProvider {
             if lastError == URLError(.cancelled).localizedDescription {
                 lastError = nil
             }
-            pollWakeContinuation?.yield(())
+            signalPollWake()
             return
         }
         // Rebuild only when the caller explicitly starts a new polling session
         // or the watchdog has found a dead loop. A normal kick wakes the current
         // scheduler and does not cancel its in-flight request.
         pollTask?.cancel()
-        pollWakeContinuation?.finish()
-        pollWakeContinuation = nil
+        pollDelayTask?.cancel()
+        pollDelayTask = nil
+        pollWakePending = false
         pollGeneration &+= 1
         let generation = pollGeneration
-        let wakePair = AsyncStream<Void>.makeStream(
-            bufferingPolicy: .bufferingNewest(1)
-        )
-        pollWakeContinuation = wakePair.continuation
         isPolling = true
         pollingStartedAt = .now
         lastSuccessfulPollAt = nil
         lastPollSummary = "Checking Spotify playback…"
-        pollTask = Task { [weak self, stream = wakePair.stream] in
+        pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.pollCycle(generation: generation)
                 guard !Task.isCancelled,
@@ -83,32 +86,56 @@ final class SpotifyProvider: PlaybackProvider {
                     : aggressive
                         ? (notPlaying ? 0.8 : 1.0)
                         : (notPlaying ? 1.2 : 3.0)
-                await Self.waitForNextPoll(
+                await self?.waitForNextPoll(
                     interval: .seconds(interval),
-                    wakeStream: stream
+                    generation: generation
                 )
             }
         }
     }
 
-    /// Waits for the regular cadence or an immediate wake request. The stream
-    /// has a one-value buffer so a command that arrives during a poll is not
-    /// lost before the scheduler reaches this wait.
-    private static func waitForNextPoll(
+    /// Waits for the regular cadence or one coalesced wake request. The old
+    /// implementation created a new AsyncStream iterator on every cycle. Once
+    /// an iterator was cancelled, later iterators could finish immediately and
+    /// issue several Spotify requests per second.
+    private func waitForNextPoll(
         interval: Duration,
-        wakeStream: AsyncStream<Void>
+        generation: UInt64
     ) async {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try? await Task.sleep(for: interval)
-            }
-            group.addTask {
-                var iterator = wakeStream.makeAsyncIterator()
-                _ = await iterator.next()
-            }
-            _ = await group.next()
-            group.cancelAll()
+        guard ownsPoll(generation) else { return }
+        if pollWakePending {
+            pollWakePending = false
+            return
         }
+        let delay = Task<Void, Never> {
+            _ = try? await Task.sleep(for: interval)
+        }
+        pollDelayTask = delay
+        await delay.value
+        guard generation == pollGeneration else { return }
+        pollDelayTask = nil
+        pollWakePending = false
+    }
+
+    private func signalPollWake() {
+        pollWakePending = true
+        pollDelayTask?.cancel()
+    }
+
+    private static func makePlayerSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 7
+        configuration.timeoutIntervalForResource = 9
+        configuration.waitsForConnectivity = false
+        configuration.httpMaximumConnectionsPerHost = 2
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }
+
+    private func resetPlayerSession() {
+        playerSession.invalidateAndCancel()
+        playerSession = Self.makePlayerSession()
+        DiagnosticsLog.append("Spotify network session reset")
     }
 
     /// One full poll wrapped in a hard timeout. A hung URLSession request can
@@ -138,6 +165,7 @@ final class SpotifyProvider: PlaybackProvider {
         if !completed, ownsPoll(generation) {
             lastPollSummary = "Spotify check timed out. Retrying…"
             DiagnosticsLog.append("Spotify playback check timed out")
+            resetPlayerSession()
         }
     }
 
@@ -159,7 +187,7 @@ final class SpotifyProvider: PlaybackProvider {
     func kick() {
         burst()
         if isPolling, isLoopLikelyAlive {
-            pollWakeContinuation?.yield(())
+            signalPollWake()
         } else {
             start()
         }
@@ -293,8 +321,9 @@ final class SpotifyProvider: PlaybackProvider {
     func stop() {
         pollGeneration &+= 1
         pollTask?.cancel()
-        pollWakeContinuation?.finish()
-        pollWakeContinuation = nil
+        pollDelayTask?.cancel()
+        pollDelayTask = nil
+        pollWakePending = false
         pollTask = nil
         isPolling = false
         // A cancelled loop must stop renewing the phone ownership lease
@@ -415,7 +444,7 @@ final class SpotifyProvider: PlaybackProvider {
                 // do not leave "cancelled" as the permanent user-facing state.
                 lastError = nil
                 burst(count: 3)
-                pollWakeContinuation?.yield(())
+                signalPollWake()
                 DiagnosticsLog.append("Spotify request cancelled; retry queued")
                 return
             }
@@ -473,12 +502,28 @@ final class SpotifyProvider: PlaybackProvider {
     ) async throws -> (Data, HTTPURLResponse) {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 10
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw LyricsLookupError(kind: .network("invalid response"))
+        request.timeoutInterval = 7
+        let endpoint = url.lastPathComponent
+        let startedAt = Date.now
+        do {
+            let (data, response) = try await playerSession.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw LyricsLookupError(kind: .network("invalid response"))
+            }
+            let elapsed = Date.now.timeIntervalSince(startedAt)
+            if elapsed >= 2 || http.statusCode != 200 {
+                DiagnosticsLog.append(
+                    "Spotify \(endpoint) HTTP \(http.statusCode) in \(String(format: "%.1f", elapsed))s"
+                )
+            }
+            return (data, http)
+        } catch {
+            let elapsed = Date.now.timeIntervalSince(startedAt)
+            DiagnosticsLog.append(
+                "Spotify \(endpoint) failed after \(String(format: "%.1f", elapsed))s: \(error.localizedDescription)"
+            )
+            throw error
         }
-        return (data, http)
     }
 
     /// Keeps a local play/pause projection in place while Spotify is still
