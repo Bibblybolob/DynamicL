@@ -177,6 +177,9 @@ export function activityPayload(event, state, options = {}) {
     timestamp: Math.floor(nowEpoch),
     event,
     "content-state": payloadState,
+    // A positive relevance score keeps lyrics ahead of less relevant Live
+    // Activities when iOS chooses the prominent Lock Screen/Island surface.
+    "relevance-score": 1.0,
   };
   if (event === "start") {
     aps["attributes-type"] = "LyricsActivityAttributes";

@@ -1304,10 +1304,14 @@ final class AppModel {
             if urgent {
                 liveActivity.interruptPendingUpdates(reason: "material playback change")
             }
+            // A lyric boundary is visible content, not a routine schedule
+            // refill. Route it through the controller's urgent queue so it
+            // cannot wait behind a coalesced low-priority ActivityKit update.
+            let updatePriority: LiveActivityUpdatePriority = (urgent || lineSend) ? .high : .low
             let sentState = stamped(targetState)
             liveActivity.update(
                 state: sentState,
-                priority: urgent ? .high : .low
+                priority: updatePriority
             )
             lastLAUpdateAt = now
             lastLineIndex = lyrics.currentIndex

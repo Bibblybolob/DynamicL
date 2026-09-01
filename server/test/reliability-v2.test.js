@@ -90,6 +90,7 @@ test("APNs start payload includes the required remote-start fields", () => {
   assert.equal(payload.aps["input-push-token"], 1);
   assert.equal(payload.aps.alert.title, "OpenLyrics");
   assert.equal(payload.aps.sound, undefined);
+  assert.equal(payload.aps["relevance-score"], 1);
 });
 
 test("worker starts once, then updates the same activity after the update token arrives", async () => {
@@ -117,14 +118,19 @@ test("worker starts once, then updates the same activity after the update token 
     { environment: "production" },
   );
   const apns = [];
+  let spotifyRequests = 0;
   const fetchImpl = async (input, init = {}) => {
     const url = String(input);
     if (url.includes("accounts.spotify.com")) {
       return Response.json({ access_token: "access-token" });
     }
-    if (url.includes("api.spotify.com")) return Response.json({ ...player() });
+    if (url.includes("api.spotify.com")) {
+      const progress = 1_000 + spotifyRequests * 5_000;
+      spotifyRequests += 1;
+      return Response.json({ ...player({ progress }) });
+    }
     if (url.includes("lrclib.net")) {
-      return Response.json({ syncedLyrics: "[00:00.00]First line\n[00:04.00]Second line" });
+      return Response.json({ syncedLyrics: "[00:00.00]First line\n[00:04.00]Second line\n[00:08.00]Third line" });
     }
     if (url.includes("api.push.apple.com")) {
       apns.push({ body: JSON.parse(init.body), headers: init.headers });
@@ -161,6 +167,14 @@ test("worker starts once, then updates the same activity after the update token 
   assert.equal(apns[1].body.aps.event, "update");
   assert.equal(apns[1].body.aps["content-state"].trackID, "track-1");
   assert.equal(apns[1].headers["apns-priority"], "10");
+
+  const afterInitialUpdate = await store.getInstallation(installation.id);
+  await pollInstallation(afterInitialUpdate, runtime, { nowMs: 1_700_000_010_000, fetchImpl });
+  assert.equal(apns.length, 3);
+  assert.equal(apns[2].body.aps["content-state"].currentLine, "Third line");
+  assert.equal(apns[2].headers["apns-priority"], "10");
+  const afterLineUpdate = await store.getInstallation(installation.id);
+  assert.equal(afterLineUpdate.state.lastPushReason, "line");
 });
 
 test("APNs retries Retry-After responses and returns a redacted delivery result", async () => {

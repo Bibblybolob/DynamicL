@@ -19,6 +19,9 @@ enum LiveActivityUpdatePriority: String {
 @Observable
 final class LiveActivityController {
     private static let log = Logger(subsystem: "com.jonathantran.dynamicallyrics", category: "LiveActivity")
+    /// Keep lyrics ahead of lower-relevance Live Activities when iOS must
+    /// choose which activity receives the most prominent presentation.
+    private static let relevanceScore = 1.0
     private static let dismissalKey = "liveActivityDismissedForPlaybackSession"
     private static let dismissalRecordedAtKey = "liveActivityDismissalRecordedAt"
     private static let dismissalBuildKey = "liveActivityDismissalBuild"
@@ -166,7 +169,8 @@ final class LiveActivityController {
         let attributes = LyricsActivityAttributes()
         let content = ActivityContent(
             state: state.compacted(),
-            staleDate: staleDate(for: state)
+            staleDate: staleDate(for: state),
+            relevanceScore: Self.relevanceScore
         )
         do {
             let created: Activity<LyricsActivityAttributes>
@@ -406,7 +410,11 @@ final class LiveActivityController {
         // never goes stale.
         let staleDate = staleDate(for: sentState)
         nonisolated(unsafe) let ref = activity
-        nonisolated(unsafe) let content = ActivityContent(state: sentState, staleDate: staleDate)
+        nonisolated(unsafe) let content = ActivityContent(
+            state: sentState,
+            staleDate: staleDate,
+            relevanceScore: Self.relevanceScore
+        )
         let schedule = sentState.resolvedScheduledLines
         let horizon = schedule.last.map { max(0, $0.date.timeIntervalSinceNow) }
         let artworkCache = sentState.albumImageURL.map {

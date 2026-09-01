@@ -409,6 +409,8 @@ async function deliverState(installation, runtime, state, contentState, kind, no
     Math.abs(state.lastSentProgressStartEpoch - contentState.progressStartEpoch) > 0.75;
   const offsetChanged = state.lastSentOffsetMs !== state.lyricOffsetMs;
   const artworkChanged = state.lastSentAlbumImageURL !== contentState.albumImageURL;
+  const lineChanged = state.lastSentCurrentLine !== contentState.currentLine ||
+    state.lastSentNextLine !== (contentState.nextLine ?? null);
   const staleKeepalive = nowMs - finiteNumber(state.lastPushAt, 0) >= KEEPALIVE_MS;
   const reason = trackChanged ? "track"
     : playChanged ? "play state"
@@ -416,12 +418,16 @@ async function deliverState(installation, runtime, state, contentState, kind, no
         : seeked ? "seek"
           : offsetChanged ? "offset"
             : artworkChanged ? "artwork"
-              : scheduleRefill ? "schedule"
-                : staleKeepalive ? "keepalive" : null;
+              : lineChanged ? "line"
+                : scheduleRefill ? "schedule"
+                  : staleKeepalive ? "keepalive" : null;
   if (!reason) return;
 
   const token = unseal(tokenRecord.ciphertext, runtime.encryptionKey);
-  const urgent = ["track", "play state", "playback event", "seek", "offset", "artwork"].includes(reason);
+  // The worker polls active playback every five seconds, so a line update is
+  // naturally bounded to at most 12 APNs priority-10 sends per minute. Keep
+  // routine schedule refills and keepalives at priority 5.
+  const urgent = ["track", "play state", "playback event", "seek", "offset", "artwork", "line"].includes(reason);
   const payload = activityPayload("update", contentState, { nowEpoch });
   const result = await sendAPNs({
     token,
