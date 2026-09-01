@@ -15,6 +15,7 @@ final class AppModel {
     @ObservationIgnored private var albumArtworkPrefetchTask: Task<Void, Never>?
     @ObservationIgnored private var lastArtworkPrefetchURL: String?
     @ObservationIgnored private var lastArtworkPrefetchAt: Date?
+    @ObservationIgnored private var bootstrapLiveActivityTask: Task<Void, Never>?
 
     private(set) var connectError: String?
     var isConnecting = false
@@ -573,22 +574,42 @@ final class AppModel {
             SharedNowPlaying.markLiveActivityFirstUseCompleted(for: activityID)
         }
         SharedNowPlaying.setLiveActivityControlEnabled(true)
-        // Do not create a metadata-free card. If the first Spotify request is
-        // delayed or cancelled, that card can remain on "Connecting" while a
-        // real song is already playing. A valid track starts the Activity from
-        // `syncLiveActivity` on the same tick that playback arrives.
-        if signature != nil {
+        bootstrapLiveActivityTask?.cancel()
+        bootstrapLiveActivityTask = nil
+        // A direct recovery action must always create a visible ActivityKit
+        // surface. Automatic startup gives Spotify two seconds to return the
+        // current track, then creates an honest waiting card. A later player
+        // sample updates that same Activity instead of creating a duplicate.
+        if signature != nil || forceRestart {
             startBootstrapLiveActivity(forceRestart: forceRestart)
         } else {
-            if forceRestart, liveActivity.isRunning {
-                liveActivity.end()
-            }
-            DiagnosticsLog.append("LA start deferred until Spotify track is ready")
+            scheduleBootstrapLiveActivityFallback()
+            DiagnosticsLog.append("LA start waiting briefly for Spotify track")
         }
         // Refresh after the session becomes active, including when this action
         // is invoked from the Lock Screen or Control Center.
         updatePollingProfile()
         DiagnosticsLog.append("local session started by \(source)")
+    }
+
+    private func scheduleBootstrapLiveActivityFallback() {
+        bootstrapLiveActivityTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
+            guard let self,
+                  self.auth.isConnected,
+                  self.localSessionActive,
+                  self.lockScreenLyricsEnabled,
+                  !self.liveActivity.isRunning else { return }
+            self.startBootstrapLiveActivity()
+            self.provider?.kick()
+            self.provider?.burst(count: 6)
+            DiagnosticsLog.append("LA waiting card started after Spotify delay")
+            self.bootstrapLiveActivityTask = nil
+        }
     }
 
     /// Creates a minimal ActivityKit surface before Spotify has returned its
@@ -608,7 +629,7 @@ final class AppModel {
                 artistName: signature?.artist ?? "Spotify",
                 albumImageURL: provider?.lastAlbumImageURL,
                 currentLine: signature == nil
-                    ? "Connecting to Spotify…"
+                    ? "Waiting for Spotify playback…"
                     : "Finding lyrics…",
                 isPlaying: playing,
                 schemaVersion: 2,
@@ -1034,12 +1055,25 @@ final class AppModel {
                 isForeground: scenePhase == .active,
                 localSessionActive: localSessionActive
               ) else { return }
-        guard !provider.isPolling || !provider.isLoopLikelyAlive else { return }
+        let pollingAge = provider.pollingStartedAt.map {
+            Date.now.timeIntervalSince($0)
+        }
+        let lastSuccessfulPollAge = provider.lastSuccessfulPollAt.map {
+            Date.now.timeIntervalSince($0)
+        }
+        guard PlaybackPollingLifecyclePolicy.shouldRestartFromWatchdog(
+            isPolling: provider.isPolling,
+            loopIsAlive: provider.isLoopLikelyAlive,
+            pollingAge: pollingAge,
+            lastSuccessfulPollAge: lastSuccessfulPollAge
+        ) else { return }
         if let lastRevive = lastReviveAt,
            Date.now.timeIntervalSince(lastRevive) < 3 { return }
         lastReviveAt = .now
-        DiagnosticsLog.append("watchdog: revive")
-        provider.kick()
+        DiagnosticsLog.append("watchdog: restart silent Spotify poller")
+        provider.stop()
+        provider.start()
+        provider.burst(count: 3)
     }
 
     @ObservationIgnored private var lastPublishedNowPlaying: String?

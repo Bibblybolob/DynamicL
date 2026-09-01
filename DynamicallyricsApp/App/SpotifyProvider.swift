@@ -63,6 +63,9 @@ final class SpotifyProvider: PlaybackProvider {
         )
         pollWakeContinuation = wakePair.continuation
         isPolling = true
+        pollingStartedAt = .now
+        lastSuccessfulPollAt = nil
+        lastPollSummary = "Checking Spotify playback…"
         pollTask = Task { [weak self, stream = wakePair.stream] in
             while !Task.isCancelled {
                 await self?.pollCycle(generation: generation)
@@ -135,6 +138,7 @@ final class SpotifyProvider: PlaybackProvider {
     /// backoffs at 15s, so a heartbeat older than this means the loop is
     /// genuinely dead or hung — not merely waiting on a slow request.
     private(set) var lastLoopActivityAt: Date?
+    private(set) var pollingStartedAt: Date?
     static let loopStaleThreshold: TimeInterval = 20
 
     var isLoopLikelyAlive: Bool {
@@ -290,6 +294,7 @@ final class SpotifyProvider: PlaybackProvider {
         // immediately. Keeping the old stamp makes the server believe the
         // phone is still authoritative during the stale threshold.
         lastLoopActivityAt = nil
+        pollingStartedAt = nil
     }
 
     private func poll(generation: UInt64) async {
@@ -1172,6 +1177,7 @@ protocol PlaybackProvider: AnyObject {
     var lastError: String? { get }
     var lastPollSummary: String? { get }
     var isPolling: Bool { get }
+    var pollingStartedAt: Date? { get }
     var lastSuccessfulPollAt: Date? { get }
     var lastPlaybackChangeAt: Date? { get }
     var lastAlbumImageURL: String? { get }

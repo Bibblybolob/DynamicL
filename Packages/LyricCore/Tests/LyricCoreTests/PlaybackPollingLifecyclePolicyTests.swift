@@ -48,4 +48,42 @@ struct PlaybackPollingLifecyclePolicyTests {
             localSessionActive: true
         ))
     }
+
+    @Test
+    func watchdogRestartsADeadOrSilentLoop() {
+        #expect(PlaybackPollingLifecyclePolicy.shouldRestartFromWatchdog(
+            isPolling: false,
+            loopIsAlive: false,
+            pollingAge: nil,
+            lastSuccessfulPollAge: nil
+        ))
+        #expect(PlaybackPollingLifecyclePolicy.shouldRestartFromWatchdog(
+            isPolling: true,
+            loopIsAlive: true,
+            pollingAge: 21,
+            lastSuccessfulPollAge: nil
+        ))
+        #expect(PlaybackPollingLifecyclePolicy.shouldRestartFromWatchdog(
+            isPolling: true,
+            loopIsAlive: true,
+            pollingAge: 40,
+            lastSuccessfulPollAge: 21
+        ))
+    }
+
+    @Test
+    func watchdogKeepsAYoungOrSuccessfulLoop() {
+        #expect(!PlaybackPollingLifecyclePolicy.shouldRestartFromWatchdog(
+            isPolling: true,
+            loopIsAlive: true,
+            pollingAge: 5,
+            lastSuccessfulPollAge: nil
+        ))
+        #expect(!PlaybackPollingLifecyclePolicy.shouldRestartFromWatchdog(
+            isPolling: true,
+            loopIsAlive: true,
+            pollingAge: 40,
+            lastSuccessfulPollAge: 3
+        ))
+    }
 }

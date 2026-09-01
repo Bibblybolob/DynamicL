@@ -7,8 +7,8 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current beta build is version 1.2.0, build 38.
-- Build 38 is a private beta build.
+- The current beta build is version 1.2.0, build 39.
+- Build 39 is a private beta build.
 - TestFlight distributes this build for beta testing.
 
 | Feature | Status |
@@ -28,7 +28,13 @@ Development continues.
 
 ## Current release candidate
 
-Build 38, version 1.2.0, is a private beta and includes these changes:
+Build 39, version 1.2.0, is a private beta and includes these changes:
+
+- The Start Lock Screen Lyrics button always creates a Live Activity.
+- Automatic Lyrics creates a waiting Live Activity after a short Spotify delay.
+- The waiting state uses clear text and updates when Spotify returns the track.
+- The watchdog restarts a Spotify poller that has no successful response.
+- The app shows when it is checking Spotify playback.
 
 - App activation does not cancel a working Spotify polling loop.
 - A canceled Spotify request retries and does not remain as an error.

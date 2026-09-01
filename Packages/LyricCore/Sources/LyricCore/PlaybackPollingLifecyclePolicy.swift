@@ -23,4 +23,24 @@ public enum PlaybackPollingLifecyclePolicy {
     ) -> Bool {
         isConnected && (isForeground || localSessionActive)
     }
+
+    public static func shouldRestartFromWatchdog(
+        isPolling: Bool,
+        loopIsAlive: Bool,
+        pollingAge: TimeInterval?,
+        lastSuccessfulPollAge: TimeInterval?,
+        maximumSilence: TimeInterval = 20
+    ) -> Bool {
+        guard isPolling, loopIsAlive else { return true }
+        guard maximumSilence.isFinite, maximumSilence > 0 else { return false }
+        if let lastSuccessfulPollAge {
+            return !lastSuccessfulPollAge.isFinite
+                || lastSuccessfulPollAge < 0
+                || lastSuccessfulPollAge > maximumSilence
+        }
+        guard let pollingAge else { return false }
+        return !pollingAge.isFinite
+            || pollingAge < 0
+            || pollingAge > maximumSilence
+    }
 }
