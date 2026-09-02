@@ -540,6 +540,15 @@ async function deliverState(installation, runtime, state, contentState, kind, no
   const artworkChanged = state.lastSentAlbumImageURL !== contentState.albumImageURL;
   const lineChanged = state.lastSentCurrentLine !== contentState.currentLine ||
     state.lastSentNextLine !== (contentState.nextLine ?? null);
+  const previousScheduleRunway = previousHorizon - nowEpoch;
+  const scheduleCanAdvance = contentState.isPlaying && remaining.length > 0 &&
+    previousScheduleRunway >= 8;
+  const lineFallback = lineChanged && !scheduleCanAdvance;
+  // A phone heartbeat marks itself as the last writer. Once its lease ends,
+  // send one immediate full state before routine low-priority schedule
+  // refills begin. This makes app-to-server handoff explicit without sending
+  // every lyric line twice.
+  const takeover = state.lastUpdateOwner === "phone";
   const staleKeepalive = nowMs - finiteNumber(state.lastPushAt, 0) >= KEEPALIVE_MS;
   const reason = trackChanged ? "track"
     : playChanged ? "play state"
@@ -547,16 +556,20 @@ async function deliverState(installation, runtime, state, contentState, kind, no
         : seeked ? "seek"
           : offsetChanged ? "offset"
             : artworkChanged ? "artwork"
-              : lineChanged ? "line"
+              : takeover ? "phone takeover"
                 : scheduleRefill ? "schedule"
-                  : staleKeepalive ? "keepalive" : null;
+                  : lineFallback ? "line fallback"
+                    : staleKeepalive ? "keepalive" : null;
   if (!reason) return null;
 
   const token = unseal(tokenRecord.ciphertext, runtime.encryptionKey);
-  // The worker polls active playback every five seconds, so a line update is
-  // naturally bounded to at most 12 APNs priority-10 sends per minute. Keep
-  // routine schedule refills and keepalives at priority 5.
-  const urgent = ["track", "play state", "playback event", "seek", "offset", "artwork", "line"].includes(reason);
+  // Keep routine schedule refills and keepalives at priority 5. Timestamped
+  // lyric boundaries render without an APNs request. Priority 10 is reserved
+  // for user-visible playback changes, takeover, and schedule failure.
+  const urgent = [
+    "track", "play state", "playback event", "seek", "offset", "artwork",
+    "phone takeover", "line fallback",
+  ].includes(reason);
   const payload = activityPayload("update", contentState, { nowEpoch });
   const result = await sendAPNs({
     token,
@@ -568,14 +581,18 @@ async function deliverState(installation, runtime, state, contentState, kind, no
     fetchImpl: options.fetchImpl ?? fetch,
     nowEpoch,
   });
-  const next = {
-    ...state,
+  const deliveryPatch = {
     lastAPNsResult: result,
     lastPayloadSize: contentStateBytes(contentState),
     lastPushReason: reason,
   };
   if (result.accepted) {
-    Object.assign(next, {
+    const latestAfterDelivery = await runtime.store.getInstallation(installation.id);
+    const phoneReclaimedOwnership = finiteNumber(
+      latestAfterDelivery?.state?.phoneLeaseExpiresAt,
+      0,
+    ) > nowMs;
+    Object.assign(deliveryPatch, {
       lastPushAt: nowMs,
       lastSentTrackID: contentState.trackID ?? "",
       lastSentPlaying: contentState.isPlaying,
@@ -587,12 +604,19 @@ async function deliverState(installation, runtime, state, contentState, kind, no
       lastSentNextLine: contentState.nextLine ?? null,
       lastSentScheduleV2: currentSchedule,
       lastSchedulePushAt: scheduleRefill ? nowMs : state.lastSchedulePushAt ?? 0,
+      // Do not erase a heartbeat that arrived while Apple processed this
+      // request. The current payload was accepted, but the phone remains the
+      // next writer until its newly acquired lease ends.
+      lastUpdateOwner: phoneReclaimedOwnership ? "phone" : "server",
     });
   } else if (result.reason) {
-    next.lastError = `APNs update: ${result.reason}`;
-    next.lastErrorAt = new Date(nowMs).toISOString();
+    deliveryPatch.lastError = `APNs update: ${result.reason}`;
+    deliveryPatch.lastErrorAt = new Date(nowMs).toISOString();
   }
-  await runtime.store.updateInstallation(installation.id, { state: next });
+  // Write only delivery fields. A phone heartbeat can arrive while APNs is
+  // processing this request; restoring the worker's old full-state snapshot
+  // would erase that new lease and make both writers compete again.
+  await runtime.store.updateInstallation(installation.id, { state: deliveryPatch });
   if (result.terminal) {
     await runtime.store.deleteActivityToken(installation.id, "update");
     if (result.status === 410 && contentState.isPlaying) {

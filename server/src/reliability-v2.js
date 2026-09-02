@@ -280,6 +280,7 @@ export async function sendAPNs({
           "apns-topic": APNS_TOPIC,
           "apns-push-type": "liveactivity",
           "apns-priority": String(priority),
+          ...(kind === "update" ? { "apns-collapse-id": "openlyrics-current-state" } : {}),
           authorization: `bearer ${jwt}`,
         },
         body: requestBody,

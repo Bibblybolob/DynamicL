@@ -179,7 +179,17 @@ test("worker starts once, then updates the same activity after the update token 
       return Response.json({ ...player({ progress }) });
     }
     if (url.includes("lrclib.net")) {
-      return Response.json({ syncedLyrics: "[00:00.00]First line\n[00:04.00]Second line\n[00:08.00]Third line" });
+      return Response.json({
+        syncedLyrics: [
+          "[00:00.00]First line",
+          "[00:04.00]Second line",
+          "[00:08.00]Third line",
+          "[00:12.00]Fourth line",
+          "[00:16.00]Fifth line",
+          "[00:20.00]Sixth line",
+          "[00:24.00]Seventh line",
+        ].join("\n"),
+      });
     }
     if (url.includes("api.push.apple.com")) {
       apns.push({ body: JSON.parse(init.body), headers: init.headers });
@@ -216,14 +226,34 @@ test("worker starts once, then updates the same activity after the update token 
   assert.equal(apns[1].body.aps.event, "update");
   assert.equal(apns[1].body.aps["content-state"].trackID, "track-1");
   assert.equal(apns[1].headers["apns-priority"], "10");
+  assert.equal(apns[1].headers["apns-collapse-id"], "openlyrics-current-state");
 
   const afterInitialUpdate = await store.getInstallation(installation.id);
   await pollInstallation(afterInitialUpdate, runtime, { nowMs: 1_700_000_010_000, fetchImpl });
+  assert.equal(apns.length, 2, "a scheduled lyric boundary must not use APNs");
+
+  // Simulate the phone entering a game and its ownership lease expiring. The
+  // first server pass sends one urgent handoff even though the old schedule
+  // still has runway.
+  await store.updateInstallation(installation.id, {
+    state: { lastUpdateOwner: "phone", phoneLeaseExpiresAt: 0 },
+  });
+  const afterPhoneSuspended = await store.getInstallation(installation.id);
+  await pollInstallation(afterPhoneSuspended, runtime, {
+    nowMs: 1_700_000_015_000,
+    fetchImpl,
+  });
   assert.equal(apns.length, 3);
-  assert.equal(apns[2].body.aps["content-state"].currentLine, "Third line");
   assert.equal(apns[2].headers["apns-priority"], "10");
-  const afterLineUpdate = await store.getInstallation(installation.id);
-  assert.equal(afterLineUpdate.state.lastPushReason, "line");
+  const afterTakeover = await store.getInstallation(installation.id);
+  assert.equal(afterTakeover.state.lastPushReason, "phone takeover");
+  assert.equal(afterTakeover.state.lastUpdateOwner, "server");
+
+  await pollInstallation(afterTakeover, runtime, {
+    nowMs: 1_700_000_020_000,
+    fetchImpl,
+  });
+  assert.equal(apns.length, 3, "later scheduled lines must not repeat the handoff");
 });
 
 test("phone lease completes pending and prepared-but-unsent lyrics", async () => {

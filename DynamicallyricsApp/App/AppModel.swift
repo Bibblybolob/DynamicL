@@ -1322,14 +1322,17 @@ final class AppModel {
             && canExtendSchedule
             && sinceLastSend >= Self.minimumScheduleRefillInterval
 
-        // Send the current line directly while the phone process is alive.
-        // Keep the future schedule in the same state so the extension can
-        // continue by timestamp when iOS suspends the app. Relying only on
-        // TimelineView boundaries allowed the Lock Screen card to lag behind
-        // widgets when iOS coalesced its timeline refreshes.
+        // A timestamped schedule is rendered locally by the Live Activity.
+        // Do not also send every line through ActivityKit. Duplicate line
+        // updates use the system update budget and can block the later APNs
+        // handoff when this process is suspended by a game.
         recentLASends.removeAll { now.timeIntervalSince($0) > 60 }
+        let hasUsableSchedule = targetState.isPlaying
+            && targetSchedule.count >= 2
+            && targetEnd.timeIntervalSince(now) >= 8
         let lineSend = LiveActivityUpdatePolicy.shouldSendLineChange(
             lineChanged: lineChanged,
+            hasUsableSchedule: hasUsableSchedule,
             timeSinceLastSend: sinceLastSend,
             sendsInLastMinute: recentLASends.count
         )
@@ -1359,9 +1362,8 @@ final class AppModel {
             if urgent {
                 liveActivity.interruptPendingUpdates(reason: "material playback change")
             }
-            // A lyric boundary is visible content, not a routine schedule
-            // refill. Route it through the controller's urgent queue so it
-            // cannot wait behind a coalesced low-priority ActivityKit update.
+            // A direct line update is only a recovery path for songs without
+            // a usable future schedule. Keep material playback changes urgent.
             let updatePriority: LiveActivityUpdatePriority = (urgent || lineSend) ? .high : .low
             let sentState = stamped(targetState)
             liveActivity.update(

@@ -1,17 +1,21 @@
 import Foundation
 
-/// Limits direct lyric-boundary updates without disabling them when a future
-/// schedule is present. The schedule remains a fallback for app suspension.
+/// Sends a direct lyric-boundary update only when the timestamped schedule
+/// cannot advance the Live Activity on its own. Re-sending each scheduled
+/// line consumes ActivityKit's update budget and can make later background
+/// updates appear frozen.
 public enum LiveActivityUpdatePolicy {
     public static func shouldSendLineChange(
         lineChanged: Bool,
+        hasUsableSchedule: Bool,
         timeSinceLastSend: TimeInterval,
         sendsInLastMinute: Int,
         minimumInterval: TimeInterval = 0.35,
-        maximumSendsPerMinute: Int = 48,
-        throttledRecoveryInterval: TimeInterval = 2
+        maximumSendsPerMinute: Int = 12,
+        throttledRecoveryInterval: TimeInterval = 5
     ) -> Bool {
         guard lineChanged,
+              !hasUsableSchedule,
               timeSinceLastSend.isFinite,
               timeSinceLastSend >= minimumInterval,
               sendsInLastMinute >= 0 else {
