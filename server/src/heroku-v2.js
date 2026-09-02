@@ -576,7 +576,8 @@ async function register(body, installation, runtime, request, response) {
 async function heartbeat(body, installation, runtime, response) {
   if (!isObject(body) || !["active", "none", "dismissed"].includes(body.activityState) ||
       !validNumber(body.sentAtMs) || !validNumber(body.localRevision) ||
-      !validNumber(body.lyricOffsetMs) || !validSchemaVersion(body.clientSchemaVersion)) {
+      !validNumber(body.lyricOffsetMs) || !validSchemaVersion(body.clientSchemaVersion) ||
+      (body.phoneReady !== undefined && typeof body.phoneReady !== "boolean")) {
     return writeJSON(response, 400, { error: "invalid heartbeat payload" });
   }
   const current = await runtime.store.getInstallation(installation.id);
@@ -587,6 +588,8 @@ async function heartbeat(body, installation, runtime, response) {
   } catch (error) {
     return writeJSON(response, 400, { error: error.message });
   }
+  const phoneReady = body.phoneReady !== false;
+  if (!phoneReady) phoneContentState = null;
   const incomingAt = numberOr(body.sentAtMs, Date.now());
   const oldAt = numberOr(oldState.phoneGeneratedAtMs, 0);
   const oldRevision = numberOr(oldState.phoneRevision, 0);
@@ -603,13 +606,14 @@ async function heartbeat(body, installation, runtime, response) {
   const phoneSchedule = phoneContentState?.scheduledLinesV2 ?? [];
   const state = {
     ...oldState,
-    phoneLeaseExpiresAt: Date.now() + PHONE_LEASE_MS,
-    currentOwner: "phone",
-    lastUpdateOwner: "phone",
+    phoneLeaseExpiresAt: phoneReady ? Date.now() + PHONE_LEASE_MS : 0,
+    currentOwner: phoneReady ? "phone" : "server",
+    lastUpdateOwner: phoneReady ? "phone" : (oldState.lastUpdateOwner ?? "server"),
+    phoneWriterReady: phoneReady,
     phoneActivityState: body.activityState,
     phoneRevision: numberOr(body.localRevision, 0),
     phoneGeneratedAtMs: incomingAt,
-    phoneTrackID: clean(body.trackID),
+    phoneTrackID: phoneReady ? clean(body.trackID) : null,
     clientSchemaVersion: numericVersion(body.clientSchemaVersion),
     lyricOffsetMs: numberOr(body.lyricOffsetMs, 0),
     autoStartEnabled: body.autoStartEnabled !== false,
@@ -642,11 +646,14 @@ async function heartbeat(body, installation, runtime, response) {
     await runtime.store.deleteActivityToken(installation.id, "update");
   }
   state.serverRevision = numberOr(state.serverRevision, 0) + 1;
-  await runtime.store.updateInstallation(installation.id, { state, nextPollAt: new Date(Date.now() + 1_000).toISOString() });
+  await runtime.store.updateInstallation(installation.id, {
+    state,
+    nextPollAt: new Date(Date.now() + (phoneReady ? 1_000 : 0)).toISOString(),
+  });
   return writeJSON(response, 200, {
     ok: true,
     accepted: true,
-    writer: "phone",
+    writer: owner(state),
     leaseExpiresAt: state.phoneLeaseExpiresAt,
     serverRevision: state.serverRevision,
     playbackSessionDismissed: state.playbackSessionDismissed === true,
@@ -768,6 +775,23 @@ function normalizePhoneContentState(raw, expectedTrackID) {
   if (encodedSize > 3_500) throw new Error("contentState is too large");
   const trackID = clean(raw.trackID);
   const expected = clean(expectedTrackID);
+  const loadingWithoutTrack = !trackID && !expected && [
+    "Finding lyrics…", "Finding lyrics...",
+    "Waiting for Spotify playback…", "Waiting for Spotify playback...",
+    "Connecting to Spotify…", "Connecting to Spotify...",
+  ].includes(raw.currentLine);
+  if (loadingWithoutTrack) {
+    if (numericVersion(raw.schemaVersion) !== 2 ||
+        typeof raw.generatedAtEpoch !== "number" || !Number.isFinite(raw.generatedAtEpoch) ||
+        typeof raw.revision !== "number" || !Number.isFinite(raw.revision) ||
+        typeof raw.trackTitle !== "string" || typeof raw.artistName !== "string" ||
+        typeof raw.currentLine !== "string" || typeof raw.isPlaying !== "boolean") {
+      throw new Error("contentState schema is invalid");
+    }
+    // Build 46 attached its metadata-free bootstrap state. Keep the heartbeat
+    // and token valid, but let the server build the canonical Spotify state.
+    return null;
+  }
   if (!trackID || (expected && trackID !== expected)) {
     throw new Error("contentState track does not match heartbeat");
   }

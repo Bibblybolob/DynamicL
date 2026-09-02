@@ -223,9 +223,9 @@ final class SyncServerClient {
         }
     }
 
-    /// Renews the phone's writer lease. If this call stops because iOS
-    /// suspends the app or the local poll loop dies, the server takes over
-    /// after 15 seconds.
+    /// Renews the phone's writer lease while local Spotify data is fresh.
+    /// An unhealthy phone sends one explicit yield instead of silently
+    /// keeping an old lease alive. This lets the server poll immediately.
     func heartbeat(
         activityState: SyncActivityState,
         trackID: String?,
@@ -238,12 +238,11 @@ final class SyncServerClient {
         contentState: LyricsActivityAttributes.ContentState? = nil,
         force: Bool = false
     ) {
-        // An explicit local end or dismissal must still reach the server during
-        // a Spotify or network failure. Without this exception, disabling Live
-        // Activity while the poller is unhealthy leaves the server's APNs route
-        // alive until its lease expires, which can keep a stale card on screen.
-        // The pending flag is cleared after one accepted heartbeat below.
-        guard healthy || pendingActivityEnd else { return }
+        // A pending end always yields ownership. A normal unhealthy heartbeat
+        // also reaches the server so it can clear the phone lease immediately.
+        // Waiting for the old 15-second lease made a stalled Spotify request
+        // look like a frozen Live Activity.
+        let phoneReady = healthy && !pendingActivityEnd
         lastLyricOffsetMs = Int((lyricOffset * 1_000).rounded())
         lastAlbumDominantRGB = albumDominantRGB
         self.requiresUserStart = requiresUserStart
@@ -255,8 +254,13 @@ final class SyncServerClient {
                 || pushToStartToken?.isEmpty == false
                 || pendingActivityEnd else { return }
         let phoneContentObject: [String: Any]? = {
-            guard let state = contentState?.compacted(),
-                  state.trackID == trackID,
+            guard phoneReady,
+                  let heartbeatTrackID = trackID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !heartbeatTrackID.isEmpty,
+                  let state = contentState?.compacted(),
+                  let contentTrackID = state.trackID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !contentTrackID.isEmpty,
+                  contentTrackID == heartbeatTrackID,
                   let encoded = try? JSONEncoder().encode(state),
                   encoded.count <= 3_500,
                   let object = try? JSONSerialization.jsonObject(with: encoded)
@@ -279,6 +283,7 @@ final class SyncServerClient {
                 "lyricOffsetMs": self.lastLyricOffsetMs,
                 "autoStartEnabled": autoStartEnabled,
                 "requiresUserStart": self.requiresUserStart,
+                "phoneReady": phoneReady,
             ]
             let pendingGeneration = self.pendingActivityEnd
                 ? self.activityEndGeneration
@@ -297,7 +302,7 @@ final class SyncServerClient {
             else if activityState == .none, let activityEndToken = self.activityEndToken {
                 body["updateToken"] = activityEndToken
             }
-            if let trackID { body["trackID"] = trackID }
+            if phoneReady, let trackID { body["trackID"] = trackID }
             if let phoneContentObject { body["contentState"] = phoneContentObject }
 
             var request = URLRequest(url: url)
@@ -323,7 +328,12 @@ final class SyncServerClient {
                     let writer = object["writer"] as? String ?? "phone"
                     DiagnosticsLog.append("sync: heartbeat ok writer=\(writer)")
                 } else {
-                    DiagnosticsLog.append("sync: heartbeat HTTP \(code)")
+                    let errorMessage = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["error"] as? String
+                    if let errorMessage, !errorMessage.isEmpty {
+                        DiagnosticsLog.append("sync: heartbeat HTTP \(code) \(errorMessage)")
+                    } else {
+                        DiagnosticsLog.append("sync: heartbeat HTTP \(code)")
+                    }
                 }
             } catch {
                 DiagnosticsLog.append("sync: heartbeat failed")

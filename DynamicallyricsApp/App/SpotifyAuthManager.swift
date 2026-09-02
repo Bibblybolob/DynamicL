@@ -13,6 +13,19 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
 
     @ObservationIgnored private var webSession: ASWebAuthenticationSession?
     @ObservationIgnored private var refreshTask: Task<String, Error>?
+    /// Token exchange uses its own bounded session. A stalled refresh must not
+    /// hold every later player request behind one shared URLSession task.
+    @ObservationIgnored private var tokenSession = SpotifyAuthManager.makeTokenSession()
+
+    private static func makeTokenSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForResource = 10
+        configuration.waitsForConnectivity = false
+        configuration.httpMaximumConnectionsPerHost = 1
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }
 
     /// A Spotify connection is still usable when the short-lived access token
     /// is gone or expired. The refresh token is the durable connection state.
@@ -41,6 +54,8 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
     func disconnect() {
         refreshTask?.cancel()
         refreshTask = nil
+        tokenSession.invalidateAndCancel()
+        tokenSession = Self.makeTokenSession()
         accessToken = nil
         refreshToken = nil
         tokenExpiresAt = nil
@@ -113,6 +128,17 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         KeychainStore.set(nil, forKey: "token_expiry")
     }
 
+    /// Cancels only an in-flight network refresh. The durable refresh token
+    /// remains in Keychain so the next poll can retry without asking the user
+    /// to sign in again.
+    func recoverFromNetworkTimeout() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        tokenSession.invalidateAndCancel()
+        tokenSession = Self.makeTokenSession()
+        DiagnosticsLog.append("Spotify token session reset")
+    }
+
     private func authorize(url: URL, expectedState: String) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: SpotifyConfig.redirectURI.scheme) { callbackURL, error in
@@ -164,7 +190,7 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         ]
         request.httpBody = formEncode(body).data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await tokenSession.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw SpotifyAuthError.tokenExchange("HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
         }
@@ -186,7 +212,14 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         ]
         request.httpBody = formEncode(body).data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        DiagnosticsLog.append("Spotify token refresh started")
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await tokenSession.data(for: request)
+        } catch {
+            DiagnosticsLog.append("Spotify token refresh failed: \(error.localizedDescription)")
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else {
             throw SpotifyAuthError.tokenExchange("invalid response")
         }
@@ -201,6 +234,7 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         }
         let tokens = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
         store(tokens: tokens, keepingRefreshToken: refresh)
+        DiagnosticsLog.append("Spotify token refresh completed")
         return tokens.accessToken
     }
 

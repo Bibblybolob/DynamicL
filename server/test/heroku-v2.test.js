@@ -176,6 +176,74 @@ test("heartbeat rejects a completed state for a different track", async () => {
   });
 });
 
+test("a metadata-free loading heartbeat remains valid", async () => {
+  await withServer(async base => {
+    const registered = await json(`${base}/register`, {
+      method: "POST",
+      body: JSON.stringify({
+        updateToken: "0123456789abcdef0123456789abcdef",
+        spotifyRefreshToken: "refresh-token-123",
+        clientSchemaVersion: 2,
+      }),
+    });
+    const result = await json(`${base}/heartbeat`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${registered.body.authToken}` },
+      body: JSON.stringify({
+        activityState: "active",
+        sentAtMs: Date.now(),
+        localRevision: 1,
+        clientSchemaVersion: 2,
+        lyricOffsetMs: 0,
+        contentState: {
+          schemaVersion: 2,
+          revision: 1,
+          generatedAtEpoch: Date.now() / 1_000,
+          trackTitle: "OpenLyrics",
+          artistName: "Spotify",
+          currentLine: "Waiting for Spotify playback…",
+          isPlaying: false,
+        },
+      }),
+    });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.body.accepted, true);
+    assert.equal(result.body.contentAccepted, false);
+  });
+});
+
+test("an unhealthy phone yields its writer lease immediately", async () => {
+  await withServer(async base => {
+    const registered = await json(`${base}/register`, {
+      method: "POST",
+      body: JSON.stringify({
+        updateToken: "0123456789abcdef0123456789abcdef",
+        spotifyRefreshToken: "refresh-token-123",
+        clientSchemaVersion: 2,
+      }),
+    });
+    const auth = { authorization: `Bearer ${registered.body.authToken}` };
+    const result = await json(`${base}/heartbeat`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
+        activityState: "active",
+        sentAtMs: Date.now(),
+        localRevision: 2,
+        clientSchemaVersion: 2,
+        lyricOffsetMs: 0,
+        phoneReady: false,
+      }),
+    });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.body.writer, "server");
+    assert.equal(result.body.leaseExpiresAt, 0);
+
+    const status = await json(`${base}/status`, { headers: auth });
+    assert.equal(status.body.currentOwner, "server");
+  });
+});
+
 test("a replacement activity clears an obsolete server dismissal", async () => {
   await withServer(async base => {
     const oldToken = "0123456789abcdef0123456789abcdef";

@@ -165,6 +165,7 @@ final class SpotifyProvider: PlaybackProvider {
         if !completed, ownsPoll(generation) {
             lastPollSummary = "Spotify check timed out. Retrying…"
             DiagnosticsLog.append("Spotify playback check timed out")
+            auth.recoverFromNetworkTimeout()
             resetPlayerSession()
         }
     }
