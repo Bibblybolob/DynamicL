@@ -27,6 +27,7 @@ final class AppModel {
     private var lastLineIndex: Int?
     private var pausedAt: Date?
     private var stoppedAt: Date?
+    @ObservationIgnored private var confirmedStopTracker = ConfirmedStopTransitionTracker()
     private var widgetPausedAt: Date?
     private var lastPublishedWidgetKey: String?
     @ObservationIgnored private var widgetCommandTask: Task<Void, Never>?
@@ -1114,17 +1115,26 @@ final class AppModel {
         }
         guard auth.isConnected || demoActive else { return }
 
+        let isConfirmedStopped = status?.state == .stopped
+            && provider?.isPlaybackConfirmedStopped == true
+        let shouldHandleConfirmedStop = confirmedStopTracker.observe(
+            isConfirmedStopped: isConfirmedStopped
+        )
+
         switch status?.state {
         case .stopped:
             // SpotifyProvider requires two independent stopped samples before
             // it clears the active item. Keep the Activity through one 204 so
             // skip transitions and network gaps do not remove artwork.
-            if provider?.isPlaybackConfirmedStopped == true {
-                if liveActivity.isRunning { liveActivity.end() }
-                liveActivity.resetDismissalForNewPlaybackSession()
-                SyncServerClient.shared.resetDismissalForNewSession()
-                stoppedAt = nil
-                pausedAt = nil
+            if isConfirmedStopped {
+                if shouldHandleConfirmedStop {
+                    if liveActivity.isRunning { liveActivity.end() }
+                    liveActivity.resetDismissalForNewPlaybackSession()
+                    SyncServerClient.shared.resetDismissalForNewSession()
+                    stoppedAt = nil
+                    pausedAt = nil
+                    DiagnosticsLog.append("confirmed stop handled once")
+                }
             } else if stoppedAt == nil {
                 stoppedAt = .now
             }

@@ -61,3 +61,24 @@ public enum PlaybackTransitionPolicy {
         return playedAt >= estimatedCurrentStart.addingTimeInterval(-startTolerance)
     }
 }
+
+/// Tracks the edge from an active or uncertain player state to a confirmed
+/// stop. A provider can report the same stopped state on every polling tick,
+/// but stop side effects must run only once for each playback session.
+public struct ConfirmedStopTransitionTracker: Sendable {
+    public private(set) var didHandleCurrentStop = false
+
+    public init() {}
+
+    /// Returns true once when playback becomes confirmed stopped. Observing
+    /// any other state arms the tracker for the next playback session.
+    public mutating func observe(isConfirmedStopped: Bool) -> Bool {
+        guard isConfirmedStopped else {
+            didHandleCurrentStop = false
+            return false
+        }
+        guard !didHandleCurrentStop else { return false }
+        didHandleCurrentStop = true
+        return true
+    }
+}

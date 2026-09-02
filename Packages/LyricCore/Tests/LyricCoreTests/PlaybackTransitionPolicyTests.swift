@@ -76,4 +76,21 @@ struct PlaybackTransitionPolicyTests {
             currentTrackPosition: 0
         ))
     }
+
+    @Test
+    func confirmedStopRunsSideEffectsOnlyOncePerPlaybackSession() {
+        var tracker = ConfirmedStopTransitionTracker()
+
+        let firstStop = tracker.observe(isConfirmedStopped: true)
+        let repeatedStop = tracker.observe(isConfirmedStopped: true)
+        let thirdStopTick = tracker.observe(isConfirmedStopped: true)
+        #expect(firstStop)
+        #expect(!repeatedStop)
+        #expect(!thirdStopTick)
+
+        let playbackResumed = tracker.observe(isConfirmedStopped: false)
+        let nextStop = tracker.observe(isConfirmedStopped: true)
+        #expect(!playbackResumed)
+        #expect(nextStop)
+    }
 }

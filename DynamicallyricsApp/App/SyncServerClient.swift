@@ -166,9 +166,16 @@ final class SyncServerClient {
     }
 
     func resetDismissalForNewSession() {
+        // Make repeated reset requests idempotent. Only the first request in a
+        // recovery cycle can bypass the normal five-second heartbeat limit.
+        // The server response clears dismissalResetPending and arms the next
+        // legitimate playback-session reset.
+        let needsImmediateHeartbeat = serverSessionDismissed || !dismissalResetPending
         serverSessionDismissed = false
         dismissalResetPending = true
-        lastHeartbeatAt = .distantPast
+        if needsImmediateHeartbeat {
+            lastHeartbeatAt = .distantPast
+        }
     }
 
     func markFirstUseCompleted() {

@@ -7,8 +7,8 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current beta build is version 1.2.0, build 41.
-- Build 41 is a private beta build.
+- The current beta build is version 1.2.0, build 42.
+- Build 42 is a private beta build.
 - TestFlight distributes this build for beta testing.
 
 | Feature | Status |
@@ -28,7 +28,11 @@ Development continues.
 
 ## Current release candidate
 
-Build 41, version 1.2.0, is a private beta and includes these changes:
+Build 42, version 1.2.0, is a private beta and includes these changes:
+
+- The app handles a confirmed Spotify stop one time for each playback session.
+- Repeated stopped-state checks cannot bypass the five-second heartbeat limit.
+- Idle playback does not send a continuous heartbeat request loop to the sync server.
 
 - The Spotify poller waits between requests and does not enter a request loop.
 - Repeated play, pause, and skip events create only one immediate Spotify check.
