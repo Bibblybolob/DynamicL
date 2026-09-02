@@ -581,6 +581,12 @@ async function heartbeat(body, installation, runtime, response) {
   }
   const current = await runtime.store.getInstallation(installation.id);
   const oldState = current?.state ?? {};
+  let phoneContentState = null;
+  try {
+    phoneContentState = normalizePhoneContentState(body.contentState, body.trackID);
+  } catch (error) {
+    return writeJSON(response, 400, { error: error.message });
+  }
   const incomingAt = numberOr(body.sentAtMs, Date.now());
   const oldAt = numberOr(oldState.phoneGeneratedAtMs, 0);
   const oldRevision = numberOr(oldState.phoneRevision, 0);
@@ -594,6 +600,7 @@ async function heartbeat(body, installation, runtime, response) {
       serverRevision: numberOr(oldState.serverRevision, 0),
     });
   }
+  const phoneSchedule = phoneContentState?.scheduledLinesV2 ?? [];
   const state = {
     ...oldState,
     phoneLeaseExpiresAt: Date.now() + PHONE_LEASE_MS,
@@ -607,6 +614,15 @@ async function heartbeat(body, installation, runtime, response) {
     lyricOffsetMs: numberOr(body.lyricOffsetMs, 0),
     autoStartEnabled: body.autoStartEnabled !== false,
     ...(Object.hasOwn(body, "requiresUserStart") ? { requiresUserStart: body.requiresUserStart === true } : {}),
+    ...(phoneContentState ? {
+      activeContentState: phoneContentState,
+      lyricStatus: phoneLyricStatus(phoneContentState),
+      lastPayloadSize: Buffer.byteLength(JSON.stringify(phoneContentState)),
+      lastScheduleCount: phoneSchedule.length,
+      lastScheduleHorizonEpoch: phoneSchedule.at(-1)?.endDateEpoch ??
+        phoneSchedule.at(-1)?.dateEpoch ?? null,
+      phoneContentStateAtMs: incomingAt,
+    } : {}),
   };
   if (body.activityState === "dismissed") {
     state.playbackSessionDismissed = true;
@@ -635,6 +651,7 @@ async function heartbeat(body, installation, runtime, response) {
     serverRevision: state.serverRevision,
     playbackSessionDismissed: state.playbackSessionDismissed === true,
     dismissalSource: state.dismissalSource ?? null,
+    contentAccepted: Boolean(phoneContentState),
   });
 }
 
@@ -742,6 +759,49 @@ async function authorizedInstallation(request, runtime, isRegister) {
   const installation = await runtime.store.findByAuthHash(hashToken(token));
   if (installation) return installation;
   throw httpError(401, "unauthorized");
+}
+
+function normalizePhoneContentState(raw, expectedTrackID) {
+  if (raw === undefined || raw === null) return null;
+  if (!isObject(raw)) throw new Error("contentState must be an object");
+  const encodedSize = Buffer.byteLength(JSON.stringify(raw));
+  if (encodedSize > 3_500) throw new Error("contentState is too large");
+  const trackID = clean(raw.trackID);
+  const expected = clean(expectedTrackID);
+  if (!trackID || (expected && trackID !== expected)) {
+    throw new Error("contentState track does not match heartbeat");
+  }
+  if (numericVersion(raw.schemaVersion) !== 2 ||
+      typeof raw.generatedAtEpoch !== "number" || !Number.isFinite(raw.generatedAtEpoch) ||
+      typeof raw.revision !== "number" || !Number.isFinite(raw.revision) ||
+      typeof raw.trackTitle !== "string" || typeof raw.artistName !== "string" ||
+      typeof raw.currentLine !== "string" || typeof raw.isPlaying !== "boolean") {
+    throw new Error("contentState schema is invalid");
+  }
+  const schedule = raw.scheduledLinesV2 ?? [];
+  if (!Array.isArray(schedule) || schedule.length > 64 || schedule.some(line =>
+    !isObject(line) || !validNumber(line.dateEpoch) ||
+    typeof line.text !== "string" || line.text.length > 500 ||
+    (line.endDateEpoch != null && !validNumber(line.endDateEpoch)))) {
+    throw new Error("contentState schedule is invalid");
+  }
+  return {
+    ...raw,
+    schemaVersion: 2,
+    source: "phone",
+    trackID,
+    scheduledLinesV2: schedule,
+  };
+}
+
+function phoneLyricStatus(contentState) {
+  const line = contentState.currentLine.trim();
+  if (["Finding lyrics…", "Finding lyrics...", "Waiting for Spotify playback…",
+       "Waiting for Spotify playback...", "Connecting to Spotify…",
+       "Connecting to Spotify..."].includes(line)) return "pending";
+  if (!contentState.scheduledLinesV2?.length &&
+      (line === "♪" || line === "No lyrics for this track")) return "missing";
+  return "ready";
 }
 
 function normalizePath(path) {

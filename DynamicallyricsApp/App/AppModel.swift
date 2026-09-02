@@ -639,6 +639,7 @@ final class AppModel {
                 requiresUserStart: false
             )
         )
+        latestPhoneContentState = state
         DiagnosticsLog.append("LA bootstrap requested")
         if forceRestart {
             liveActivity.restartForRecovery(state: state)
@@ -672,7 +673,10 @@ final class AppModel {
             healthy: healthy,
             autoStartEnabled: lockScreenLyricsEnabled,
             albumDominantRGB: albumAccent.map { [$0.r, $0.g, $0.b] },
-            requiresUserStart: false
+            requiresUserStart: false,
+            contentState: liveActivity.isRunning
+                && latestPhoneContentState?.trackID == provider.lastTrackID
+                ? latestPhoneContentState : nil
         )
     }
 
@@ -1111,6 +1115,7 @@ final class AppModel {
         // disable still ends it immediately.
         guard lockScreenLyricsEnabled else {
             if liveActivity.isRunning { liveActivity.end() }
+            latestPhoneContentState = nil
             return
         }
         guard auth.isConnected || demoActive else { return }
@@ -1131,6 +1136,10 @@ final class AppModel {
                     if liveActivity.isRunning { liveActivity.end() }
                     liveActivity.resetDismissalForNewPlaybackSession()
                     SyncServerClient.shared.resetDismissalForNewSession()
+                    latestPhoneContentState = nil
+                    placeholderRecoveryTrackKey = nil
+                    placeholderRecoveryAttempts = 0
+                    lastPlaceholderRecoveryAttemptAt = nil
                     stoppedAt = nil
                     pausedAt = nil
                     DiagnosticsLog.append("confirmed stop handled once")
@@ -1210,6 +1219,10 @@ final class AppModel {
                     requiresUserStart: false
                 )
             }())
+            latestPhoneContentState = placeholderState
+            placeholderRecoveryTrackKey = nil
+            placeholderRecoveryAttempts = 0
+            lastPlaceholderRecoveryAttemptAt = nil
 
             var startedNow = false
             if !liveActivity.isRunning {
@@ -1264,6 +1277,8 @@ final class AppModel {
             guard now.timeIntervalSince(lastLAStartAttemptAt ?? .distantPast) >= 1 else { return }
             lastLAStartAttemptAt = now
             liveActivity.start(state: startState)
+            latestPhoneContentState = startState
+            SyncServerClient.shared.requestImmediateHeartbeat()
             lastLineIndex = lyrics.currentIndex
             lastLAUpdateAt = .now
             lastLASentIsPlaying = startState.isPlaying
@@ -1293,6 +1308,23 @@ final class AppModel {
         let playChanged = targetState.isPlaying != lastLASentIsPlaying
         let artworkChanged = artworkReady != lastLAArtworkReady
         let now = Date.now
+        if placeholderRecoveryTrackKey != trackKey {
+            placeholderRecoveryTrackKey = trackKey
+            placeholderRecoveryAttempts = 0
+            lastPlaceholderRecoveryAttemptAt = nil
+        }
+        let placeholderStillApplied = liveActivity.isShowingLoadingPlaceholder
+        if !placeholderStillApplied {
+            placeholderRecoveryAttempts = 0
+            lastPlaceholderRecoveryAttemptAt = nil
+        }
+        let placeholderRecovery = LiveActivityUpdatePolicy.shouldRetryLoadingPlaceholder(
+            isPlaceholderApplied: placeholderStillApplied,
+            attempts: placeholderRecoveryAttempts,
+            timeSinceLastAttempt: now.timeIntervalSince(
+                lastPlaceholderRecoveryAttemptAt ?? .distantPast
+            )
+        )
         // A style or album-color change re-renders immediately so in-app
         // appearance picks land within one tick.
         let accentChanged = targetState.albumDominantRGB != lastSentAccent
@@ -1310,6 +1342,7 @@ final class AppModel {
         }()
         let urgent = trackChanged || playChanged || artworkChanged || accentChanged
             || styleChanged || offsetChanged || anchorChanged || playbackEventChanged
+            || placeholderRecovery
         let sinceLastSend = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast)
         let remainingSchedule = lastSentLASchedule.filter { $0.date > now }
         let targetSchedule = targetState.resolvedScheduledLines
@@ -1358,6 +1391,11 @@ final class AppModel {
                 "la direct line update: index=\(lyrics.currentIndex.map { String($0) } ?? "-") fallback=\(targetSchedule.count)"
             )
         }
+        if placeholderRecovery {
+            DiagnosticsLog.append(
+                "la loading-state recovery attempt \(placeholderRecoveryAttempts + 1)"
+            )
+        }
         if urgent || scheduleRefill || lineSend || keepAliveSend || reconciling {
             if urgent {
                 liveActivity.interruptPendingUpdates(reason: "material playback change")
@@ -1370,6 +1408,15 @@ final class AppModel {
                 state: sentState,
                 priority: updatePriority
             )
+            latestPhoneContentState = sentState
+            if placeholderStillApplied {
+                placeholderRecoveryAttempts += 1
+                lastPlaceholderRecoveryAttemptAt = now
+                // Give the same completed state to the APNs worker. If iOS
+                // drops the local update, the server can replace the loading
+                // card without waiting for another lyric lookup.
+                SyncServerClient.shared.requestImmediateHeartbeat()
+            }
             lastLAUpdateAt = now
             lastLineIndex = lyrics.currentIndex
             lastLASentIsPlaying = sentState.isPlaying
@@ -1425,6 +1472,13 @@ final class AppModel {
     @ObservationIgnored private var lastAppliedLAProgressStartEpoch: TimeInterval?
     @ObservationIgnored private var lastAppliedPlaybackChangeAt: Date?
     @ObservationIgnored private var localLARevision: Int64 = 0
+    /// Last complete state prepared by the phone. Heartbeats can relay this
+    /// exact bounded payload through APNs when a local ActivityKit update is
+    /// not acknowledged.
+    @ObservationIgnored private var latestPhoneContentState: LyricsActivityAttributes.ContentState?
+    @ObservationIgnored private var placeholderRecoveryTrackKey: String?
+    @ObservationIgnored private var placeholderRecoveryAttempts = 0
+    @ObservationIgnored private var lastPlaceholderRecoveryAttemptAt: Date?
     /// Starting an Activity can fail while iOS is changing scene state. Do not
     /// retry on every 250 ms model tick because that can create a start storm.
     @ObservationIgnored private var lastLAStartAttemptAt: Date?

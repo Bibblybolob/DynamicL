@@ -81,10 +81,31 @@ test("heartbeat rejects stale phone state and command IDs are idempotent", async
         localRevision: 8,
         clientSchemaVersion: 2,
         lyricOffsetMs: 0,
+        trackID: "track-1",
+        contentState: {
+          schemaVersion: 2,
+          source: "phone",
+          revision: 8,
+          generatedAtEpoch: 1_700_000_000,
+          trackID: "track-1",
+          trackTitle: "Living Room",
+          artistName: "Not For Radio",
+          currentLine: "And it goes around like this",
+          nextLine: "Next line",
+          isPlaying: true,
+          scheduledLinesV2: [
+            { dateEpoch: 1_700_000_004, endDateEpoch: 1_700_000_008, text: "Next line" },
+          ],
+        },
       }),
     });
     assert.equal(heartbeat.response.status, 200);
     assert.equal(heartbeat.body.accepted, true);
+    assert.equal(heartbeat.body.contentAccepted, true);
+    const status = await json(`${base}/status`, { headers: auth });
+    assert.equal(status.body.schedule.count, 1);
+    assert.equal(status.body.schedule.horizonEpoch, 1_700_000_008);
+    assert.equal(status.body.payloadSize > 0, true);
     const stale = await json(`${base}/heartbeat`, {
       method: "POST",
       headers: auth,
@@ -115,6 +136,43 @@ test("heartbeat rejects stale phone state and command IDs are idempotent", async
     });
     assert.equal(first.response.status, 202);
     assert.deepEqual(second.body, first.body);
+  });
+});
+
+test("heartbeat rejects a completed state for a different track", async () => {
+  await withServer(async base => {
+    const registered = await json(`${base}/register`, {
+      method: "POST",
+      body: JSON.stringify({
+        updateToken: "0123456789abcdef0123456789abcdef",
+        spotifyRefreshToken: "refresh-token-123",
+        clientSchemaVersion: 2,
+      }),
+    });
+    const result = await json(`${base}/heartbeat`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${registered.body.authToken}` },
+      body: JSON.stringify({
+        activityState: "active",
+        sentAtMs: Date.now(),
+        localRevision: 1,
+        clientSchemaVersion: 2,
+        lyricOffsetMs: 0,
+        trackID: "track-new",
+        contentState: {
+          schemaVersion: 2,
+          revision: 1,
+          generatedAtEpoch: Date.now() / 1_000,
+          trackID: "track-old",
+          trackTitle: "Old song",
+          artistName: "Artist",
+          currentLine: "Old lyric",
+          isPlaying: true,
+        },
+      }),
+    });
+    assert.equal(result.response.status, 400);
+    assert.match(result.body.error, /does not match/);
   });
 });
 

@@ -235,6 +235,7 @@ final class SyncServerClient {
         autoStartEnabled: Bool,
         albumDominantRGB: [Double]? = nil,
         requiresUserStart: Bool = false,
+        contentState: LyricsActivityAttributes.ContentState? = nil,
         force: Bool = false
     ) {
         // An explicit local end or dismissal must still reach the server during
@@ -253,6 +254,17 @@ final class SyncServerClient {
         guard updateToken?.isEmpty == false
                 || pushToStartToken?.isEmpty == false
                 || pendingActivityEnd else { return }
+        let phoneContentObject: [String: Any]? = {
+            guard let state = contentState?.compacted(),
+                  state.trackID == trackID,
+                  let encoded = try? JSONEncoder().encode(state),
+                  encoded.count <= 3_500,
+                  let object = try? JSONSerialization.jsonObject(with: encoded)
+                    as? [String: Any] else {
+                return nil
+            }
+            return object
+        }()
         lastHeartbeatAt = now
 
         heartbeatTask = Task { [weak self] in
@@ -286,6 +298,7 @@ final class SyncServerClient {
                 body["updateToken"] = activityEndToken
             }
             if let trackID { body["trackID"] = trackID }
+            if let phoneContentObject { body["contentState"] = phoneContentObject }
 
             var request = URLRequest(url: url)
             request.httpMethod = "POST"

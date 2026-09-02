@@ -29,6 +29,10 @@ final class LiveActivityController {
     private(set) var isRunning = false
     private(set) var lastErrorText: String?
     private(set) var wasDismissed: Bool
+    /// The state that ActivityKit most recently reports for the current card.
+    /// This is intentionally separate from the state that the app attempted
+    /// to send. ActivityKit can discard an older timestamp without throwing.
+    private(set) var lastAppliedState: LyricsActivityAttributes.ContentState?
     /// The app owns the local-session flag, but the controller is the first
     /// component that knows when iOS ends or dismisses an Activity. Notify the
     /// app so the next Activity can require the same explicit handoff again.
@@ -106,6 +110,19 @@ final class LiveActivityController {
     /// process relaunch without making the user press Show Lyrics again.
     var requiresUserStart: Bool {
         activity?.content.state.requiresUserStart == true
+    }
+
+    /// True while the current card still shows a temporary loading message
+    /// for this track. AppModel uses this acknowledgement to retry the final
+    /// lyric payload instead of assuming that an awaited update was visible.
+    var isShowingLoadingPlaceholder: Bool {
+        guard let state = activity?.content.state ?? lastAppliedState else {
+            return false
+        }
+        // A placeholder from either the current or previous track must be
+        // replaced. Restricting this check to matching track IDs could strand
+        // an old loading card after a rapid skip.
+        return LiveActivityUpdatePolicy.isLoadingPlaceholder(state.currentLine)
     }
 
     /// Stable ActivityKit identity used to bind the explicit first-use
@@ -196,8 +213,7 @@ final class LiveActivityController {
             }
             activity = created
             isRunning = true
-            lastSentTimestamp = state.generatedAtEpoch
-                .map(Date.init(timeIntervalSince1970:)) ?? .now
+            recordApplied(created.content.state)
             lastErrorText = nil
             startFailureCount = 0
             nextStartAttemptAt = .distantPast
@@ -256,6 +272,7 @@ final class LiveActivityController {
         isRunning = false
         isRecovering = true
         lastSentTimestamp = .distantPast
+        lastAppliedState = nil
         DiagnosticsLog.append("LA explicit restart requested")
 
         recoveryTask = Task { @MainActor [weak self] in
@@ -427,6 +444,10 @@ final class LiveActivityController {
         } else {
             await ref.update(content)
         }
+        // Read ActivityKit's canonical state after the await. This is the
+        // acknowledgement used by the placeholder recovery path. It also
+        // raises the timestamp floor if a server push won the race.
+        recordApplied(ref.content.state)
         updateInFlight = false
         // A new event may have arrived while ActivityKit processed the old
         // state. Do not clear or overwrite the newer pending state.
@@ -486,6 +507,7 @@ final class LiveActivityController {
         nonisolated(unsafe) let found = survivor
         activity = found
         isRunning = true
+        recordApplied(found.content.state)
         if found.content.state.requiresUserStart != true {
             SharedNowPlaying.markLiveActivityFirstUseCompleted(for: found.id)
         }
@@ -521,9 +543,10 @@ final class LiveActivityController {
                 }
             }
         }
-        contentUpdateTask = Task {
+        contentUpdateTask = Task { [weak self] in
             for await content in observed.contentUpdates {
                 let state = content.state
+                self?.recordApplied(state)
                 let delay = state.generatedAtEpoch.map {
                     max(0, Date.now.timeIntervalSince1970 - $0)
                 }
@@ -548,6 +571,7 @@ final class LiveActivityController {
         activity = nil
         isRunning = false
         lastSentTimestamp = .distantPast
+        lastAppliedState = nil
         setDismissed(dismissed)
         SharedNowPlaying.resetLiveActivityFirstUse()
         SyncServerClient.shared.resetFirstUseGate()
@@ -590,6 +614,8 @@ final class LiveActivityController {
             setDismissed(false)
             SharedNowPlaying.resetLiveActivityFirstUse()
             SyncServerClient.shared.resetFirstUseGate()
+            lastAppliedState = nil
+            lastSentTimestamp = .distantPast
             onActivityEnded?()
             SyncServerClient.shared.noteActivityEnded(dismissed: false)
             return
@@ -611,11 +637,24 @@ final class LiveActivityController {
         self.activity = nil
         isRunning = false
         lastSentTimestamp = .distantPast
+        lastAppliedState = nil
         setDismissed(false)
         SharedNowPlaying.resetLiveActivityFirstUse()
         SyncServerClient.shared.resetFirstUseGate()
         onActivityEnded?()
         SyncServerClient.shared.noteActivityEnded(dismissed: false)
+    }
+
+    /// Records the state that ActivityKit exposes, including remote APNs
+    /// updates. A later phone update must use a timestamp above this floor or
+    /// iOS can keep the server state and silently discard the phone state.
+    private func recordApplied(_ state: LyricsActivityAttributes.ContentState) {
+        lastAppliedState = state
+        guard let epoch = state.generatedAtEpoch, epoch.isFinite else { return }
+        lastSentTimestamp = max(
+            lastSentTimestamp,
+            Date(timeIntervalSince1970: epoch)
+        )
     }
 
     /// Keeps a user dismissal in force through track changes. A confirmed new

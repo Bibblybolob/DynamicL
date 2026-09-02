@@ -183,15 +183,25 @@ async function recoverPendingLyricsDuringPhoneLease(
   nowMs,
   options = {},
 ) {
-  const player = state.activeTrack;
+  const preparedState = state.activeContentState;
+  const realPlayer = state.activeTrack;
+  const player = realPlayer?.trackID ? realPlayer : preparedState?.trackID ? {
+    trackID: preparedState.trackID,
+    title: preparedState.trackTitle ?? "",
+    artist: preparedState.artistName ?? "",
+    albumImageURL: preparedState.albumImageURL ?? null,
+    isPlaying: preparedState.isPlaying === true,
+  } : null;
   if (!player?.trackID) return null;
   if (state.phoneTrackID && state.phoneTrackID !== player.trackID) return null;
-  const preparedState = state.activeContentState;
   const hasUnsentPreparedLyrics =
     ["ready", "missing"].includes(state.lyricStatus) &&
     preparedState?.trackID === player.trackID &&
     preparedLyricsNeedDelivery(state, preparedState);
   if (state.lyricStatus !== "pending" && !hasUnsentPreparedLyrics) return null;
+  // A pending placeholder still needs server-side lyric lookup metadata. A
+  // completed phone payload can be relayed without an earlier server poll.
+  if (state.lyricStatus === "pending" && !realPlayer?.trackID) return null;
 
   // Do not resolve lyrics until Apple has supplied an update token for the
   // remotely started Activity. Otherwise a successful lookup could be marked
@@ -207,7 +217,7 @@ async function recoverPendingLyricsDuringPhoneLease(
   if (state.lyricStatus === "pending") {
     const fetchImpl = options.fetchImpl ?? fetch;
     const lyricResult = await resolveLyricsForPlayer(
-      player,
+      realPlayer,
       installation,
       runtime,
       fetchImpl,
@@ -220,8 +230,8 @@ async function recoverPendingLyricsDuringPhoneLease(
     // A phone heartbeat can report a skip while lookup is running. Never put
     // lyrics from the old track into the new Activity.
     if (latestState.lyricStatus !== "pending" ||
-        latestPlayer?.trackID !== player.trackID ||
-        (latestState.phoneTrackID && latestState.phoneTrackID !== player.trackID) ||
+        latestPlayer?.trackID !== realPlayer.trackID ||
+        (latestState.phoneTrackID && latestState.phoneTrackID !== realPlayer.trackID) ||
         !await activityToken(latest, runtime, "update")) {
       await releaseClaim(latest, runtime, nowMs, latestState.phoneActivityState === "active");
       return { id: installation.id, skipped: "stale-lyric-recovery" };

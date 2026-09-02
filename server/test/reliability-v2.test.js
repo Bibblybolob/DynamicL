@@ -369,6 +369,85 @@ test("phone lease completes pending and prepared-but-unsent lyrics", async () =>
   assert.equal(apns[1].body.aps["content-state"].currentLine, "First line");
 });
 
+test("phone lease relays a completed phone state without a server player sample", async () => {
+  const encryptionKey = key();
+  const store = new MemoryStore();
+  const nowMs = 1_700_000_000_000;
+  const completedState = {
+    schemaVersion: 2,
+    source: "phone",
+    revision: 12,
+    generatedAtEpoch: nowMs / 1_000,
+    trackID: "track-phone",
+    trackTitle: "Living Room",
+    artistName: "Not For Radio",
+    albumImageURL: "https://images.test/living-room.jpg",
+    currentLine: "And it goes around like this",
+    nextLine: "Next line",
+    isPlaying: true,
+    scheduledLinesV2: [
+      {
+        dateEpoch: nowMs / 1_000 + 4,
+        endDateEpoch: nowMs / 1_000 + 8,
+        text: "Next line",
+      },
+    ],
+  };
+  const installation = await store.createInstallation({
+    id: "installation-phone-content",
+    authHash: "hash-phone-content",
+    refreshTokenCiphertext: sealForWorker("refresh-token", encryptionKey),
+    state: {
+      phoneLeaseExpiresAt: nowMs + 15_000,
+      phoneActivityState: "active",
+      phoneTrackID: "track-phone",
+      lyricStatus: "ready",
+      activeContentState: completedState,
+      lastUpdateOwner: "phone",
+      lastSentTrackID: "track-phone",
+      lastSentCurrentLine: "Finding lyrics…",
+      lastSentNextLine: null,
+      lastSentScheduleV2: [],
+      lastSentPlaying: true,
+      serverRevision: 4,
+    },
+  });
+  await store.upsertActivityToken(
+    installation.id,
+    "update",
+    sealForWorker("e".repeat(32), encryptionKey),
+    { environment: "production" },
+  );
+
+  const apns = [];
+  const runtime = {
+    env: {
+      APNS_KEY_P8: privateKey(),
+      APNS_KEY_ID: "KEYID123",
+      APNS_TEAM_ID: "TEAMID123",
+      APNS_HOST: "https://api.push.apple.com",
+    },
+    store,
+    encryptionKey,
+  };
+  const result = await pollInstallation(installation, runtime, {
+    nowMs,
+    fetchImpl: async (input, init = {}) => {
+      const url = String(input);
+      if (url.includes("api.push.apple.com")) {
+        apns.push({ body: JSON.parse(init.body), headers: init.headers });
+        return new Response(null, { status: 200 });
+      }
+      throw new Error(`phone content relay must not poll ${url}`);
+    },
+  });
+
+  assert.equal(result.completed, "pending-lyrics");
+  assert.equal(apns.length, 1);
+  assert.equal(apns[0].body.aps["content-state"].currentLine, completedState.currentLine);
+  assert.equal(apns[0].headers["apns-priority"], "10");
+});
+
 test("APNs retries Retry-After responses and returns a redacted delivery result", async () => {
   let attempts = 0;
   const result = await sendAPNs({
