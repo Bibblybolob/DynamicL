@@ -22,6 +22,11 @@ final class SpotifyProvider: PlaybackProvider {
     /// poisoning unrelated app traffic. The timeout path replaces this
     /// session before the next request.
     private var playerSession = SpotifyProvider.makePlayerSession()
+    /// Spotify supplies an absolute wait instruction after HTTP 429. Keep it
+    /// outside the request task so the 12-second transport watchdog cannot
+    /// cancel the delay and immediately issue another request.
+    private var rateLimitUntil: Date?
+    private static let rateLimitDefaultsKey = "spotify_rate_limit_until"
     /// Every scheduler restart owns a new generation. A request from a
     /// cancelled scheduler can still finish at the URLSession boundary; this
     /// value prevents that old response from overwriting a newer track,
@@ -37,6 +42,9 @@ final class SpotifyProvider: PlaybackProvider {
 
     init(auth: SpotifyAuthManager) {
         self.auth = auth
+        rateLimitUntil = UserDefaults.standard.object(
+            forKey: Self.rateLimitDefaultsKey
+        ) as? Date
     }
 
     func start() {
@@ -81,11 +89,13 @@ final class SpotifyProvider: PlaybackProvider {
                 let fast = self?.usesRapidProbe == true || self?.isStalledPause == true
                 let notPlaying = self?.status?.state != .playing
                 let aggressive = self?.aggressiveBackgroundMode == true
-                let interval = fast
+                let normalInterval = fast
                     ? 0.7
                     : aggressive
                         ? (notPlaying ? 0.8 : 1.0)
                         : (notPlaying ? 1.2 : 3.0)
+                let rateLimitDelay = self?.activeRateLimitRemaining() ?? 0
+                let interval = max(normalInterval, rateLimitDelay)
                 await self?.waitForNextPoll(
                     interval: .seconds(interval),
                     generation: generation
@@ -145,6 +155,12 @@ final class SpotifyProvider: PlaybackProvider {
         // Heartbeat for liveness checks: a fresh stamp at each iteration start.
         guard ownsPoll(generation) else { return }
         lastLoopActivityAt = .now
+        let rateLimitDelay = activeRateLimitRemaining()
+        if rateLimitDelay > 0 {
+            let seconds = Int(ceil(rateLimitDelay))
+            lastPollSummary = "Spotify is limiting requests. Retrying in \(seconds) seconds…"
+            return
+        }
         // A recovery burst is a bounded number of poll cycles, not a number
         // of successful HTTP responses. Network failures and Spotify 429s
         // must not leave the provider in rapid mode forever.
@@ -178,6 +194,10 @@ final class SpotifyProvider: PlaybackProvider {
     static let loopStaleThreshold: TimeInterval = 20
 
     var isLoopLikelyAlive: Bool {
+        if isPolling,
+           SpotifyRateLimitPolicy.remaining(until: rateLimitUntil) > 0 {
+            return true
+        }
         guard let last = lastLoopActivityAt else { return false }
         return Date.now.timeIntervalSince(last) < Self.loopStaleThreshold
     }
@@ -424,10 +444,7 @@ final class SpotifyProvider: PlaybackProvider {
                 lastPollSummary = "no active Spotify device (204)"
                 lastError = nil
             case 429:
-                let retryAfter = TimeInterval(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 30
-                // Capped: a long server-side nap must never deafen the loop to
-                // kicks/bursts — 15s still respects the server's signal.
-                try? await Task.sleep(for: .seconds(min(retryAfter, 15)))
+                applyRateLimit(http.value(forHTTPHeaderField: "Retry-After"))
             default:
                 throw LyricsLookupError(kind: .network("HTTP \(http.statusCode)"))
             }
@@ -461,6 +478,32 @@ final class SpotifyProvider: PlaybackProvider {
         let nsError = error as NSError
         return nsError.domain == NSURLErrorDomain
             && nsError.code == NSURLErrorCancelled
+    }
+
+    private func activeRateLimitRemaining(now: Date = .now) -> TimeInterval {
+        let remaining = SpotifyRateLimitPolicy.remaining(until: rateLimitUntil, now: now)
+        if remaining == 0, rateLimitUntil != nil {
+            rateLimitUntil = nil
+            UserDefaults.standard.removeObject(forKey: Self.rateLimitDefaultsKey)
+        }
+        return remaining
+    }
+
+    private func applyRateLimit(_ retryAfter: String?) {
+        let delay = SpotifyRateLimitPolicy.delay(retryAfter: retryAfter)
+        let proposed = Date.now.addingTimeInterval(delay)
+        if rateLimitUntil == nil || proposed > rateLimitUntil! {
+            rateLimitUntil = proposed
+            UserDefaults.standard.set(proposed, forKey: Self.rateLimitDefaultsKey)
+        }
+        rapidProbesLeft = 0
+        usesRapidProbe = false
+        stalePauseProbeArmed = false
+        isStalledPause = false
+        lastError = nil
+        let seconds = Int(ceil(delay))
+        lastPollSummary = "Spotify is limiting requests. Retrying in \(seconds) seconds…"
+        DiagnosticsLog.append("Spotify rate limit accepted for \(seconds)s")
     }
 
     private func ownsPoll(_ generation: UInt64) -> Bool {

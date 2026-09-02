@@ -554,3 +554,32 @@ test("worker uses Spotify Retry-After to avoid hot polling", async () => {
   assert.ok(Date.parse(after.nextPollAt) >= Date.now() + 29_000);
   assert.match(after.state.lastError, /429/);
 });
+
+test("worker preserves a long Spotify Retry-After window", async () => {
+  const encryptionKey = key();
+  const store = new MemoryStore();
+  const installation = await store.createInstallation({
+    id: "installation-long-429",
+    authHash: "hash-long-429",
+    refreshTokenCiphertext: sealForWorker("refresh-token-long-429", encryptionKey),
+    nextPollAt: new Date(0).toISOString(),
+    state: {
+      phoneLeaseExpiresAt: 0,
+      spotifyClientID: "spotify-client",
+      lyricOffsetMs: 0,
+    },
+  });
+  const fetchImpl = async input => {
+    if (String(input).includes("accounts.spotify.com")) {
+      return new Response(null, {
+        status: 429,
+        headers: { "Retry-After": "7200" },
+      });
+    }
+    throw new Error(`unexpected URL ${input}`);
+  };
+  const runtime = { env: { SPOTIFY_CLIENT_ID: "spotify-client" }, store, encryptionKey };
+  await pollOnce(runtime, 1, { fetchImpl });
+  const after = await store.getInstallation(installation.id);
+  assert.ok(Date.parse(after.nextPollAt) >= Date.now() + 7_199_000);
+});

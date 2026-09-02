@@ -646,9 +646,15 @@ async function heartbeat(body, installation, runtime, response) {
     await runtime.store.deleteActivityToken(installation.id, "update");
   }
   state.serverRevision = numberOr(state.serverRevision, 0) + 1;
+  const firstServerYield = !phoneReady && oldState.phoneWriterReady !== false;
+  const nextPollAt = phoneReady
+    ? new Date(Date.now() + 1_000).toISOString()
+    : firstServerYield
+      ? new Date().toISOString()
+      : current.nextPollAt;
   await runtime.store.updateInstallation(installation.id, {
     state,
-    nextPollAt: new Date(Date.now() + (phoneReady ? 1_000 : 0)).toISOString(),
+    nextPollAt,
   });
   return writeJSON(response, 200, {
     ok: true,

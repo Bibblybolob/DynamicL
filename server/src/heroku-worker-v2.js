@@ -771,6 +771,15 @@ function spotifyHTTPError(service, status, retryAfter = null) {
 
 function spotifyBackoffMs(error) {
   const requested = finiteNumber(error?.retryAfterMs, 0);
+  if (error?.status === 429) {
+    // A phone heartbeat can yield ownership every five seconds. Preserve the
+    // full provider delay so those heartbeats cannot turn one 429 into a
+    // phone-and-server retry storm.
+    return Math.min(
+      24 * 60 * 60 * 1_000,
+      Math.max(30_000, requested || 30_000),
+    );
+  }
   // Keep a provider outage bounded. A later worker claim retries the
   // installation, while a Retry-After value still prevents hot polling.
   return Math.max(

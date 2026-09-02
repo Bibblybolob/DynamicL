@@ -9,7 +9,7 @@ test("the production web dyno runs the polling worker by default", () => {
 });
 
 async function withServer(fn) {
-  const { server } = await start({
+  const { server, runtime } = await start({
     env: {
       NODE_ENV: "test",
       TOKEN_ENCRYPTION_KEY: "test-encryption-key",
@@ -20,7 +20,7 @@ async function withServer(fn) {
   });
   const port = server.address().port;
   try {
-    await fn(`http://127.0.0.1:${port}`);
+    await fn(`http://127.0.0.1:${port}`, runtime);
   } finally {
     await new Promise(resolve => server.close(resolve));
   }
@@ -212,8 +212,8 @@ test("a metadata-free loading heartbeat remains valid", async () => {
   });
 });
 
-test("an unhealthy phone yields its writer lease immediately", async () => {
-  await withServer(async base => {
+test("an unhealthy phone yields its writer lease without erasing server backoff", async () => {
+  await withServer(async (base, runtime) => {
     const registered = await json(`${base}/register`, {
       method: "POST",
       body: JSON.stringify({
@@ -241,6 +241,25 @@ test("an unhealthy phone yields its writer lease immediately", async () => {
 
     const status = await json(`${base}/status`, { headers: auth });
     assert.equal(status.body.currentOwner, "server");
+
+    const installation = await runtime.store.firstInstallation();
+    const serverBackoff = new Date(Date.now() + 120_000).toISOString();
+    await runtime.store.updateInstallation(installation.id, { nextPollAt: serverBackoff });
+    const repeatedYield = await json(`${base}/heartbeat`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
+        activityState: "active",
+        sentAtMs: Date.now() + 1,
+        localRevision: 3,
+        clientSchemaVersion: 2,
+        lyricOffsetMs: 0,
+        phoneReady: false,
+      }),
+    });
+    assert.equal(repeatedYield.response.status, 200);
+    const afterRepeatedYield = await runtime.store.getInstallation(installation.id);
+    assert.equal(afterRepeatedYield.nextPollAt, serverBackoff);
   });
 });
 
