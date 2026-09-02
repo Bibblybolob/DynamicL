@@ -73,9 +73,9 @@ final class LyricBatchTests: XCTestCase {
             trackID: "track-1"
         )
 
-        XCTAssertEqual(batch.lines.count, 32)
+        XCTAssertEqual(batch.lines.count, 39)
         XCTAssertEqual(batch.lines.first?.text, "Line 1")
-        XCTAssertEqual(batch.lines.last?.text, "Line 32")
+        XCTAssertEqual(batch.lines.last?.text, "Line 39")
         XCTAssertEqual(batch.lines.first?.startEpoch ?? -1, 1_700_000_002, accuracy: 0.001)
     }
 

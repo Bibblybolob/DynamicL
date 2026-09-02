@@ -13,8 +13,8 @@ export const reliabilityConstants = Object.freeze({
   requestTimeoutMs: 10_000,
   apnsTimeoutMs: 8_000,
   apnsRetries: 3,
-  scheduleHorizonSec: 75,
-  scheduleMaxLines: 32,
+  scheduleHorizonSec: 120,
+  scheduleMaxLines: 64,
   payloadLimitBytes: 3_500,
 });
 

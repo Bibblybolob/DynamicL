@@ -45,8 +45,8 @@ public enum LyricBatchBuilder {
                             offset: TimeInterval = 0,
                             now: Date = .now,
                             rate: Double = 1,
-                            horizon: TimeInterval = 75,
-                            maxLines: Int = 32,
+                            horizon: TimeInterval = 120,
+                            maxLines: Int = 64,
                             trackID: String? = nil) -> LyricBatch {
         guard !document.lines.isEmpty, maxLines > 0, horizon > 0 else {
             return LyricBatch(generatedAtEpoch: now.timeIntervalSince1970,

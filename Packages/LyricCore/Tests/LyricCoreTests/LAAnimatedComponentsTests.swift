@@ -57,5 +57,51 @@ final class LAAnimatedComponentsTests: XCTestCase {
         XCTAssertEqual(resolved.startDate, start)
         XCTAssertEqual(resolved.endDate, end)
     }
+
+    func testRecoveryDatesWakeAfterBoundariesWereMissedOffscreen() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let lines = [
+            WidgetLyricSnapshot.ScheduledLine(
+                date: now.addingTimeInterval(10),
+                text: "first",
+                endDate: now.addingTimeInterval(20)
+            ),
+            WidgetLyricSnapshot.ScheduledLine(
+                date: now.addingTimeInterval(20),
+                text: "second",
+                endDate: now.addingTimeInterval(30)
+            )
+        ]
+
+        let dates = LAScheduledLyricText.makeRefreshDates(
+            now: now,
+            scheduledLines: lines,
+            playbackEndDate: now.addingTimeInterval(180)
+        )
+
+        let becameVisible = now.addingTimeInterval(23)
+        let nextWake = dates.first { $0 > becameVisible }
+        XCTAssertNotNil(nextWake)
+        XCTAssertLessThanOrEqual(
+            nextWake?.timeIntervalSince(becameVisible) ?? .infinity,
+            5
+        )
+        XCTAssertTrue(dates.contains(now.addingTimeInterval(10)))
+        XCTAssertTrue(dates.contains(now.addingTimeInterval(20)))
+    }
+
+    func testRecoveryDatesStayInsideTheBoundedWindow() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let dates = LAScheduledLyricText.makeRefreshDates(
+            now: now,
+            scheduledLines: [],
+            playbackEndDate: now.addingTimeInterval(600)
+        )
+
+        XCTAssertTrue(dates.contains(now.addingTimeInterval(600)))
+        let recoveryDates = dates.filter { $0 < now.addingTimeInterval(600) }
+        XCTAssertEqual(recoveryDates.last, now.addingTimeInterval(135))
+        XCTAssertLessThanOrEqual(recoveryDates.count, 28)
+    }
 }
 #endif

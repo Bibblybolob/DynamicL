@@ -97,6 +97,27 @@ test("content state uses Unix timestamps and keeps a bounded future schedule", (
   assert.ok(contentStateBytes(state) <= 3_500);
 });
 
+test("content state carries recovery lyrics past one minute", () => {
+  const nowMs = 1_700_000_000_000;
+  const state = buildActivityContentState(
+    {
+      trackID: "track-1",
+      title: "Song",
+      artist: "Artist",
+      durationMs: 180_000,
+      progressMs: 0,
+      progressObservedAt: nowMs,
+      isPlaying: true,
+      albumImageURL: "https://images.test/track-1.jpg",
+    },
+    Array.from({ length: 13 }, (_, index) => ({ t: index * 10, text: `L${index}` })),
+    { nowMs, revision: 5 },
+  );
+  const horizon = state.scheduledLinesV2?.at(-1)?.dateEpoch ?? 0;
+  assert.ok(horizon >= nowMs / 1_000 + 110);
+  assert.ok(contentStateBytes(state) <= 3_500);
+});
+
 test("APNs start payload includes the required remote-start fields", () => {
   const payload = activityPayload("start", {
     schemaVersion: 2,

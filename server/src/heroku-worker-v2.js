@@ -527,7 +527,7 @@ async function deliverState(installation, runtime, state, contentState, kind, no
   const currentHorizon = currentSchedule.at(-1)?.endDateEpoch ?? currentSchedule.at(-1)?.dateEpoch ?? 0;
   const previousHorizon = remaining.at(-1)?.endDateEpoch ?? remaining.at(-1)?.dateEpoch ?? 0;
   const scheduleRefill = contentState.isPlaying && (
-    remaining.length < 6 || previousHorizon - nowEpoch < 20
+    remaining.length < 6 || previousHorizon - nowEpoch < 40
   ) && currentHorizon > previousHorizon + 1;
   const trackChanged = state.lastSentTrackID !== contentState.trackID;
   const playChanged = state.lastSentPlaying !== contentState.isPlaying;

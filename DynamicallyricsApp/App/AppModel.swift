@@ -1313,11 +1313,11 @@ final class AppModel {
         let sinceLastSend = now.timeIntervalSince(lastLAUpdateAt ?? .distantPast)
         let remainingSchedule = lastSentLASchedule.filter { $0.date > now }
         let targetSchedule = targetState.resolvedScheduledLines
-        let currentEnd = remainingSchedule.last?.date ?? .distantPast
-        let targetEnd = targetSchedule.last?.date ?? .distantPast
+        let currentEnd = remainingSchedule.last.map { $0.endDate ?? $0.date } ?? .distantPast
+        let targetEnd = targetSchedule.last.map { $0.endDate ?? $0.date } ?? .distantPast
         let canExtendSchedule = targetEnd.timeIntervalSince(currentEnd) > 1
-        let scheduleLow = remainingSchedule.count < 3
-            || currentEnd.timeIntervalSince(now) < 20
+        let scheduleLow = remainingSchedule.count < 6
+            || currentEnd.timeIntervalSince(now) < 40
         let scheduleRefill = targetState.isPlaying && scheduleLow
             && canExtendSchedule
             && sinceLastSend >= Self.minimumScheduleRefillInterval
@@ -1429,8 +1429,11 @@ final class AppModel {
     /// A paused Activity is useful for a short break, but it must not remain
     /// on the Lock Screen after the user has stopped listening.
     private static let liveActivityPauseGrace: TimeInterval = 600
-    private static let lyricScheduleHorizon: TimeInterval = 75
-    private static let lyricScheduleMaxLines = 32
+    // Two minutes of timestamped lyrics lets the Live Activity survive a
+    // foreground game without depending on the suspended app process. The
+    // content-state compactor still removes the farthest lines at 3.5 KB.
+    private static let lyricScheduleHorizon: TimeInterval = 120
+    private static let lyricScheduleMaxLines = 64
     /// WidgetKit can render a larger local timeline than ActivityKit can
     /// accept in one content state. Keep the full song schedule here so a
     /// suspended app does not leave widgets on the last few lyric lines.

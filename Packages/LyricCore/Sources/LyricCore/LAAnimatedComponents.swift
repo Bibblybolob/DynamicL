@@ -360,10 +360,11 @@ public struct LAScheduledLyricText: View {
     }
 
     public var body: some View {
-        // Use the same absolute lyric boundaries as the widget timeline. A
-        // periodic schedule can be throttled by the system while the device
-        // is locked, which leaves the Live Activity on an old lyric even
-        // though the widget has already advanced.
+        // Use exact lyric boundaries and bounded recovery dates. iOS can skip
+        // an explicit boundary while another full-screen app is active. A
+        // recovery date gives the Live Activity another chance to resolve the
+        // current lyric when it becomes visible again. These dates redraw the
+        // existing state; they do not consume ActivityKit or APNs updates.
         TimelineView(.explicit(refreshDates)) { timeline in
             let pair = resolvedLines(at: timeline.date)
             if role == .current && karaokeEnabled && animations {
@@ -379,15 +380,44 @@ public struct LAScheduledLyricText: View {
     }
 
     private var refreshDates: [Date] {
-        let now = Date.now
+        Self.makeRefreshDates(
+            now: .now,
+            scheduledLines: scheduledLines,
+            playbackEndDate: playbackEndDate
+        )
+    }
+
+    static func makeRefreshDates(
+        now: Date,
+        scheduledLines: [WidgetLyricSnapshot.ScheduledLine],
+        playbackEndDate: Date?,
+        recoveryInterval: TimeInterval = 5,
+        maximumRecoveryWindow: TimeInterval = 135
+    ) -> [Date] {
         let boundaries = scheduledLines.flatMap { line in
             [line.date, line.endDate].compactMap { $0 }
         }
-        let trackEnd = playbackEndDate.map { [$0] } ?? []
-        // ActivityKit can coalesce duplicate timeline dates. Give it an
-        // ordered set of explicit line boundaries, including the final end,
-        // so lyric selection does not depend on a throttled periodic timer.
-        return Array(Set([now] + boundaries + trackEnd).filter { $0 >= now }).sorted()
+        let futureBoundaries = boundaries.filter { $0 >= now }
+        let futureTrackEnd = playbackEndDate.flatMap { $0 >= now ? $0 : nil }
+        let scheduleEnd = futureBoundaries.max()
+        let relevantEnd = scheduleEnd ?? futureTrackEnd
+        let cappedEnd = relevantEnd.map {
+            min($0.addingTimeInterval(recoveryInterval),
+                now.addingTimeInterval(maximumRecoveryWindow))
+        } ?? now
+
+        var dates = Set([now] + futureBoundaries + [futureTrackEnd].compactMap { $0 })
+        if recoveryInterval.isFinite, recoveryInterval > 0,
+           maximumRecoveryWindow.isFinite, maximumRecoveryWindow > 0,
+           cappedEnd > now {
+            var recoveryDate = now.addingTimeInterval(recoveryInterval)
+            while recoveryDate <= cappedEnd {
+                dates.insert(recoveryDate)
+                recoveryDate = recoveryDate.addingTimeInterval(recoveryInterval)
+            }
+            dates.insert(cappedEnd)
+        }
+        return dates.sorted()
     }
 
     @ViewBuilder

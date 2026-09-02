@@ -268,16 +268,17 @@ test("long lyric schedules remain below the content-state limit", () => {
   assert.ok(state.scheduledLinesV2.length < 24);
 });
 
-test("short lyric schedules send more than the old five-line batch", () => {
-  const lines = Array.from({ length: 40 }, (_, index) => ({
+test("short lyric schedules use the expanded runway up to the payload limit", () => {
+  const lines = Array.from({ length: 61 }, (_, index) => ({
     t: index * 2,
-    text: `Line ${index}`,
+    text: `L${index}`,
   }));
   const state = buildContentState(player({ lines, progressMs: 0 }), {
     nowMs: 1_700_000_000_000,
     schemaVersion: 2,
   });
-  assert.equal(state.scheduledLinesV2.length, 32);
+  assert.ok(state.scheduledLinesV2.length > 32);
+  assert.ok(state.scheduledLinesV2.at(-1).dateEpoch >= 1_700_000_090);
   assert.ok(contentStateSize(state) <= 3_500);
 });
 
