@@ -125,6 +125,7 @@ private actor LyricsCacheRepository {
 @Observable
 final class LyricsService {
     private static let log = Logger(subsystem: "com.jonathantran.dynamicallyrics", category: "Lyrics")
+    private static let lookupTimeout: TimeInterval = 16
     private(set) var document: LyricsDocument?
     private(set) var isLoading = false
     private(set) var currentIndex: Int?
@@ -159,6 +160,7 @@ final class LyricsService {
     /// with the same title and artist.
     private var currentLookupKey: String?
     private var lookupGeneration: UInt64 = 0
+    private var lookupStartedAt: Date?
     private var retryTask: Task<Void, Never>?
     private var cacheLoadTask: Task<Void, Never>?
 
@@ -185,6 +187,7 @@ final class LyricsService {
                 self.isLoading = false
                 self.isAwaitingLyrics = false
                 self.lookupStatus = nil
+                self.lookupStartedAt = nil
             }
         }
     }
@@ -222,6 +225,7 @@ final class LyricsService {
         isLoading = false
         lookupStatus = nil
         isAwaitingLyrics = false
+        lookupStartedAt = nil
 
         guard let signature, let lookupKey else {
             apply(nil)
@@ -243,6 +247,7 @@ final class LyricsService {
 
         isLoading = true
         isAwaitingLyrics = true
+        lookupStartedAt = .now
         loadTask = Task { [weak self] in
             await self?.loadAndApply(
                 signature,
@@ -266,6 +271,7 @@ final class LyricsService {
         lookupStatus = nil
         isLoading = true
         isAwaitingLyrics = true
+        lookupStartedAt = .now
         loadTask = Task { [weak self] in
             await self?.loadAndApply(
                 signature,
@@ -298,6 +304,7 @@ final class LyricsService {
                 apply(fetched)
                 isLoading = false
                 isAwaitingLyrics = false
+                lookupStartedAt = nil
             }
         case .notFound:
             Self.log.error("lookup notFound: \(signature.title) — \(signature.artist)")
@@ -309,6 +316,7 @@ final class LyricsService {
                 lookupStatus = "No lyrics found for this track"
                 isLoading = false
                 isAwaitingLyrics = false
+                lookupStartedAt = nil
             }
         case .failed(let reason):
             Self.log.error("lookup failed: \(reason, privacy: .public)")
@@ -318,6 +326,7 @@ final class LyricsService {
             if ownsVisibleLookup {
                 lookupStatus = "Lyrics lookup failed — retrying (\(reason))"
                 isLoading = false
+                lookupStartedAt = nil
                 scheduleRetry(
                     for: signature,
                     lookupKey: lookupKey,
@@ -342,6 +351,7 @@ final class LyricsService {
             self.retryTask = nil
             self.isLoading = true
             self.lookupStatus = "Retrying lyrics…"
+            self.lookupStartedAt = .now
             await self.loadAndApply(
                 signature,
                 lookupKey: lookupKey,
@@ -356,6 +366,32 @@ final class LyricsService {
         if index != currentIndex {
             currentIndex = index
         }
+
+        // A suspended or cancelled URLSession callback must not own the visible
+        // lookup forever. Replace the owner after one bounded request window;
+        // generation checks prevent the retired task from applying stale data.
+        let now = Date.now
+        if isLoading,
+           let startedAt = lookupStartedAt,
+           now.timeIntervalSince(startedAt) >= Self.lookupTimeout,
+           let signature = currentSignature,
+           let lookupKey = currentLookupKey {
+            lookupGeneration &+= 1
+            let generation = lookupGeneration
+            loadTask?.cancel()
+            lookupStatus = "Lyrics lookup timed out — retrying"
+            isAwaitingLyrics = true
+            lookupStartedAt = now
+            DiagnosticsLog.append("lookup timed out; starting a replacement request")
+            Self.log.error("lookup timed out; replacing request")
+            loadTask = Task { [weak self] in
+                await self?.loadAndApply(
+                    signature,
+                    lookupKey: lookupKey,
+                    generation: generation
+                )
+            }
+        }
     }
 
     func loadForDemo(_ doc: LyricsDocument) {
@@ -365,6 +401,7 @@ final class LyricsService {
         isLoading = false
         lookupStatus = nil
         isAwaitingLyrics = false
+        lookupStartedAt = nil
         currentSignature = doc.track
         currentLookupKey = Self.lookupKey(trackID: nil, signature: doc.track)
         lookupGeneration &+= 1

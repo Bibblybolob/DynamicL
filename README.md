@@ -7,8 +7,8 @@ It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch
 
 Development continues.
 
-- The current beta build is version 1.2.0, build 42.
-- Build 42 is a private beta build.
+- The current beta build is version 1.2.0, build 43.
+- Build 43 is a private beta build.
 - TestFlight distributes this build for beta testing.
 
 | Feature | Status |
@@ -28,7 +28,14 @@ Development continues.
 
 ## Current release candidate
 
-Build 42, version 1.2.0, is a private beta and includes these changes:
+Build 43, version 1.2.0, is a private beta and includes these changes:
+
+- The server completes a pending lyric schedule while the phone owns playback updates.
+- The server sends a lyric schedule that was saved but not sent during the ownership handoff.
+- The server does not send old lyrics after the phone reports a different Spotify track.
+- A failed APNs lyric update remains eligible for retry.
+- A local lyric request stops after a fixed time and starts a replacement request.
+- LRCLIB requests use a shorter timeout so the app can recover sooner.
 
 - The app handles a confirmed Spotify stop one time for each playback session.
 - Repeated stopped-state checks cannot bypass the five-second heartbeat limit.

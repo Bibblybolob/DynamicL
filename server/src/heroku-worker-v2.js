@@ -53,6 +53,14 @@ export async function pollInstallation(installation, runtime, options = {}) {
   let state = { ...(current.state ?? {}) };
 
   if (finiteNumber(state.phoneLeaseExpiresAt, 0) > nowMs) {
+    const recovery = await recoverPendingLyricsDuringPhoneLease(
+      current,
+      runtime,
+      state,
+      nowMs,
+      options,
+    );
+    if (recovery) return recovery;
     await releaseClaim(current, runtime, nowMs, state.phoneActivityState === "active");
     return { skipped: "phone-lease", id: current.id };
   }
@@ -159,6 +167,126 @@ export async function pollInstallation(installation, runtime, options = {}) {
     playing: player.isPlaying === true,
     payloadSize: contentStateBytes(contentState),
   };
+}
+
+/**
+ * A remote start intentionally sends a compact placeholder before lyric lookup
+ * finishes. The app then wakes, registers the Activity update token, and takes
+ * the normal playback lease. That lease must not strand the placeholder. This
+ * narrow exception only completes lyrics for the already accepted track; it
+ * does not poll Spotify or make the server a competing playback writer.
+ */
+async function recoverPendingLyricsDuringPhoneLease(
+  installation,
+  runtime,
+  state,
+  nowMs,
+  options = {},
+) {
+  const player = state.activeTrack;
+  if (!player?.trackID) return null;
+  if (state.phoneTrackID && state.phoneTrackID !== player.trackID) return null;
+  const preparedState = state.activeContentState;
+  const hasUnsentPreparedLyrics =
+    ["ready", "missing"].includes(state.lyricStatus) &&
+    preparedState?.trackID === player.trackID &&
+    preparedLyricsNeedDelivery(state, preparedState);
+  if (state.lyricStatus !== "pending" && !hasUnsentPreparedLyrics) return null;
+
+  // Do not resolve lyrics until Apple has supplied an update token for the
+  // remotely started Activity. Otherwise a successful lookup could be marked
+  // complete without any way to replace the visible placeholder.
+  if (!await activityToken(installation, runtime, "update")) return null;
+
+  let latest = installation;
+  let latestState = state;
+  let latestPlayer = player;
+  let contentState = preparedState;
+  let canonical = state;
+
+  if (state.lyricStatus === "pending") {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const lyricResult = await resolveLyricsForPlayer(
+      player,
+      installation,
+      runtime,
+      fetchImpl,
+      nowMs,
+    );
+    latest = await runtime.store.getInstallation(installation.id) ?? installation;
+    latestState = { ...(latest.state ?? {}) };
+    latestPlayer = latestState.activeTrack;
+
+    // A phone heartbeat can report a skip while lookup is running. Never put
+    // lyrics from the old track into the new Activity.
+    if (latestState.lyricStatus !== "pending" ||
+        latestPlayer?.trackID !== player.trackID ||
+        (latestState.phoneTrackID && latestState.phoneTrackID !== player.trackID) ||
+        !await activityToken(latest, runtime, "update")) {
+      await releaseClaim(latest, runtime, nowMs, latestState.phoneActivityState === "active");
+      return { id: installation.id, skipped: "stale-lyric-recovery" };
+    }
+
+    const lines = lyricResult.document?.lines ?? [{ t: 0, text: "♪" }];
+    contentState = buildActivityContentState(
+      withArtworkColor(latestPlayer, latestState),
+      lines,
+      activityOptions(latestState, nowMs),
+    );
+    canonical = await storeCanonical(
+      latest,
+      runtime,
+      latestState,
+      latestPlayer,
+      contentState,
+      nowMs,
+      {
+        lyricStatus: lyricResult.document ? "ready" : "missing",
+        lyricSource: lyricResult.document?.source ?? null,
+        lyricContentHash: lyricResult.document?.contentHash ?? null,
+        lastLyricRecoveryAt: new Date(nowMs).toISOString(),
+      },
+    );
+  }
+
+  if (!contentState) return null;
+  const delivery = await deliverState(
+    latest,
+    runtime,
+    canonical,
+    contentState,
+    "lyric recovery",
+    nowMs,
+    options,
+  );
+
+  // Keep the recovery eligible for the next worker pass if APNs did not
+  // accept it. A transient APNs error must not make "Finding lyrics..." final.
+  if (!delivery?.accepted) {
+    await runtime.store.updateInstallation(installation.id, {
+      state: { lyricStatus: "pending" },
+    });
+  }
+  await releaseClaim(latest, runtime, nowMs, latestPlayer.isPlaying === true);
+  return {
+    id: installation.id,
+    owner: "phone",
+    completed: delivery?.accepted ? "pending-lyrics" : null,
+    retry: delivery?.accepted ? null : "pending-lyrics",
+    trackID: latestPlayer.trackID,
+    payloadSize: contentStateBytes(contentState),
+  };
+}
+
+function preparedLyricsNeedDelivery(state, contentState) {
+  if (state.lastSentTrackID !== contentState.trackID) return true;
+  if (state.lastSentCurrentLine !== contentState.currentLine) return true;
+  if (state.lastSentNextLine !== (contentState.nextLine ?? null)) return true;
+  const sent = Array.isArray(state.lastSentScheduleV2) ? state.lastSentScheduleV2 : [];
+  const prepared = Array.isArray(contentState.scheduledLinesV2) ? contentState.scheduledLinesV2 : [];
+  const sentHorizon = sent.at(-1)?.endDateEpoch ?? sent.at(-1)?.dateEpoch ?? 0;
+  const preparedHorizon = prepared.at(-1)?.endDateEpoch ?? prepared.at(-1)?.dateEpoch ?? 0;
+  return prepared.length > 0 && preparedHorizon > sentHorizon + 1;
 }
 
 function advancePlaybackSession(state, player, nowMs) {
@@ -390,7 +518,7 @@ async function deliverState(installation, runtime, state, contentState, kind, no
   const tokenRecord = await activityToken(installation, runtime, "update");
   if (!tokenRecord) {
     if (contentState.isPlaying) await deliverStartIfNeeded(installation, runtime, state, contentState, nowMs, options);
-    return;
+    return null;
   }
   const previousSchedule = Array.isArray(state.lastSentScheduleV2) ? state.lastSentScheduleV2 : [];
   const currentSchedule = contentState.scheduledLinesV2 ?? [];
@@ -422,7 +550,7 @@ async function deliverState(installation, runtime, state, contentState, kind, no
               : lineChanged ? "line"
                 : scheduleRefill ? "schedule"
                   : staleKeepalive ? "keepalive" : null;
-  if (!reason) return;
+  if (!reason) return null;
 
   const token = unseal(tokenRecord.ciphertext, runtime.encryptionKey);
   // The worker polls active playback every five seconds, so a line update is
@@ -477,6 +605,7 @@ async function deliverState(installation, runtime, state, contentState, kind, no
       });
     }
   }
+  return result;
 }
 
 async function deliverEnd(installation, runtime, state, reason, nowMs, env, fetchImpl = fetch) {

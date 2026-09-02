@@ -205,6 +205,119 @@ test("worker starts once, then updates the same activity after the update token 
   assert.equal(afterLineUpdate.state.lastPushReason, "line");
 });
 
+test("phone lease completes pending and prepared-but-unsent lyrics", async () => {
+  const encryptionKey = key();
+  const store = new MemoryStore();
+  const nowMs = 1_700_000_000_000;
+  const activeTrack = {
+    trackID: "track-1",
+    title: "Song",
+    artist: "Artist",
+    durationMs: 180_000,
+    progressMs: 1_000,
+    progressObservedAt: nowMs,
+    isPlaying: true,
+    albumImageURL: "https://images.test/track-1.jpg",
+  };
+  const installation = await store.createInstallation({
+    id: "installation-pending-lyrics",
+    authHash: "hash-pending-lyrics",
+    refreshTokenCiphertext: sealForWorker("refresh-token", encryptionKey),
+    state: {
+      phoneLeaseExpiresAt: nowMs + 15_000,
+      phoneActivityState: "active",
+      phoneTrackID: "track-1",
+      spotifyTrackID: "track-1",
+      activeTrack,
+      lyricStatus: "pending",
+      lyricOffsetMs: 0,
+      serverRevision: 2,
+      lastSentTrackID: "track-1",
+      lastSentCurrentLine: "♪",
+      lastSentNextLine: null,
+      lastSentScheduleV2: [],
+      lastSentPlaying: true,
+    },
+  });
+  await store.upsertActivityToken(
+    installation.id,
+    "update",
+    sealForWorker("d".repeat(32), encryptionKey),
+    { environment: "production" },
+  );
+  await store.saveDocument({
+    contentHash: "cached-lyrics",
+    trackID: "track-1",
+    source: "lrclib",
+    expiresAt: new Date(nowMs + 60_000).toISOString(),
+    document: {
+      schemaVersion: 2,
+      trackID: "track-1",
+      title: "Song",
+      artist: "Artist",
+      durationSec: 180,
+      source: "lrclib",
+      contentHash: "cached-lyrics",
+      lines: [
+        { t: 0, text: "First line" },
+        { t: 4, text: "Second line" },
+      ],
+    },
+  });
+
+  const apns = [];
+  const fetchImpl = async (input, init = {}) => {
+    const url = String(input);
+    if (url.includes("api.push.apple.com")) {
+      apns.push({ body: JSON.parse(init.body), headers: init.headers });
+      return new Response(null, { status: 200 });
+    }
+    throw new Error(`pending lyric recovery must not poll ${url}`);
+  };
+  const runtime = {
+    env: {
+      APNS_KEY_P8: privateKey(),
+      APNS_KEY_ID: "KEYID123",
+      APNS_TEAM_ID: "TEAMID123",
+      APNS_HOST: "https://api.push.apple.com",
+    },
+    store,
+    encryptionKey,
+  };
+
+  const result = await pollInstallation(installation, runtime, { nowMs, fetchImpl });
+
+  assert.equal(result.owner, "phone");
+  assert.equal(result.completed, "pending-lyrics");
+  assert.equal(apns.length, 1);
+  assert.equal(apns[0].body.aps.event, "update");
+  assert.equal(apns[0].body.aps["content-state"].currentLine, "First line");
+  assert.equal(apns[0].headers["apns-priority"], "10");
+  const after = await store.getInstallation(installation.id);
+  assert.equal(after.state.lyricStatus, "ready");
+  assert.equal(after.state.phoneLeaseExpiresAt, nowMs + 15_000);
+
+  // Reproduce the other race: lookup finished and stored the complete state,
+  // but the phone lease became active before that state reached APNs.
+  await store.updateInstallation(installation.id, {
+    state: {
+      lyricStatus: "ready",
+      lastSentTrackID: "track-1",
+      lastSentCurrentLine: "♪",
+      lastSentNextLine: null,
+      lastSentScheduleV2: [],
+    },
+  });
+  const preparedButUnsent = await store.getInstallation(installation.id);
+  const second = await pollInstallation(preparedButUnsent, runtime, {
+    nowMs: nowMs + 1_000,
+    fetchImpl,
+  });
+  assert.equal(second.completed, "pending-lyrics");
+  assert.equal(apns.length, 2);
+  assert.equal(apns[1].body.aps["content-state"].currentLine, "First line");
+});
+
 test("APNs retries Retry-After responses and returns a redacted delivery result", async () => {
   let attempts = 0;
   const result = await sendAPNs({

@@ -276,7 +276,9 @@ public struct LRCLIBClient: Sendable {
 
     private func send(_ url: URL) async throws -> (Data, URLResponse?) {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
-        request.timeoutInterval = 10
+        // The client can make an exact request and then a search request. Keep
+        // each stage short so a bad connection cannot leave the UI fetching.
+        request.timeoutInterval = 7
         request.setValue("OpenLyrics/1.0 (personal)", forHTTPHeaderField: "User-Agent")
         do {
             let (data, response) = try await session.data(for: request)
