@@ -86,4 +86,15 @@ struct PlaybackPollingLifecyclePolicyTests {
             lastSuccessfulPollAge: 3
         ))
     }
+
+    @Test
+    func watchdogDoesNotRestartAnIntentionalRateLimitWait() {
+        #expect(!PlaybackPollingLifecyclePolicy.shouldRestartFromWatchdog(
+            isPolling: true,
+            loopIsAlive: true,
+            pollingAge: 300,
+            lastSuccessfulPollAge: nil,
+            restartSuppressed: true
+        ))
+    }
 }

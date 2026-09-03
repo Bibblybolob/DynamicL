@@ -186,20 +186,23 @@ final class SpotifyProvider: PlaybackProvider {
         }
     }
 
-    /// When the polling loop last showed life. Requests are capped at 12s and
-    /// backoffs at 15s, so a heartbeat older than this means the loop is
-    /// genuinely dead or hung — not merely waiting on a slow request.
+    /// When the polling loop last showed life. Requests are capped at 12s, so
+    /// a heartbeat older than this means the loop is genuinely dead or hung.
+    /// A server-supplied rate-limit wait is tracked separately.
     private(set) var lastLoopActivityAt: Date?
     private(set) var pollingStartedAt: Date?
     static let loopStaleThreshold: TimeInterval = 20
 
     var isLoopLikelyAlive: Bool {
-        if isPolling,
-           SpotifyRateLimitPolicy.remaining(until: rateLimitUntil) > 0 {
+        if isPolling, isWaitingForRateLimit {
             return true
         }
         guard let last = lastLoopActivityAt else { return false }
         return Date.now.timeIntervalSince(last) < Self.loopStaleThreshold
+    }
+
+    var isWaitingForRateLimit: Bool {
+        SpotifyRateLimitPolicy.remaining(until: rateLimitUntil) > 0
     }
 
     /// Immediate poll: wakes the current scheduling loop so the next request
@@ -1301,6 +1304,7 @@ protocol PlaybackProvider: AnyObject {
     var lastTrackID: String? { get }
     var isPlaybackConfirmedStopped: Bool { get }
     var isLoopLikelyAlive: Bool { get }
+    var isWaitingForRateLimit: Bool { get }
 
     func start()
     func stop()

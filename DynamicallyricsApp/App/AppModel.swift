@@ -1070,7 +1070,8 @@ final class AppModel {
             isPolling: provider.isPolling,
             loopIsAlive: provider.isLoopLikelyAlive,
             pollingAge: pollingAge,
-            lastSuccessfulPollAge: lastSuccessfulPollAge
+            lastSuccessfulPollAge: lastSuccessfulPollAge,
+            restartSuppressed: provider.isWaitingForRateLimit
         ) else { return }
         if let lastRevive = lastReviveAt,
            Date.now.timeIntervalSince(lastRevive) < 3 { return }

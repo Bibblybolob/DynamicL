@@ -29,8 +29,13 @@ public enum PlaybackPollingLifecyclePolicy {
         loopIsAlive: Bool,
         pollingAge: TimeInterval?,
         lastSuccessfulPollAge: TimeInterval?,
+        restartSuppressed: Bool = false,
         maximumSilence: TimeInterval = 20
     ) -> Bool {
+        // A provider can be healthy while it intentionally waits for a
+        // service-supplied retry deadline. Restarting during that wait cannot
+        // produce a successful sample and can create needless background work.
+        guard !restartSuppressed else { return false }
         guard isPolling, loopIsAlive else { return true }
         guard maximumSilence.isFinite, maximumSilence > 0 else { return false }
         if let lastSuccessfulPollAge {
