@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WidgetKit
 import LyricCore
 
@@ -16,6 +17,8 @@ final class AppModel {
     @ObservationIgnored private var lastArtworkPrefetchURL: String?
     @ObservationIgnored private var lastArtworkPrefetchAt: Date?
     @ObservationIgnored private var bootstrapLiveActivityTask: Task<Void, Never>?
+    @ObservationIgnored private var automaticStartFeedbackArmed = true
+    @ObservationIgnored private var automaticStartFeedbackPending = false
 
     private(set) var connectError: String?
     var isConnecting = false
@@ -384,10 +387,28 @@ final class AppModel {
                 lastLineIndex = nil
             }
             if provider.status != status {
-                status = provider.status
+                let previousState = status?.state
+                let nextStatus = provider.status
+                status = nextStatus
                 // Real player state just landed; retire any optimistic
                 // play/pause flip written by a widget button.
                 SharedNowPlaying.setPlayingOverride(nil)
+                if AutomaticActivityFeedbackPolicy.shouldRearm(
+                    currentState: nextStatus?.state
+                ) {
+                    automaticStartFeedbackArmed = true
+                    automaticStartFeedbackPending = false
+                } else if AutomaticActivityFeedbackPolicy.shouldQueue(
+                    previousState: previousState,
+                    currentState: nextStatus?.state,
+                    isArmed: automaticStartFeedbackArmed,
+                    automaticLyricsEnabled: lockScreenLyricsEnabled && localSessionEnabled,
+                    appIsActive: scenePhase == .active
+                ) {
+                    automaticStartFeedbackArmed = false
+                    automaticStartFeedbackPending = true
+                    DiagnosticsLog.append("automatic LA confirmation queued")
+                }
             }
             lyrics.update(
                 signature: signature,
@@ -413,10 +434,27 @@ final class AppModel {
         revivePollerIfNeeded()
         publishNowPlayingIfDue()
         syncLiveActivity()
+        deliverAutomaticStartFeedbackIfNeeded()
         syncServerHeartbeat()
         syncWidgetSnapshot()
         syncWatchSnapshot()
         consumeWidgetCommand()
+    }
+
+    /// Confirms one successful automatic start per playback session. Haptics
+    /// are foreground-only; remote APNs starts use their normal system alert.
+    private func deliverAutomaticStartFeedbackIfNeeded() {
+        guard AutomaticActivityFeedbackPolicy.shouldDeliver(
+            isPending: automaticStartFeedbackPending,
+            activityIsRunning: liveActivity.isRunning,
+            appIsActive: scenePhase == .active
+        ) else { return }
+
+        automaticStartFeedbackPending = false
+        let feedback = UINotificationFeedbackGenerator()
+        feedback.prepare()
+        feedback.notificationOccurred(.success)
+        DiagnosticsLog.append("automatic LA confirmation delivered")
     }
 
     /// Consumes a request written by the iOS 18 Control Center control or the
