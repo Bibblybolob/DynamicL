@@ -6,9 +6,10 @@ and Apple Watch remain supported companion surfaces.
 
 ## Release status
 
-**1.2.0 (56)** introduces Widget Studio. Release validation and TestFlight upload
-are in progress; build 55 remains the last verified TestFlight release until
-processing finishes. See [build 56 notes](Docs/RELEASE-56.md).
+The latest verified beta is **1.2.0 (56)**, introducing Widget Studio. It is
+uploaded to TestFlight and App Store Connect reports **VALID**, verified
+September 6, 2026. See [build 56 notes](Docs/RELEASE-56.md) for scope and remaining
+device validation.
 
 ## Customize widgets
 

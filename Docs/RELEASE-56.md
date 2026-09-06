@@ -1,7 +1,8 @@
 # OpenLyrics 1.2.0 (56): Widget Studio
 
-Status: archive/upload in progress. App Store Connect processing will be verified
-before marking this beta available.
+Status: uploaded to TestFlight. App Store Connect reports **VALID**, verified
+September 6, 2026. Build ID: `48640d57-75b2-4190-8007-d72989e99b14`.
+Implementation commit: `35935a7`, pushed to `main`.
 
 ## Delivered
 
