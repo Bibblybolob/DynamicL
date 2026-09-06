@@ -7,17 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0071EC1E6089207D35F8F449 /* fraunces-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 4BA7EF967587F897335B28CC /* fraunces-OFL.txt */; };
 		009CC8F9FC4D4E9E79912B07 /* SyncedLyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215ADD0345FA34F59D83675B /* SyncedLyricsView.swift */; };
+		00D67A4090B21FE62C54AB7F /* BarlowCondensed-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7FEB55F03D8C760FFEC0CFCB /* BarlowCondensed-Regular.ttf */; };
+		00DBA717FEB7ADFBDB845E4E /* DMSerifDisplay-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7BBBD8E89310E814DB0DB881 /* DMSerifDisplay-Regular.ttf */; };
+		043C9C40B76CC92A983BD118 /* AtkinsonHyperlegible-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F2455D99E1423AA462D5ADE0 /* AtkinsonHyperlegible-Bold.ttf */; };
 		0BFE9F9A2D88A9FF686B6B0D /* LyricsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */; };
 		0D78D2406231B09E9DEAB5C0 /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */; };
+		168D7A3A4246495E1F986D1D /* ConfigurableLyricsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 472C65FB20D3B60841310BCD /* ConfigurableLyricsWidget.swift */; };
 		16DEEF986C634B5BF7712AB4 /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4059FBA00502BEBFF30974 /* AppearanceView.swift */; };
 		171B99FA086F55B7BF5416C4 /* SpaceGrotesk.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 75C1C3843E1DD1B92BCF8BA4 /* SpaceGrotesk.ttf */; };
+		195F5C7DA1610C03C9B4C75B /* BarlowCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 94B247A56B5C08A4D73FDF51 /* BarlowCondensed-SemiBold.ttf */; };
+		1993B70353C2289855EE2228 /* SpotifyRequestSafety.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2061FC6F58B47F6EFF5EE6 /* SpotifyRequestSafety.swift */; };
 		2895FA41E6A80212D032CE71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C1BBBCD17E2B33ABAAEBC64A /* Assets.xcassets */; };
+		2B3982550DC47BD146F2DC29 /* baloo2-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = A9A69FCAE7BA1CDB43195731 /* baloo2-OFL.txt */; };
+		2B5AF87C36DA45FB7EC75D59 /* BarlowCondensed-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = AD2D693C3CC349A143256FD9 /* BarlowCondensed-Bold.ttf */; };
 		2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 62CD9889F52C701264248490 /* DynamicallyricsWatch.app */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		2D3C0336EAF0677A1EC20928 /* AtkinsonHyperlegible-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D8590B126E9BF2D199B3AFEB /* AtkinsonHyperlegible-Bold.ttf */; };
 		3247A6A94EDEEA1161B27FC6 /* Pacifico-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DA950BDAF4FFDBAFF25B7877 /* Pacifico-Regular.ttf */; };
 		34B015BC4285859894148EF7 /* LyricWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C1698CFC6BA00171949EE2 /* LyricWidgetsBundle.swift */; };
+		3B8BE024B60E48AC5AB1F92B /* bungee-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D1462E78EDB77C408BEAFCFF /* bungee-OFL.txt */; };
 		40A0B0C78A59D5DB0095EA16 /* DynamicallyricsWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED59A6EB0239CFEE501B720 /* DynamicallyricsWatchApp.swift */; };
 		41E75F449CD0E115B148C31B /* WatchSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */; };
+		425F120DF67C191F5405079E /* BarlowCondensed-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EFD1B9DA1EA2265D19216A1F /* BarlowCondensed-Regular.ttf */; };
 		42D309059E189F5A500752F0 /* OpenLyricsShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCF7FA6E28FC2EF22961BD17 /* OpenLyricsShortcuts.swift */; };
 		4538AD355238ACD4439364F6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 388982BB47D706DC2E5337F8 /* Assets.xcassets */; };
 		4681FD03C1170DA582F6F1C3 /* WatchWidgetStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A13679FF910F6ACFE50B30A /* WatchWidgetStyles.swift */; };
@@ -25,43 +37,71 @@
 		4F6F01B1809A65845D52A927 /* Pacifico-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9C8A92CCBCBBBBD7A0E18A9A /* Pacifico-Regular.ttf */; };
 		509CA8E44116D294131083BA /* LockscreenLyricWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA9C09E856EEE455AB2BDA2 /* LockscreenLyricWidget.swift */; };
 		530892FFEE46655631678752 /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = 300EDE2C72D7FCE07BB47403 /* LyricCore */; };
+		54138B18BC85D9DD9D1F7B5D /* Fraunces[SOFT,WONK,opsz,wght].ttf in Resources */ = {isa = PBXBuildFile; fileRef = 72DDEDE0417E00CD83027CAF /* Fraunces[SOFT,WONK,opsz,wght].ttf */; };
 		5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = FA45FDB582EC9BF0DA3D2FA6 /* LyricWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5FCD62010B2F10AFD1A7D58C /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = AF60AF8D98914E3640F5A629 /* LyricCore */; };
 		61BCFB1A8594E23F1CFE30F5 /* PlayfairDisplay.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B9F382F66CD8B6A93BF5E16C /* PlayfairDisplay.ttf */; };
 		62483A38BD32B3E49DA53896 /* VinylWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD540050018CAB1FC2EF880F /* VinylWidget.swift */; };
 		625B2DA26815ACD8682200C1 /* SpotifyProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */; };
 		69E17BAD3D775BFF4CEA0D7A /* AlbumArtworkPrefetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A93E440BBCE4CE76E43D123 /* AlbumArtworkPrefetcher.swift */; };
+		6AA7821D595AE46D769A1D55 /* DMSerifDisplay-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 49E0049DC5D3C2D87A67F263 /* DMSerifDisplay-Regular.ttf */; };
 		6BA9B5D148352AB7DB7C6225 /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6D06020DA8782B58A82158 /* LiveActivityController.swift */; };
 		6BB96CC632715A678CD0955E /* BebasNeue-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5BAE7BBD2C708EA39F1BA036 /* BebasNeue-Regular.ttf */; };
 		6EFBE47C2CFBCF80E74F7A02 /* LyricWatchWidgets.appex in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 5A18BB359D3D54AC22AD1EAE /* LyricWatchWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		736D9DAB99051BF77938F14A /* AtkinsonHyperlegible-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 079E5CF73DCEC77A42E71BF0 /* AtkinsonHyperlegible-Regular.ttf */; };
 		7371AE3A0691726F85BD5FEA /* TogglePlaybackIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */; };
+		740DC95099BE39FEE79C00EE /* playfairdisplay-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D38C447353DF0C46BAA0D9CD /* playfairdisplay-OFL.txt */; };
+		776163ACD595EA41768A5382 /* dmserifdisplay-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = F0E8A8C08A35636E63F3ED97 /* dmserifdisplay-OFL.txt */; };
 		78CB701C55BE1A7869624939 /* Bungee-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8064C257A318E778B7E2B0F6 /* Bungee-Regular.ttf */; };
 		7BB6E571255EC8ADD3980380 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7C09312579956357A942BA /* AppModel.swift */; };
 		7EA4E0314E51BF2BF517A7BB /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4083C7544C6C54C2403D22F /* RootView.swift */; };
+		857E31AFB3ED9A90682503A9 /* bungee-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 60FA897587AFF515181FE7E5 /* bungee-OFL.txt */; };
 		85B27AE2C422ADBF1F6F16CD /* ArtworkRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A912214B48CF43CED2AB5B /* ArtworkRepository.swift */; };
 		889A78B2FB3264300662E034 /* WatchLyricStackWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2643CFE43083020E2CFD9165 /* WatchLyricStackWidget.swift */; };
+		8F4842FD3AB205D2C938E647 /* baloo2-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 26D5EF823E8D7FD9D865F4D6 /* baloo2-OFL.txt */; };
+		8F607C51CCF4FCF5C6CD8B23 /* BarlowCondensed-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0CEB388EBB7DBDF9410518A /* BarlowCondensed-Bold.ttf */; };
 		93AEB6C4EC54A424D86A37A2 /* CurrentLineWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7BD9BC79688FAB1D1A127C /* CurrentLineWidget.swift */; };
 		9939CE0EF1D8EB84E626A2AA /* TogglePlaybackIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */; };
+		9DA790ECBD26FF15301707B6 /* barlowcondensed-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 32696524560F47CBF7C363DA /* barlowcondensed-OFL.txt */; };
 		9DB43B612E83002EF06DEE8C /* RefreshLyricsIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E26031E981FDEFDD6475F308 /* RefreshLyricsIntent.swift */; };
+		A2636D38A4268FB983C87AB3 /* fraunces-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = E47CCA62CB801B3396A17656 /* fraunces-OFL.txt */; };
 		A39D7C2D8035DA8C6588D8EB /* DominantColorExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6E4D01DA0CCA1E2BB9A4B54 /* DominantColorExtractor.swift */; };
 		A3EAC2F9C55AC71FFDE2EDBC /* PlayfairDisplay.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2A3BA96C2F5554FBC7549BA8 /* PlayfairDisplay.ttf */; };
 		A4BB10137173CCE619558EFE /* SpotifyConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */; };
+		A6038D624C9B3AD194B5F540 /* AtkinsonHyperlegible-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0AC76D7BA653D32EB6527565 /* AtkinsonHyperlegible-Regular.ttf */; };
 		ACC6D884B80894C7AD640C1C /* WatchLyricComplicationWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C07680DCE0CB34AE71DE2E4 /* WatchLyricComplicationWidget.swift */; };
 		AEDC7C1F135942402522AD33 /* NowPlayingWatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C96E9E80EB1B3BA5C5CCFDD /* NowPlayingWatchView.swift */; };
 		B00F2B9E77AF0C9E1AA0AF2A /* LyricCore in Frameworks */ = {isa = PBXBuildFile; productRef = 156AEC9EC9B449E24FF06F33 /* LyricCore */; };
+		B08F8AD01D16FB9B748B606B /* Fraunces[SOFT,WONK,opsz,wght].ttf in Resources */ = {isa = PBXBuildFile; fileRef = E4D20706F46A01D55C14018C /* Fraunces[SOFT,WONK,opsz,wght].ttf */; };
+		BA69EEB173742CF023AF6859 /* BarlowCondensed-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FE2DEA1AD3CB69F3DE29E94C /* BarlowCondensed-ExtraBold.ttf */; };
 		BB47D00E3F12CB6109BF8E6D /* SyncServerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E9AC494FEF036DA1449246 /* SyncServerClient.swift */; };
+		BEE8ABFFB6678DC93E6C9819 /* atkinsonhyperlegible-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7FCA88AC09FAE5835A53F246 /* atkinsonhyperlegible-OFL.txt */; };
+		C021A1659157E40F59741F28 /* playfairdisplay-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = ADAE0F1D02F2F3B4F6603A22 /* playfairdisplay-OFL.txt */; };
 		C0EEE6068BA4D38786D2718B /* SpotifyAuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 023703132FFF98E22ED6E203 /* SpotifyAuthManager.swift */; };
+		C1785336F00F3304BD47B7FD /* bebasneue-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1B0D88402B9AB3E7BBCD0CA6 /* bebasneue-OFL.txt */; };
 		C1BC5561C4FF8A26A601345D /* BebasNeue-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8AC22968C10EA0DA1D7CBE6D /* BebasNeue-Regular.ttf */; };
+		C42B0F318FF0C9EA28F26815 /* WidgetConfigurationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8BA7A8B9F89614E99A08C0 /* WidgetConfigurationIntent.swift */; };
+		C9D67E1B601B183C6FE9EE34 /* barlowcondensed-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = ED8D21429BF154A7474104CF /* barlowcondensed-OFL.txt */; };
 		CA6023C68759B1EB2C0BE068 /* LyricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF723DBC9A4FDFB26CE3F30 /* LyricsService.swift */; };
 		CB52314340B80FA258C80C3B /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1EC04D45E45C8C053F9496 /* KeychainStore.swift */; };
 		CBBA77CACA9F39B9090F8DF6 /* DynamicallyricsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 248CAA9DBAA3A963E7C30BCD /* DynamicallyricsApp.swift */; };
+		CCA5357ABD404FF90E60C04A /* spacegrotesk-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7B6538045BFD337B0FC6C327 /* spacegrotesk-OFL.txt */; };
+		D2713F36E38450C9B3828DCB /* WidgetGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02BC94D6AFD4FBEFD2E68735 /* WidgetGalleryView.swift */; };
 		D34912813E376FDAEDF499E2 /* Baloo2.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F1B3E2CDC8F59346FBA3CEFC /* Baloo2.ttf */; };
+		D7C2637DF5F0F32BA8F5A0E6 /* spacegrotesk-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 219DE55DB23BFA5C808A9448 /* spacegrotesk-OFL.txt */; };
+		DA2D4B16545B692AF3C62B5D /* pacifico-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7AB6B5FA0D1C90EE1359E486 /* pacifico-OFL.txt */; };
 		DBC2D2AFC03220936082C23D /* SpaceGrotesk.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D91A850A59134B6AAB05DC5A /* SpaceGrotesk.ttf */; };
+		DC83562FB33D733E0F8E3233 /* dmserifdisplay-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 456F3F103ED318FB52A593CD /* dmserifdisplay-OFL.txt */; };
 		DF3E90E384AB51474403B19E /* RefreshLyricsIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E26031E981FDEFDD6475F308 /* RefreshLyricsIntent.swift */; };
+		E0238E29839E1E24B4138302 /* pacifico-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1CDC291F495728FC6B741932 /* pacifico-OFL.txt */; };
 		E3FD85A00F5B814BB2F45C71 /* Baloo2.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 240C8EAD0820B1CD63FE6A49 /* Baloo2.ttf */; };
 		E5259A459AEFB998837D5503 /* LyricWatchWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71606A970345C293848CDA8C /* LyricWatchWidgetsBundle.swift */; };
 		E8A85F88E762C75110A4448F /* SyncServerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509F013884163D19DBBB0276 /* SyncServerRow.swift */; };
+		EF23DE637713019878C59DD2 /* bebasneue-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3737FADDA6DB0F2B6D165426 /* bebasneue-OFL.txt */; };
 		EFDAC79B9892C4101F973935 /* NowPlayingBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED4AE702F7821F3CDB5FBDE1 /* NowPlayingBridge.swift */; };
+		F17F7DB0B3DB935CB7924315 /* BarlowCondensed-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 22FBF5C80C66D311E04A6D93 /* BarlowCondensed-ExtraBold.ttf */; };
+		F78644350FA722F95793459C /* BarlowCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 519FD1BD5B7AAE0126F599B1 /* BarlowCondensed-SemiBold.ttf */; };
+		FC7876F0B966307DCB597C6C /* atkinsonhyperlegible-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = FE5C49B34377B29D14AFF537 /* atkinsonhyperlegible-OFL.txt */; };
 		FF0BBF819E063F11EE8F09CD /* Bungee-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 286663F8584E22AD7BB60CD3 /* Bungee-Regular.ttf */; };
 /* End PBXBuildFile section */
 
@@ -93,10 +133,10 @@
 		0403791FF95A93A0A532C370 /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
+			dstPath = Watch;
+			dstSubfolderSpec = 1;
 			files = (
-				5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */,
+				2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */,
 			);
 			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -104,10 +144,10 @@
 		3012F4C2FC0A625E5024D521 /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = Watch;
-			dstSubfolderSpec = 1;
+			dstPath = "";
+			dstSubfolderSpec = 13;
 			files = (
-				2B85AD863A74D6D3192BAB03 /* DynamicallyricsWatch.app in Embed Dependencies */,
+				5653B55E81AD0C9CC6D65059 /* LyricWidgets.appex in Embed Dependencies */,
 			);
 			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -128,47 +168,73 @@
 /* Begin PBXFileReference section */
 		00A912214B48CF43CED2AB5B /* ArtworkRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkRepository.swift; sourceTree = "<group>"; };
 		023703132FFF98E22ED6E203 /* SpotifyAuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyAuthManager.swift; sourceTree = "<group>"; };
+		02BC94D6AFD4FBEFD2E68735 /* WidgetGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetGalleryView.swift; sourceTree = "<group>"; };
+		079E5CF73DCEC77A42E71BF0 /* AtkinsonHyperlegible-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "AtkinsonHyperlegible-Regular.ttf"; sourceTree = "<group>"; };
+		0AC76D7BA653D32EB6527565 /* AtkinsonHyperlegible-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "AtkinsonHyperlegible-Regular.ttf"; sourceTree = "<group>"; };
 		0AF723DBC9A4FDFB26CE3F30 /* LyricsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsService.swift; sourceTree = "<group>"; };
 		0D4059FBA00502BEBFF30974 /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
 		1A93E440BBCE4CE76E43D123 /* AlbumArtworkPrefetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumArtworkPrefetcher.swift; sourceTree = "<group>"; };
+		1B0D88402B9AB3E7BBCD0CA6 /* bebasneue-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bebasneue-OFL.txt"; sourceTree = "<group>"; };
 		1C96E9E80EB1B3BA5C5CCFDD /* NowPlayingWatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingWatchView.swift; sourceTree = "<group>"; };
+		1CDC291F495728FC6B741932 /* pacifico-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "pacifico-OFL.txt"; sourceTree = "<group>"; };
 		215ADD0345FA34F59D83675B /* SyncedLyricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedLyricsView.swift; sourceTree = "<group>"; };
+		219DE55DB23BFA5C808A9448 /* spacegrotesk-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "spacegrotesk-OFL.txt"; sourceTree = "<group>"; };
+		22FBF5C80C66D311E04A6D93 /* BarlowCondensed-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-ExtraBold.ttf"; sourceTree = "<group>"; };
 		240C8EAD0820B1CD63FE6A49 /* Baloo2.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Baloo2.ttf; sourceTree = "<group>"; };
 		248CAA9DBAA3A963E7C30BCD /* DynamicallyricsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicallyricsApp.swift; sourceTree = "<group>"; };
 		2643CFE43083020E2CFD9165 /* WatchLyricStackWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLyricStackWidget.swift; sourceTree = "<group>"; };
 		26B49E7360AD2515A1641767 /* Dynamicallyrics.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Dynamicallyrics.Debug.entitlements; sourceTree = "<group>"; };
+		26D5EF823E8D7FD9D865F4D6 /* baloo2-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "baloo2-OFL.txt"; sourceTree = "<group>"; };
 		28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsLiveActivity.swift; sourceTree = "<group>"; };
 		285A712482FFD81B7371D537 /* LyricWatchWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LyricWatchWidgets.entitlements; sourceTree = "<group>"; };
 		286663F8584E22AD7BB60CD3 /* Bungee-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Bungee-Regular.ttf"; sourceTree = "<group>"; };
 		2A3BA96C2F5554FBC7549BA8 /* PlayfairDisplay.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PlayfairDisplay.ttf; sourceTree = "<group>"; };
+		32696524560F47CBF7C363DA /* barlowcondensed-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "barlowcondensed-OFL.txt"; sourceTree = "<group>"; };
+		3737FADDA6DB0F2B6D165426 /* bebasneue-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bebasneue-OFL.txt"; sourceTree = "<group>"; };
 		388982BB47D706DC2E5337F8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3965998A69F8220714B425AF /* Dynamicallyrics.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Dynamicallyrics.entitlements; sourceTree = "<group>"; };
 		3AA9C09E856EEE455AB2BDA2 /* LockscreenLyricWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockscreenLyricWidget.swift; sourceTree = "<group>"; };
 		3CB3540DB76B27C3ECCECAE0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		456F3F103ED318FB52A593CD /* dmserifdisplay-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "dmserifdisplay-OFL.txt"; sourceTree = "<group>"; };
 		472761C599B9583D7AB791BD /* DynamicallyricsWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DynamicallyricsWatch.entitlements; sourceTree = "<group>"; };
+		472C65FB20D3B60841310BCD /* ConfigurableLyricsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurableLyricsWidget.swift; sourceTree = "<group>"; };
 		499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TogglePlaybackIntent.swift; sourceTree = "<group>"; };
+		49E0049DC5D3C2D87A67F263 /* DMSerifDisplay-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSerifDisplay-Regular.ttf"; sourceTree = "<group>"; };
+		4BA7EF967587F897335B28CC /* fraunces-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "fraunces-OFL.txt"; sourceTree = "<group>"; };
 		509F013884163D19DBBB0276 /* SyncServerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncServerRow.swift; sourceTree = "<group>"; };
+		519FD1BD5B7AAE0126F599B1 /* BarlowCondensed-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-SemiBold.ttf"; sourceTree = "<group>"; };
 		5A18BB359D3D54AC22AD1EAE /* LyricWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LyricWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A6D06020DA8782B58A82158 /* LiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityController.swift; sourceTree = "<group>"; };
 		5BAE7BBD2C708EA39F1BA036 /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
 		5F1EC04D45E45C8C053F9496 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		60FA897587AFF515181FE7E5 /* bungee-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bungee-OFL.txt"; sourceTree = "<group>"; };
 		62CD9889F52C701264248490 /* DynamicallyricsWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DynamicallyricsWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C7BD9BC79688FAB1D1A127C /* CurrentLineWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentLineWidget.swift; sourceTree = "<group>"; };
 		7057BA275139400E5B5AE94D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		71606A970345C293848CDA8C /* LyricWatchWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricWatchWidgetsBundle.swift; sourceTree = "<group>"; };
+		72DDEDE0417E00CD83027CAF /* Fraunces[SOFT,WONK,opsz,wght].ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fraunces[SOFT,WONK,opsz,wght].ttf"; sourceTree = "<group>"; };
 		75C1C3843E1DD1B92BCF8BA4 /* SpaceGrotesk.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = SpaceGrotesk.ttf; sourceTree = "<group>"; };
 		79C1698CFC6BA00171949EE2 /* LyricWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricWidgetsBundle.swift; sourceTree = "<group>"; };
 		7A326FEE6360060D7B986D02 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7AB6B5FA0D1C90EE1359E486 /* pacifico-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "pacifico-OFL.txt"; sourceTree = "<group>"; };
+		7B6538045BFD337B0FC6C327 /* spacegrotesk-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "spacegrotesk-OFL.txt"; sourceTree = "<group>"; };
+		7BBBD8E89310E814DB0DB881 /* DMSerifDisplay-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSerifDisplay-Regular.ttf"; sourceTree = "<group>"; };
+		7FCA88AC09FAE5835A53F246 /* atkinsonhyperlegible-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "atkinsonhyperlegible-OFL.txt"; sourceTree = "<group>"; };
+		7FEB55F03D8C760FFEC0CFCB /* BarlowCondensed-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-Regular.ttf"; sourceTree = "<group>"; };
 		8064C257A318E778B7E2B0F6 /* Bungee-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Bungee-Regular.ttf"; sourceTree = "<group>"; };
 		85F8C9BDCFB2621159C1AA83 /* LyricWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LyricWidgets.entitlements; sourceTree = "<group>"; };
 		8A7C09312579956357A942BA /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		8AC22968C10EA0DA1D7CBE6D /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
 		8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConfig.swift; sourceTree = "<group>"; };
 		946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncManager.swift; sourceTree = "<group>"; };
+		94B247A56B5C08A4D73FDF51 /* BarlowCondensed-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-SemiBold.ttf"; sourceTree = "<group>"; };
 		9A13679FF910F6ACFE50B30A /* WatchWidgetStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWidgetStyles.swift; sourceTree = "<group>"; };
 		9C07680DCE0CB34AE71DE2E4 /* WatchLyricComplicationWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLyricComplicationWidget.swift; sourceTree = "<group>"; };
 		9C8A92CCBCBBBBD7A0E18A9A /* Pacifico-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pacifico-Regular.ttf"; sourceTree = "<group>"; };
 		A3A3F61C414E6C576B7969AB /* Dynamicallyrics.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Dynamicallyrics.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A9A69FCAE7BA1CDB43195731 /* baloo2-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "baloo2-OFL.txt"; sourceTree = "<group>"; };
+		AD2D693C3CC349A143256FD9 /* BarlowCondensed-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-Bold.ttf"; sourceTree = "<group>"; };
+		ADAE0F1D02F2F3B4F6603A22 /* playfairdisplay-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "playfairdisplay-OFL.txt"; sourceTree = "<group>"; };
 		B1184F3BE09CFF70813F92CC /* LyricCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LyricCore; path = Packages/LyricCore; sourceTree = SOURCE_ROOT; };
 		B4083C7544C6C54C2403D22F /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		B6E4D01DA0CCA1E2BB9A4B54 /* DominantColorExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DominantColorExtractor.swift; sourceTree = "<group>"; };
@@ -176,16 +242,30 @@
 		C1BBBCD17E2B33ABAAEBC64A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CD540050018CAB1FC2EF880F /* VinylWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VinylWidget.swift; sourceTree = "<group>"; };
 		CF751E96C7E275470CF7A478 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D1462E78EDB77C408BEAFCFF /* bungee-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bungee-OFL.txt"; sourceTree = "<group>"; };
 		D364981F8F442EF1B2E58BD0 /* DiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLog.swift; sourceTree = "<group>"; };
+		D38C447353DF0C46BAA0D9CD /* playfairdisplay-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "playfairdisplay-OFL.txt"; sourceTree = "<group>"; };
+		D8590B126E9BF2D199B3AFEB /* AtkinsonHyperlegible-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "AtkinsonHyperlegible-Bold.ttf"; sourceTree = "<group>"; };
 		D91A850A59134B6AAB05DC5A /* SpaceGrotesk.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = SpaceGrotesk.ttf; sourceTree = "<group>"; };
 		DA950BDAF4FFDBAFF25B7877 /* Pacifico-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pacifico-Regular.ttf"; sourceTree = "<group>"; };
+		DE8BA7A8B9F89614E99A08C0 /* WidgetConfigurationIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetConfigurationIntent.swift; sourceTree = "<group>"; };
 		E1E9AC494FEF036DA1449246 /* SyncServerClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncServerClient.swift; sourceTree = "<group>"; };
 		E26031E981FDEFDD6475F308 /* RefreshLyricsIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshLyricsIntent.swift; sourceTree = "<group>"; };
+		E47CCA62CB801B3396A17656 /* fraunces-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "fraunces-OFL.txt"; sourceTree = "<group>"; };
+		E4D20706F46A01D55C14018C /* Fraunces[SOFT,WONK,opsz,wght].ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fraunces[SOFT,WONK,opsz,wght].ttf"; sourceTree = "<group>"; };
 		ED4AE702F7821F3CDB5FBDE1 /* NowPlayingBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingBridge.swift; sourceTree = "<group>"; };
+		ED8D21429BF154A7474104CF /* barlowcondensed-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "barlowcondensed-OFL.txt"; sourceTree = "<group>"; };
+		EE2061FC6F58B47F6EFF5EE6 /* SpotifyRequestSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyRequestSafety.swift; sourceTree = "<group>"; };
+		EFD1B9DA1EA2265D19216A1F /* BarlowCondensed-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-Regular.ttf"; sourceTree = "<group>"; };
+		F0CEB388EBB7DBDF9410518A /* BarlowCondensed-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-Bold.ttf"; sourceTree = "<group>"; };
+		F0E8A8C08A35636E63F3ED97 /* dmserifdisplay-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "dmserifdisplay-OFL.txt"; sourceTree = "<group>"; };
 		F1B3E2CDC8F59346FBA3CEFC /* Baloo2.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Baloo2.ttf; sourceTree = "<group>"; };
+		F2455D99E1423AA462D5ADE0 /* AtkinsonHyperlegible-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "AtkinsonHyperlegible-Bold.ttf"; sourceTree = "<group>"; };
 		F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyProvider.swift; sourceTree = "<group>"; };
 		FA45FDB582EC9BF0DA3D2FA6 /* LyricWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = LyricWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FCF7FA6E28FC2EF22961BD17 /* OpenLyricsShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenLyricsShortcuts.swift; sourceTree = "<group>"; };
+		FE2DEA1AD3CB69F3DE29E94C /* BarlowCondensed-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-ExtraBold.ttf"; sourceTree = "<group>"; };
+		FE5C49B34377B29D14AFF537 /* atkinsonhyperlegible-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "atkinsonhyperlegible-OFL.txt"; sourceTree = "<group>"; };
 		FED59A6EB0239CFEE501B720 /* DynamicallyricsWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicallyricsWatchApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -276,6 +356,7 @@
 				023703132FFF98E22ED6E203 /* SpotifyAuthManager.swift */,
 				8CEE00183F7192C5CB66F221 /* SpotifyConfig.swift */,
 				F4020991A91E5F2DCC4738E8 /* SpotifyProvider.swift */,
+				EE2061FC6F58B47F6EFF5EE6 /* SpotifyRequestSafety.swift */,
 				E1E9AC494FEF036DA1449246 /* SyncServerClient.swift */,
 				946BCA4C78177B4D441AC022 /* WatchSyncManager.swift */,
 				F87E1C2F2954C0207EABBD5E /* Fonts */,
@@ -305,6 +386,7 @@
 		5A1207FEBA2FD5F40EA1C5D2 /* LyricWidgets */ = {
 			isa = PBXGroup;
 			children = (
+				472C65FB20D3B60841310BCD /* ConfigurableLyricsWidget.swift */,
 				6C7BD9BC79688FAB1D1A127C /* CurrentLineWidget.swift */,
 				3AA9C09E856EEE455AB2BDA2 /* LockscreenLyricWidget.swift */,
 				28145FE3FA2A436A7B0C2110 /* LyricsLiveActivity.swift */,
@@ -312,6 +394,7 @@
 				E26031E981FDEFDD6475F308 /* RefreshLyricsIntent.swift */,
 				499B1794C397D9156BC6EFAB /* TogglePlaybackIntent.swift */,
 				CD540050018CAB1FC2EF880F /* VinylWidget.swift */,
+				DE8BA7A8B9F89614E99A08C0 /* WidgetConfigurationIntent.swift */,
 				A9E7059D0DFEEE8F9ECD02F7 /* Fonts */,
 				2FBD9B6FCFAB3EEEBD048D90 /* Support */,
 			);
@@ -327,6 +410,23 @@
 				FA45FDB582EC9BF0DA3D2FA6 /* LyricWidgets.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		628D3C0C45B557209AF55A5F /* Licenses */ = {
+			isa = PBXGroup;
+			children = (
+				7FCA88AC09FAE5835A53F246 /* atkinsonhyperlegible-OFL.txt */,
+				A9A69FCAE7BA1CDB43195731 /* baloo2-OFL.txt */,
+				ED8D21429BF154A7474104CF /* barlowcondensed-OFL.txt */,
+				3737FADDA6DB0F2B6D165426 /* bebasneue-OFL.txt */,
+				D1462E78EDB77C408BEAFCFF /* bungee-OFL.txt */,
+				F0E8A8C08A35636E63F3ED97 /* dmserifdisplay-OFL.txt */,
+				E47CCA62CB801B3396A17656 /* fraunces-OFL.txt */,
+				7AB6B5FA0D1C90EE1359E486 /* pacifico-OFL.txt */,
+				D38C447353DF0C46BAA0D9CD /* playfairdisplay-OFL.txt */,
+				219DE55DB23BFA5C808A9448 /* spacegrotesk-OFL.txt */,
+			);
+			path = Licenses;
 			sourceTree = "<group>";
 		};
 		6C7CDA6DC4BC3D11171BD762 /* Support */ = {
@@ -345,6 +445,7 @@
 				B4083C7544C6C54C2403D22F /* RootView.swift */,
 				215ADD0345FA34F59D83675B /* SyncedLyricsView.swift */,
 				509F013884163D19DBBB0276 /* SyncServerRow.swift */,
+				02BC94D6AFD4FBEFD2E68735 /* WidgetGalleryView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -352,12 +453,21 @@
 		A9E7059D0DFEEE8F9ECD02F7 /* Fonts */ = {
 			isa = PBXGroup;
 			children = (
+				F2455D99E1423AA462D5ADE0 /* AtkinsonHyperlegible-Bold.ttf */,
+				079E5CF73DCEC77A42E71BF0 /* AtkinsonHyperlegible-Regular.ttf */,
 				F1B3E2CDC8F59346FBA3CEFC /* Baloo2.ttf */,
+				AD2D693C3CC349A143256FD9 /* BarlowCondensed-Bold.ttf */,
+				22FBF5C80C66D311E04A6D93 /* BarlowCondensed-ExtraBold.ttf */,
+				EFD1B9DA1EA2265D19216A1F /* BarlowCondensed-Regular.ttf */,
+				94B247A56B5C08A4D73FDF51 /* BarlowCondensed-SemiBold.ttf */,
 				8AC22968C10EA0DA1D7CBE6D /* BebasNeue-Regular.ttf */,
 				8064C257A318E778B7E2B0F6 /* Bungee-Regular.ttf */,
+				7BBBD8E89310E814DB0DB881 /* DMSerifDisplay-Regular.ttf */,
+				E4D20706F46A01D55C14018C /* Fraunces[SOFT,WONK,opsz,wght].ttf */,
 				9C8A92CCBCBBBBD7A0E18A9A /* Pacifico-Regular.ttf */,
 				2A3BA96C2F5554FBC7549BA8 /* PlayfairDisplay.ttf */,
 				75C1C3843E1DD1B92BCF8BA4 /* SpaceGrotesk.ttf */,
+				628D3C0C45B557209AF55A5F /* Licenses */,
 			);
 			path = Fonts;
 			sourceTree = "<group>";
@@ -383,6 +493,23 @@
 			path = WatchWidgets;
 			sourceTree = "<group>";
 		};
+		E644D17A6329D23FB012338D /* Licenses */ = {
+			isa = PBXGroup;
+			children = (
+				FE5C49B34377B29D14AFF537 /* atkinsonhyperlegible-OFL.txt */,
+				26D5EF823E8D7FD9D865F4D6 /* baloo2-OFL.txt */,
+				32696524560F47CBF7C363DA /* barlowcondensed-OFL.txt */,
+				1B0D88402B9AB3E7BBCD0CA6 /* bebasneue-OFL.txt */,
+				60FA897587AFF515181FE7E5 /* bungee-OFL.txt */,
+				456F3F103ED318FB52A593CD /* dmserifdisplay-OFL.txt */,
+				4BA7EF967587F897335B28CC /* fraunces-OFL.txt */,
+				1CDC291F495728FC6B741932 /* pacifico-OFL.txt */,
+				ADAE0F1D02F2F3B4F6603A22 /* playfairdisplay-OFL.txt */,
+				7B6538045BFD337B0FC6C327 /* spacegrotesk-OFL.txt */,
+			);
+			path = Licenses;
+			sourceTree = "<group>";
+		};
 		EA687EEFB3C4FFEE0F6B48B7 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
@@ -394,12 +521,21 @@
 		F87E1C2F2954C0207EABBD5E /* Fonts */ = {
 			isa = PBXGroup;
 			children = (
+				D8590B126E9BF2D199B3AFEB /* AtkinsonHyperlegible-Bold.ttf */,
+				0AC76D7BA653D32EB6527565 /* AtkinsonHyperlegible-Regular.ttf */,
 				240C8EAD0820B1CD63FE6A49 /* Baloo2.ttf */,
+				F0CEB388EBB7DBDF9410518A /* BarlowCondensed-Bold.ttf */,
+				FE2DEA1AD3CB69F3DE29E94C /* BarlowCondensed-ExtraBold.ttf */,
+				7FEB55F03D8C760FFEC0CFCB /* BarlowCondensed-Regular.ttf */,
+				519FD1BD5B7AAE0126F599B1 /* BarlowCondensed-SemiBold.ttf */,
 				5BAE7BBD2C708EA39F1BA036 /* BebasNeue-Regular.ttf */,
 				286663F8584E22AD7BB60CD3 /* Bungee-Regular.ttf */,
+				49E0049DC5D3C2D87A67F263 /* DMSerifDisplay-Regular.ttf */,
+				72DDEDE0417E00CD83027CAF /* Fraunces[SOFT,WONK,opsz,wght].ttf */,
 				DA950BDAF4FFDBAFF25B7877 /* Pacifico-Regular.ttf */,
 				B9F382F66CD8B6A93BF5E16C /* PlayfairDisplay.ttf */,
 				D91A850A59134B6AAB05DC5A /* SpaceGrotesk.ttf */,
+				E644D17A6329D23FB012338D /* Licenses */,
 			);
 			path = Fonts;
 			sourceTree = "<group>";
@@ -545,12 +681,30 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				043C9C40B76CC92A983BD118 /* AtkinsonHyperlegible-Bold.ttf in Resources */,
+				736D9DAB99051BF77938F14A /* AtkinsonHyperlegible-Regular.ttf in Resources */,
 				D34912813E376FDAEDF499E2 /* Baloo2.ttf in Resources */,
+				2B5AF87C36DA45FB7EC75D59 /* BarlowCondensed-Bold.ttf in Resources */,
+				F17F7DB0B3DB935CB7924315 /* BarlowCondensed-ExtraBold.ttf in Resources */,
+				425F120DF67C191F5405079E /* BarlowCondensed-Regular.ttf in Resources */,
+				195F5C7DA1610C03C9B4C75B /* BarlowCondensed-SemiBold.ttf in Resources */,
 				C1BC5561C4FF8A26A601345D /* BebasNeue-Regular.ttf in Resources */,
 				78CB701C55BE1A7869624939 /* Bungee-Regular.ttf in Resources */,
+				00DBA717FEB7ADFBDB845E4E /* DMSerifDisplay-Regular.ttf in Resources */,
+				B08F8AD01D16FB9B748B606B /* Fraunces[SOFT,WONK,opsz,wght].ttf in Resources */,
 				4F6F01B1809A65845D52A927 /* Pacifico-Regular.ttf in Resources */,
 				A3EAC2F9C55AC71FFDE2EDBC /* PlayfairDisplay.ttf in Resources */,
 				171B99FA086F55B7BF5416C4 /* SpaceGrotesk.ttf in Resources */,
+				BEE8ABFFB6678DC93E6C9819 /* atkinsonhyperlegible-OFL.txt in Resources */,
+				2B3982550DC47BD146F2DC29 /* baloo2-OFL.txt in Resources */,
+				C9D67E1B601B183C6FE9EE34 /* barlowcondensed-OFL.txt in Resources */,
+				EF23DE637713019878C59DD2 /* bebasneue-OFL.txt in Resources */,
+				3B8BE024B60E48AC5AB1F92B /* bungee-OFL.txt in Resources */,
+				776163ACD595EA41768A5382 /* dmserifdisplay-OFL.txt in Resources */,
+				A2636D38A4268FB983C87AB3 /* fraunces-OFL.txt in Resources */,
+				DA2D4B16545B692AF3C62B5D /* pacifico-OFL.txt in Resources */,
+				740DC95099BE39FEE79C00EE /* playfairdisplay-OFL.txt in Resources */,
+				D7C2637DF5F0F32BA8F5A0E6 /* spacegrotesk-OFL.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -559,12 +713,30 @@
 			buildActionMask = 2147483647;
 			files = (
 				2895FA41E6A80212D032CE71 /* Assets.xcassets in Resources */,
+				2D3C0336EAF0677A1EC20928 /* AtkinsonHyperlegible-Bold.ttf in Resources */,
+				A6038D624C9B3AD194B5F540 /* AtkinsonHyperlegible-Regular.ttf in Resources */,
 				E3FD85A00F5B814BB2F45C71 /* Baloo2.ttf in Resources */,
+				8F607C51CCF4FCF5C6CD8B23 /* BarlowCondensed-Bold.ttf in Resources */,
+				BA69EEB173742CF023AF6859 /* BarlowCondensed-ExtraBold.ttf in Resources */,
+				00D67A4090B21FE62C54AB7F /* BarlowCondensed-Regular.ttf in Resources */,
+				F78644350FA722F95793459C /* BarlowCondensed-SemiBold.ttf in Resources */,
 				6BB96CC632715A678CD0955E /* BebasNeue-Regular.ttf in Resources */,
 				FF0BBF819E063F11EE8F09CD /* Bungee-Regular.ttf in Resources */,
+				6AA7821D595AE46D769A1D55 /* DMSerifDisplay-Regular.ttf in Resources */,
+				54138B18BC85D9DD9D1F7B5D /* Fraunces[SOFT,WONK,opsz,wght].ttf in Resources */,
 				3247A6A94EDEEA1161B27FC6 /* Pacifico-Regular.ttf in Resources */,
 				61BCFB1A8594E23F1CFE30F5 /* PlayfairDisplay.ttf in Resources */,
 				DBC2D2AFC03220936082C23D /* SpaceGrotesk.ttf in Resources */,
+				FC7876F0B966307DCB597C6C /* atkinsonhyperlegible-OFL.txt in Resources */,
+				8F4842FD3AB205D2C938E647 /* baloo2-OFL.txt in Resources */,
+				9DA790ECBD26FF15301707B6 /* barlowcondensed-OFL.txt in Resources */,
+				C1785336F00F3304BD47B7FD /* bebasneue-OFL.txt in Resources */,
+				857E31AFB3ED9A90682503A9 /* bungee-OFL.txt in Resources */,
+				DC83562FB33D733E0F8E3233 /* dmserifdisplay-OFL.txt in Resources */,
+				0071EC1E6089207D35F8F449 /* fraunces-OFL.txt in Resources */,
+				E0238E29839E1E24B4138302 /* pacifico-OFL.txt in Resources */,
+				C021A1659157E40F59741F28 /* playfairdisplay-OFL.txt in Resources */,
+				CCA5357ABD404FF90E60C04A /* spacegrotesk-OFL.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -583,6 +755,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				168D7A3A4246495E1F986D1D /* ConfigurableLyricsWidget.swift in Sources */,
 				93AEB6C4EC54A424D86A37A2 /* CurrentLineWidget.swift in Sources */,
 				509CA8E44116D294131083BA /* LockscreenLyricWidget.swift in Sources */,
 				34B015BC4285859894148EF7 /* LyricWidgetsBundle.swift in Sources */,
@@ -590,6 +763,7 @@
 				DF3E90E384AB51474403B19E /* RefreshLyricsIntent.swift in Sources */,
 				7371AE3A0691726F85BD5FEA /* TogglePlaybackIntent.swift in Sources */,
 				62483A38BD32B3E49DA53896 /* VinylWidget.swift in Sources */,
+				C42B0F318FF0C9EA28F26815 /* WidgetConfigurationIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -634,11 +808,13 @@
 				C0EEE6068BA4D38786D2718B /* SpotifyAuthManager.swift in Sources */,
 				A4BB10137173CCE619558EFE /* SpotifyConfig.swift in Sources */,
 				625B2DA26815ACD8682200C1 /* SpotifyProvider.swift in Sources */,
+				1993B70353C2289855EE2228 /* SpotifyRequestSafety.swift in Sources */,
 				BB47D00E3F12CB6109BF8E6D /* SyncServerClient.swift in Sources */,
 				E8A85F88E762C75110A4448F /* SyncServerRow.swift in Sources */,
 				009CC8F9FC4D4E9E79912B07 /* SyncedLyricsView.swift in Sources */,
 				9939CE0EF1D8EB84E626A2AA /* TogglePlaybackIntent.swift in Sources */,
 				41E75F449CD0E115B148C31B /* WatchSyncManager.swift in Sources */,
+				D2713F36E38450C9B3828DCB /* WidgetGalleryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -822,7 +998,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 50;
+				CURRENT_PROJECT_VERSION = 56;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -889,7 +1065,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 50;
+				CURRENT_PROJECT_VERSION = 56;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 643P4Q6FLQ;
 				ENABLE_NS_ASSERTIONS = NO;

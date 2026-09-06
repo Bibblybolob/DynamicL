@@ -57,4 +57,15 @@ struct SyncOwnershipPolicyTests {
             isWarmingUp: true
         ))
     }
+
+    @Test
+    func cooldownKeepsOneLiveOwnerWithoutPretendingPlaybackStopped() {
+        #expect(SyncOwnershipPolicy.phoneLeaseIsHealthy(
+            isForeground: false,
+            loopIsAlive: true,
+            lastSuccessfulPollAge: 7_200,
+            isWarmingUp: false,
+            isRateLimited: true
+        ))
+    }
 }

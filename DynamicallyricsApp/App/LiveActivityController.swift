@@ -105,6 +105,10 @@ final class LiveActivityController {
         ActivityAuthorizationInfo().areActivitiesEnabled
     }
 
+    var isStale: Bool {
+        activity?.activityState == .stale
+    }
+
     /// True when the adopted or current activity is still showing the
     /// first-use action. This lets the app recover a real activity after a
     /// process relaunch without making the user press Show Lyrics again.
@@ -145,6 +149,9 @@ final class LiveActivityController {
     }
 
     func start(state: LyricsActivityAttributes.ContentState) {
+        // The ticker can request a start while explicit recovery awaits end().
+        // Adopting the outgoing Activity here would attach to a dying card.
+        guard !isRecovering else { return }
         Self.log.info("start requested, enabled=\(self.isEnabled)")
         guard !wasDismissed else {
             DiagnosticsLog.append("LA start suppressed after user dismissal")
@@ -218,7 +225,7 @@ final class LiveActivityController {
             startFailureCount = 0
             nextStartAttemptAt = .distantPast
             Self.log.info("activity started ok")
-            DiagnosticsLog.append("LA started: \(state.trackTitle) play=\(state.isPlaying)")
+            DiagnosticsLog.append("LA started: id=\(created.id) \(state.trackTitle) play=\(state.isPlaying) staleIn=\(content.staleDate.map { Int($0.timeIntervalSinceNow) } ?? -1)s")
             if state.requiresUserStart != true {
                 SharedNowPlaying.markLiveActivityFirstUseCompleted(for: created.id)
             }
@@ -268,12 +275,14 @@ final class LiveActivityController {
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
         pendingUpdateState = nil
+        pendingUpdatePriority = .low
+        updateInFlight = false
         activity = nil
         isRunning = false
         isRecovering = true
         lastSentTimestamp = .distantPast
         lastAppliedState = nil
-        DiagnosticsLog.append("LA explicit restart requested")
+        DiagnosticsLog.append("LA explicit restart requested: ending id=\(ending.id)")
 
         recoveryTask = Task { @MainActor [weak self] in
             await ending.end(nil, dismissalPolicy: .immediate)
@@ -286,9 +295,9 @@ final class LiveActivityController {
             }
             guard let self, !Task.isCancelled else { return }
             self.allowRecoveryStart(reason: "Activity replacement")
-            self.start(state: state)
             self.isRecovering = false
             self.recoveryTask = nil
+            self.start(state: state)
         }
     }
 
@@ -444,6 +453,9 @@ final class LiveActivityController {
         } else {
             await ref.update(content)
         }
+        // An end/recovery can replace this Activity during the await. Its
+        // completion must not acknowledge old content or clear the new queue.
+        guard self.activity?.id == ref.id else { return }
         // Read ActivityKit's canonical state after the await. This is the
         // acknowledgement used by the placeholder recovery path. It also
         // raises the timestamp floor if a server push won the race.
@@ -532,9 +544,10 @@ final class LiveActivityController {
         nonisolated(unsafe) let observed = current
         activityStateTask = Task { [weak self] in
             for await state in observed.activityStateUpdates {
+                guard !Task.isCancelled, self?.activity?.id == observed.id else { return }
                 switch state {
                 case .stale:
-                    DiagnosticsLog.append("LA state became stale")
+                    DiagnosticsLog.append("LA state became stale: id=\(observed.id)")
                 case .ended, .dismissed:
                     self?.handleActivityEnded(id: observed.id, dismissed: state == .dismissed)
                     return
@@ -545,13 +558,14 @@ final class LiveActivityController {
         }
         contentUpdateTask = Task { [weak self] in
             for await content in observed.contentUpdates {
+                guard !Task.isCancelled, self?.activity?.id == observed.id else { return }
                 let state = content.state
                 self?.recordApplied(state)
                 let delay = state.generatedAtEpoch.map {
                     max(0, Date.now.timeIntervalSince1970 - $0)
                 }
                 DiagnosticsLog.append(
-                    "LA applied: source=\(state.source?.rawValue ?? "legacy") rev=\(state.revision ?? -1) delay=\(delay.map { String(format: "%.2f", $0) } ?? "-")s schedule=\(state.resolvedScheduledLines.count) art=\(state.albumImageURL != nil)"
+                    "LA applied: track=\(state.trackID ?? "-") source=\(state.source?.rawValue ?? "legacy") rev=\(state.revision ?? -1) epoch=\(state.generatedAtEpoch ?? -1) anchor=\(state.resolvedProgressStart?.timeIntervalSince1970 ?? -1) delay=\(delay.map { String(format: "%.2f", $0) } ?? "-")s schedule=\(state.resolvedScheduledLines.count) horizon=\(state.resolvedScheduledLines.last?.endDate?.timeIntervalSince1970 ?? -1) stale=\(content.staleDate?.timeIntervalSince1970 ?? -1)"
                 )
             }
         }
@@ -568,6 +582,8 @@ final class LiveActivityController {
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
         pendingUpdateState = nil
+        pendingUpdatePriority = .low
+        updateInFlight = false
         activity = nil
         isRunning = false
         lastSentTimestamp = .distantPast
@@ -577,7 +593,8 @@ final class LiveActivityController {
         SyncServerClient.shared.resetFirstUseGate()
         onActivityEnded?()
         SyncServerClient.shared.noteActivityEnded(dismissed: dismissed)
-        DiagnosticsLog.append(dismissed ? "LA dismissed by user" : "LA ended externally")
+        // A dismissed state identifies platform removal, not who caused it.
+        DiagnosticsLog.append("LA terminal state: id=\(id) dismissed=\(dismissed)")
     }
 
     private func beginPushToStartTokenStreaming() {
@@ -602,7 +619,8 @@ final class LiveActivityController {
         )
     }
 
-    func end() {
+    func end(reason: String) {
+        DiagnosticsLog.append("LA end requested: id=\(activity?.id ?? "none") reason=\(reason) recovering=\(isRecovering)")
         recoveryTask?.cancel()
         recoveryTask = nil
         isRecovering = false
@@ -631,6 +649,8 @@ final class LiveActivityController {
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
         pendingUpdateState = nil
+        pendingUpdatePriority = .low
+        updateInFlight = false
         Task { @MainActor in
             await ending.end(nil, dismissalPolicy: .immediate)
         }
@@ -666,7 +686,7 @@ final class LiveActivityController {
         // loop. One suppression is enough until a new playback session is
         // confirmed.
         guard isRunning || !wasDismissed else { return }
-        if isRunning { end() }
+        if isRunning { end(reason: "server session dismissal") }
         setDismissed(true)
         // The server already supplied this dismissal. The next heartbeat will
         // confirm local state. Reporting a second synthetic user dismissal

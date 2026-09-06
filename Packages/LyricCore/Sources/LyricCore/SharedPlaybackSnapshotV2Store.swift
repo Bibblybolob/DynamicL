@@ -70,7 +70,10 @@ public enum SharedPlaybackSnapshotV2Store {
             revision: snapshot.revision ?? 0,
             lyricOffsetSeconds: TimeInterval(snapshot.lyricOffsetMs ?? 0) / 1_000,
             currentLine: snapshot.currentLine,
-            nextLine: intervals.first?.text,
+            albumName: snapshot.albumName,
+            frozenPositionSeconds: snapshot.frozenPositionSeconds,
+            previousLine: snapshot.previousLine,
+            nextLine: snapshot.nextLine ?? intervals.first(where: { $0.startEpoch > snapshot.updatedAt.timeIntervalSince1970 })?.text,
             lyricIntervals: intervals
         )
     }

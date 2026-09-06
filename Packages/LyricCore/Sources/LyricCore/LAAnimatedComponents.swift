@@ -360,19 +360,19 @@ public struct LAScheduledLyricText: View {
     }
 
     public var body: some View {
-        // Use exact lyric boundaries and bounded recovery dates. iOS can skip
-        // an explicit boundary while another full-screen app is active. A
-        // recovery date gives the Live Activity another chance to resolve the
-        // current lyric when it becomes visible again. These dates redraw the
-        // existing state; they do not consume ActivityKit or APNs updates.
+        // Best effort only: ActivityKit does not provide WidgetKit timeline
+        // delivery for arbitrary text. Whenever this view does execute, resolve
+        // against wall time rather than a missed/cached TimelineView boundary.
         TimelineView(.explicit(refreshDates)) { timeline in
-            let pair = resolvedLines(at: timeline.date)
+            let renderDate = max(timeline.date, Date.now)
+            let pair = resolvedLines(at: renderDate)
             if role == .current && karaokeEnabled && animations {
                 TimelineView(.periodic(from: .now, by: 0.2)) { sweep in
-                    content(pair: pair, at: sweep.date)
+                    let date = max(sweep.date, Date.now)
+                    content(pair: resolvedLines(at: date), at: date)
                 }
             } else {
-                content(pair: pair, at: timeline.date)
+                content(pair: pair, at: renderDate)
             }
         }
         .frame(height: lineHeight)
@@ -390,34 +390,14 @@ public struct LAScheduledLyricText: View {
     static func makeRefreshDates(
         now: Date,
         scheduledLines: [WidgetLyricSnapshot.ScheduledLine],
-        playbackEndDate: Date?,
-        recoveryInterval: TimeInterval = 5,
-        maximumRecoveryWindow: TimeInterval = 135
+        playbackEndDate: Date?
     ) -> [Date] {
         let boundaries = scheduledLines.flatMap { line in
             [line.date, line.endDate].compactMap { $0 }
         }
         let futureBoundaries = boundaries.filter { $0 >= now }
         let futureTrackEnd = playbackEndDate.flatMap { $0 >= now ? $0 : nil }
-        let scheduleEnd = futureBoundaries.max()
-        let relevantEnd = scheduleEnd ?? futureTrackEnd
-        let cappedEnd = relevantEnd.map {
-            min($0.addingTimeInterval(recoveryInterval),
-                now.addingTimeInterval(maximumRecoveryWindow))
-        } ?? now
-
-        var dates = Set([now] + futureBoundaries + [futureTrackEnd].compactMap { $0 })
-        if recoveryInterval.isFinite, recoveryInterval > 0,
-           maximumRecoveryWindow.isFinite, maximumRecoveryWindow > 0,
-           cappedEnd > now {
-            var recoveryDate = now.addingTimeInterval(recoveryInterval)
-            while recoveryDate <= cappedEnd {
-                dates.insert(recoveryDate)
-                recoveryDate = recoveryDate.addingTimeInterval(recoveryInterval)
-            }
-            dates.insert(cappedEnd)
-        }
-        return dates.sorted()
+        return Set([now] + futureBoundaries + [futureTrackEnd].compactMap { $0 }).sorted()
     }
 
     @ViewBuilder
@@ -522,6 +502,11 @@ public struct LAScheduledLyricText: View {
             endDate = active.endDate ?? (passedCount < scheduledLines.count
                 ? scheduledLines[passedCount].date
                 : nil)
+        }
+        // A compacted payload may cover only part of the track. Holding its
+        // last line until track end misrepresents an exhausted schedule as live.
+        if let endDate, date >= endDate {
+            return ResolvedLines(current: "♪", next: nil, startDate: nil, endDate: nil)
         }
         return ResolvedLines(
             current: current,

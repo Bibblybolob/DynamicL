@@ -11,6 +11,7 @@ struct LyricEntry: TimelineEntry {
     let albumImageURL: String?
     let albumImageData: Data?
     let isPlaying: Bool
+    var presentation: WidgetPresentation? = nil
 
     static let sample = LyricEntry(
         date: .now,
@@ -136,16 +137,21 @@ struct CurrentLineProvider: TimelineProvider {
             let now = Date.now
             let expired = effectiveIsPlaying(snapshot)
                 && snapshot.playbackEndEpoch.map { $0 <= now.timeIntervalSince1970 } == true
-            completion(expired ? .idle : LyricEntry(snapshot: snapshot, date: now, line: snapshot.currentLine))
+            completion(expired ? .idle : LyricEntry(snapshot: snapshot, date: now,
+                line: SharedNowPlaying.resolvedWidgetLine(snapshot, at: now)))
         } else {
             completion(.idle)
         }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<LyricEntry>) -> Void) {
+        completion(makeTimeline())
+    }
+
+    // Synchronous builder shared with AppIntentTimelineProvider; boundaries are unchanged.
+    func makeTimeline() -> Timeline<LyricEntry> {
         guard let snapshot = SharedNowPlaying.load() else {
-            completion(Timeline(entries: [.idle], policy: .after(.now.addingTimeInterval(900))))
-            return
+            return Timeline(entries: [.idle], policy: .after(.now.addingTimeInterval(900)))
         }
 
         let now = Date.now
@@ -153,16 +159,17 @@ struct CurrentLineProvider: TimelineProvider {
         if isPlaying,
            let endEpoch = snapshot.playbackEndEpoch,
            endEpoch <= now.timeIntervalSince1970 {
-            completion(Timeline(entries: [.idle], policy: .after(now.addingTimeInterval(900))))
-            return
+            return Timeline(entries: [.idle], policy: .after(now.addingTimeInterval(900)))
         }
-        var entries = [LyricEntry(snapshot: snapshot, date: now, line: snapshot.currentLine)]
+        var entries = [LyricEntry(snapshot: snapshot, date: now,
+            line: SharedNowPlaying.resolvedWidgetLine(snapshot, at: now))]
         // A widget command can optimistically pause the player before the next
         // Spotify sample arrives. Do not keep applying a playing schedule to a
         // paused card during that short window.
         if isPlaying {
-            for line in snapshot.scheduledLines where line.date > now {
-                entries.append(LyricEntry(snapshot: snapshot, date: line.date, line: line.text))
+            for date in snapshot.lyricTimelineDates(after: now, advancing: isPlaying) {
+                entries.append(LyricEntry(snapshot: snapshot, date: date,
+                    line: SharedNowPlaying.resolvedWidgetLine(snapshot, at: date)))
             }
         }
 
@@ -200,7 +207,7 @@ struct CurrentLineProvider: TimelineProvider {
                 return date
             }
             .min() ?? normalRefresh
-        completion(Timeline(entries: entries, policy: .after(refresh)))
+        return Timeline(entries: entries, policy: .after(refresh))
     }
 }
 
@@ -217,6 +224,7 @@ private extension LyricEntry {
                 ?? snapshot.albumImageURL.flatMap(ArtworkFileCache.data(for:)),
             isPlaying: effectiveIsPlaying(snapshot)
         )
+        presentation = WidgetPresentation(snapshot: snapshot, at: SharedNowPlaying.widgetPresentationDate(snapshot, at: date))
     }
 }
 

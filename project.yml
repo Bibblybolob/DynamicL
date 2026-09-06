@@ -14,7 +14,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "1.2.0"
-    CURRENT_PROJECT_VERSION: "50"
+    CURRENT_PROJECT_VERSION: "56"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 643P4Q6FLQ
 
@@ -64,6 +64,14 @@ targets:
           - Pacifico-Regular.ttf
           - PlayfairDisplay.ttf
           - SpaceGrotesk.ttf
+          - Fraunces[SOFT,WONK,opsz,wght].ttf
+          - BarlowCondensed-Bold.ttf
+          - BarlowCondensed-ExtraBold.ttf
+          - BarlowCondensed-Regular.ttf
+          - BarlowCondensed-SemiBold.ttf
+          - DMSerifDisplay-Regular.ttf
+          - AtkinsonHyperlegible-Bold.ttf
+          - AtkinsonHyperlegible-Regular.ttf
         CFBundleURLTypes:
           - CFBundleURLName: com.jonathantran.dynamicallyrics
             CFBundleURLSchemes:
@@ -112,6 +120,14 @@ targets:
           - Pacifico-Regular.ttf
           - PlayfairDisplay.ttf
           - SpaceGrotesk.ttf
+          - Fraunces[SOFT,WONK,opsz,wght].ttf
+          - BarlowCondensed-Bold.ttf
+          - BarlowCondensed-ExtraBold.ttf
+          - BarlowCondensed-Regular.ttf
+          - BarlowCondensed-SemiBold.ttf
+          - DMSerifDisplay-Regular.ttf
+          - AtkinsonHyperlegible-Bold.ttf
+          - AtkinsonHyperlegible-Regular.ttf
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:

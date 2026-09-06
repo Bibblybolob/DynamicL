@@ -48,6 +48,10 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
     /// Wall-clock playback anchor used by V2 consumers. It is nil while
     /// paused and remains stable while a playing schedule is active.
     public var playbackAnchorEpoch: TimeInterval?
+    public var albumName: String?
+    public var frozenPositionSeconds: TimeInterval?
+    public var previousLine: String?
+    public var nextLine: String?
     public let currentLine: String
     public let isPlaying: Bool
     public let updatedAt: Date
@@ -68,6 +72,10 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         trackDuration: TimeInterval? = nil,
         playbackEndEpoch: TimeInterval? = nil,
         playbackAnchorEpoch: TimeInterval? = nil,
+        albumName: String? = nil,
+        frozenPositionSeconds: TimeInterval? = nil,
+        previousLine: String? = nil,
+        nextLine: String? = nil,
         currentLine: String,
         isPlaying: Bool,
         updatedAt: Date = .now,
@@ -87,10 +95,47 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         self.trackDuration = trackDuration
         self.playbackEndEpoch = playbackEndEpoch
         self.playbackAnchorEpoch = playbackAnchorEpoch
+        self.albumName = albumName
+        self.frozenPositionSeconds = frozenPositionSeconds
+        self.previousLine = previousLine
+        self.nextLine = nextLine
         self.currentLine = currentLine
         self.isPlaying = isPlaying
         self.updatedAt = updatedAt
         self.scheduledLines = scheduledLines
+    }
+
+    /// A timeline may be requested well after this snapshot was written.
+    /// Resolve passed boundaries before creating its first entry; currentLine
+    /// alone only describes the publication instant. Callers handle track-end
+    /// expiry separately and may pass an optimistic pause via advancing.
+    public func resolvedCurrentLine(at date: Date, advancing: Bool? = nil) -> String {
+        guard advancing ?? isPlaying else { return currentLine }
+        if let end = playbackEndEpoch, date.timeIntervalSince1970 >= end { return "♪" }
+        guard let line = scheduledLines.last(where: { $0.date <= date }) else { return currentLine }
+        if let end = line.endDate, date >= end { return "♪" }
+        return line.text
+    }
+
+    /// Revisions belong to the phone's persisted snapshot stream, across track
+    /// changes. Legacy writers without revisions fall back to publication time.
+    public func isNewer(than previous: Self) -> Bool {
+        if let revision, revision > 0, let old = previous.revision, old > 0 {
+            return revision > old
+        }
+        let epoch = generatedAtEpoch ?? updatedAt.timeIntervalSince1970
+        let oldEpoch = previous.generatedAtEpoch ?? previous.updatedAt.timeIntervalSince1970
+        return epoch.isFinite && epoch > oldEpoch
+    }
+
+    /// WidgetKit can consume these precomputed boundaries without a reload for
+    /// each line. Include expiration so a truncated schedule cannot hold a lyric
+    /// past its known interval. OS delivery of entries remains discretionary.
+    public func lyricTimelineDates(after date: Date, advancing: Bool? = nil) -> [Date] {
+        guard advancing ?? isPlaying else { return [] }
+        let end = playbackEndEpoch.map(Date.init(timeIntervalSince1970:))
+        return Set(scheduledLines.flatMap { [$0.date, $0.endDate].compactMap { $0 } })
+            .filter { boundary in boundary > date && end.map { boundary < $0 } != false }.sorted()
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -98,7 +143,8 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         case artworkKey, albumDominantRGB, trackID, schemaVersion, revision
         case generatedAtEpoch, lyricOffsetMs, trackDuration, playbackEndEpoch
         case playbackAnchorEpoch
-        case currentLine, isPlaying, updatedAt, scheduledLines
+        case albumName, frozenPositionSeconds
+        case previousLine, nextLine, currentLine, isPlaying, updatedAt, scheduledLines
     }
 
     public init(from decoder: Decoder) throws {
@@ -118,6 +164,10 @@ public struct WidgetLyricSnapshot: Codable, Hashable, Sendable {
         trackDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .trackDuration)
         playbackEndEpoch = try container.decodeIfPresent(TimeInterval.self, forKey: .playbackEndEpoch)
         playbackAnchorEpoch = try container.decodeIfPresent(TimeInterval.self, forKey: .playbackAnchorEpoch)
+        albumName = try container.decodeIfPresent(String.self, forKey: .albumName)
+        frozenPositionSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .frozenPositionSeconds)
+        previousLine = try container.decodeIfPresent(String.self, forKey: .previousLine)
+        nextLine = try container.decodeIfPresent(String.self, forKey: .nextLine)
         currentLine = try container.decode(String.self, forKey: .currentLine)
         isPlaying = try container.decode(Bool.self, forKey: .isPlaying)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast
@@ -202,12 +252,7 @@ public enum SharedNowPlaying {
         }
         var compact = snapshot
         compact.albumImageData = nil
-        guard let data = try? JSONEncoder().encode(compact) else { return }
-        store()?.set(data, forKey: storageKey)
-        SharedPlaybackSnapshotV2Store.saveWidget(
-            compact,
-            defaults: store()
-        )
+        persistPhoneSnapshot(compact, defaults: store())
     }
 
     /// Stores a snapshot for the Watch app and Watch widgets.
@@ -262,6 +307,10 @@ public enum SharedNowPlaying {
             trackDuration: snapshot.trackDurationSeconds,
             playbackEndEpoch: snapshot.playbackEndEpoch,
             playbackAnchorEpoch: snapshot.playbackAnchorEpoch,
+            albumName: snapshot.albumName,
+            frozenPositionSeconds: snapshot.frozenPositionSeconds,
+            previousLine: snapshot.previousLine,
+            nextLine: snapshot.nextLine,
             currentLine: snapshot.currentLine,
             isPlaying: snapshot.isPlaying,
             updatedAt: updatedAt,
@@ -426,9 +475,16 @@ public enum SharedNowPlaying {
         }
         var compact = snapshot
         compact.albumImageData = nil
-        guard let data = try? JSONEncoder().encode(compact) else { return }
+        persistPhoneSnapshot(compact, defaults: defaults)
+    }
+
+    private static func persistPhoneSnapshot(_ snapshot: WidgetLyricSnapshot, defaults: UserDefaults?) {
+        if let data = defaults?.data(forKey: storageKey),
+           let previous = try? JSONDecoder().decode(WidgetLyricSnapshot.self, from: data),
+           !snapshot.isNewer(than: previous) { return }
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults?.set(data, forKey: storageKey)
-        SharedPlaybackSnapshotV2Store.saveWidget(compact, defaults: defaults)
+        SharedPlaybackSnapshotV2Store.saveWidget(snapshot, defaults: defaults)
     }
 
     static func saveWatch(_ snapshot: WidgetLyricSnapshot, defaults: UserDefaults?) {
@@ -559,7 +615,7 @@ public enum SharedNowPlaying {
     ) {
         if let isPlaying {
             defaults?.set(isPlaying, forKey: playingOverrideKey)
-            defaults?.set(Date.now.addingTimeInterval(8).timeIntervalSince1970, forKey: playingOverrideExpiryKey)
+            defaults?.set(Date.now.addingTimeInterval(playingOverrideLifetime).timeIntervalSince1970, forKey: playingOverrideExpiryKey)
             if let trackID, !trackID.isEmpty {
                 defaults?.set(trackID, forKey: playingOverrideTrackKey)
             } else {
@@ -820,6 +876,7 @@ public enum SharedNowPlaying {
     }
 
     private static let playingOverrideKey = "widgetPlayingOverride"
+    private static let playingOverrideLifetime: TimeInterval = 8
     private static let playingOverrideExpiryKey = "widgetPlayingOverrideExpiresAt"
     /// The Spotify item ID that received the optimistic play/pause command.
     /// A command must not predict the state of a different track after a
@@ -845,6 +902,30 @@ public enum SharedNowPlaying {
 
     public static func playingOverride() -> Bool? {
         playingOverride(defaults: store())
+    }
+
+    public static func resolvedWidgetLine(_ snapshot: WidgetLyricSnapshot, at date: Date) -> String {
+        resolvedWidgetLine(snapshot, at: date, defaults: store())
+    }
+
+    static func resolvedWidgetLine(_ snapshot: WidgetLyricSnapshot, at date: Date,
+                                   defaults: UserDefaults?) -> String {
+        if snapshot.isPlaying, !effectiveIsPlaying(snapshot, defaults: defaults),
+           let expiry = defaults?.object(forKey: playingOverrideExpiryKey) as? Double {
+            // Freeze the line at the command instant, not at publication, which
+            // can now be minutes earlier for an uninterrupted anchored schedule.
+            let pausedAt = Date(timeIntervalSince1970: expiry - playingOverrideLifetime)
+            return snapshot.resolvedCurrentLine(at: max(snapshot.updatedAt, min(date, pausedAt)))
+        }
+        return snapshot.resolvedCurrentLine(at: date)
+    }
+
+    public static func widgetPresentationDate(_ snapshot: WidgetLyricSnapshot, at date: Date) -> Date {
+        if snapshot.isPlaying, !effectiveIsPlaying(snapshot),
+           let expiry = store()?.object(forKey: playingOverrideExpiryKey) as? Double {
+            return max(snapshot.updatedAt, min(date, Date(timeIntervalSince1970: expiry - playingOverrideLifetime)))
+        }
+        return date
     }
 
     /// Returns the playback state that shared surfaces should display while a

@@ -39,6 +39,8 @@ private struct LiveActivityControlValueProvider: ControlValueProvider {
 @main
 struct LyricWidgetsBundle: WidgetBundle {
     var body: some Widget {
+        ConfigurableLyricsWidget()
+        ConfigurableLockScreenWidget()
         CurrentLineWidget()
         AlbumPlayerWidget()
         LyricFocusWidget()

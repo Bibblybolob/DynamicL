@@ -1,0 +1,2852 @@
+[
+  {
+    "id": "midnight",
+    "name": "Midnight",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "0B1020",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "18233D",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "304164",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "90B8FF",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F3F6FF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "BBC6DE",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F3F6FF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "BBC6DE",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "90B8FF",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "BBC6DE",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "90B8FF",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "90B8FF",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "oled",
+    "name": "OLED Black",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "000000",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "000000",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "2B2416",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "D8B56D",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFFFFF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "B8B8C0",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFFFFF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "B8B8C0",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "D8B56D",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "B8B8C0",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "D8B56D",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "D8B56D",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "graphite",
+    "name": "Graphite",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "191C21",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "2B3038",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "474E59",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "B7C8DC",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F4F6FA",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "BAC3CF",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F4F6FA",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "BAC3CF",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "B7C8DC",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "BAC3CF",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "B7C8DC",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "B7C8DC",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "charcoal",
+    "name": "Charcoal",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "252322",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "393632",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "595145",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "DBBE91",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FAF4EA",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "CFC4B5",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FAF4EA",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "CFC4B5",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "DBBE91",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "CFC4B5",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "DBBE91",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "DBBE91",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "obsidian",
+    "name": "Obsidian",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "14111D",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "292136",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "473C5B",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "BDA6F0",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F7F0FF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "C8B9D9",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F7F0FF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "C8B9D9",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "BDA6F0",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "C8B9D9",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "BDA6F0",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "BDA6F0",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "blackGold",
+    "name": "Black + Gold",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "090909",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "211B10",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "483C21",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "E4BF65",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF7DF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "CCBE9B",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF7DF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "CCBE9B",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "E4BF65",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "CCBE9B",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "E4BF65",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "E4BF65",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "blackRed",
+    "name": "Black + Red",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "10090C",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "321219",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "5B222B",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "FF6375",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF2F4",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "D9B4BE",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF2F4",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "D9B4BE",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "FF6375",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "D9B4BE",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "FF6375",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "FF6375",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "blackBlue",
+    "name": "Black + Electric Blue",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "080D18",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "12264A",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "213F6E",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "5EA5FF",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F2F7FF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "AEC8E9",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F2F7FF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "AEC8E9",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "5EA5FF",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "AEC8E9",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "5EA5FF",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "5EA5FF",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "blackPink",
+    "name": "Black + Hot Pink",
+    "category": "Dark",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "110914",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "331329",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "5C2749",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "FF76CA",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF1FA",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "DBB2CD",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF1FA",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "DBB2CD",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "FF76CA",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "DBB2CD",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "FF76CA",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "FF76CA",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "hotPink",
+    "name": "Hot Pink",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "521435",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "942454",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "A93C6D",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "FF9BD3",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF4FA",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "F5C8DE",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF4FA",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "F5C8DE",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "FF9BD3",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "F5C8DE",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "FF9BD3",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "FF9BD3",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "bubblegum",
+    "name": "Bubblegum",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "F6CEE4",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "E9AAD0",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "D68FB9",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "8A245F",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "41172F",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "713756",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "41172F",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "713756",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "8A245F",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "713756",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "8A245F",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "8A245F",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "lavender",
+    "name": "Lavender",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "DDD4F3",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "C4B2E5",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "B19CD4",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "654392",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "30233E",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "604D74",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "30233E",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "604D74",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "654392",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "604D74",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "654392",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "654392",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "electricViolet",
+    "name": "Electric Violet",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "281256",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "522396",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "6B3EAB",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "CEABFF",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FBF5FF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "D7C1F0",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FBF5FF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "D7C1F0",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "CEABFF",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "D7C1F0",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "CEABFF",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "CEABFF",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "crimson",
+    "name": "Crimson",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "451018",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "741D2A",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "903744",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "FFA1AB",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF4F3",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "E8B8BD",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF4F3",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "E8B8BD",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "FFA1AB",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "E8B8BD",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "FFA1AB",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "FFA1AB",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "cherry",
+    "name": "Cherry",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "5E1B32",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "9B3150",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "AF4C68",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "FFB9C7",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF5F7",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "F3C2CF",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF5F7",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "F3C2CF",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "FFB9C7",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "F3C2CF",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "FFB9C7",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "FFB9C7",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "tangerine",
+    "name": "Tangerine",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "F9B67A",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "EB8E53",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "D67C47",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "823516",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "3F2314",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "71482D",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "3F2314",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "71482D",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "823516",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "71482D",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "823516",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "823516",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "sunset",
+    "name": "Sunset",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "632747",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "AF5050",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "874052",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "FFD090",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF7EC",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "F6D0CE",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF7EC",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "F6D0CE",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "FFD090",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "F6D0CE",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "FFD090",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "FFD090",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "mango",
+    "name": "Mango",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "FFD18A",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "F5AA56",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "DF954A",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "864318",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "402711",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "71502B",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "402711",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "71502B",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "864318",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "71502B",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "864318",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "864318",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "lemon",
+    "name": "Lemon",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "F6EEAA",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "E4D775",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "CBC063",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "65621C",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "303018",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "62603A",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "303018",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "62603A",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "65621C",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "62603A",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "65621C",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "65621C",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "lime",
+    "name": "Lime",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "D7EEA7",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "B2D378",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "9CBD67",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "466522",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "263A17",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "506C36",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "263A17",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "506C36",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "466522",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "506C36",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "466522",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "466522",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "spotifyGreen",
+    "name": "Spotify Green",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "0B2B1C",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "155334",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "267148",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "69E89A",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "ECFFF2",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "B3DEC4",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "ECFFF2",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "B3DEC4",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "69E89A",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "B3DEC4",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "69E89A",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "69E89A",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "emerald",
+    "name": "Emerald",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "093D32",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "176454",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "2B7E6A",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "7DE8C3",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "EFFFF8",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "B4DCD0",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "EFFFF8",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "B4DCD0",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "7DE8C3",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "B4DCD0",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "7DE8C3",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "7DE8C3",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "forest",
+    "name": "Forest",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "152A22",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "2A4736",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "446147",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "ABC989",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F0F5E8",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "BDCFB5",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F0F5E8",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "BDCFB5",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "ABC989",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "BDCFB5",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "ABC989",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "ABC989",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "mint",
+    "name": "Mint",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "D4F0E3",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "B0D9CA",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "97C4B4",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "31705B",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "1B3D32",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "496A5D",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "1B3D32",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "496A5D",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "31705B",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "496A5D",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "31705B",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "31705B",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "aqua",
+    "name": "Aqua",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "C3EEE9",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "8CD5D2",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "77C0BF",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "256B74",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "183B42",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "3F6870",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "183B42",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "3F6870",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "256B74",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "3F6870",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "256B74",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "256B74",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "ocean",
+    "name": "Ocean",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "102F46",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "1A5670",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "2E7189",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "80DCEE",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "EDF9FF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "B9D8E6",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "EDF9FF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "B9D8E6",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "80DCEE",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "B9D8E6",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "80DCEE",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "80DCEE",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "arctic",
+    "name": "Arctic",
+    "category": "Colorful",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "E0F1FA",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "C0DDEB",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "A5C5D6",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "3B6783",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "233D50",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "566E82",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "233D50",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "566E82",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "3B6783",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "566E82",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "3B6783",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "3B6783",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "vaporwave",
+    "name": "Vaporwave",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "20123B",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "421A5D",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "494377",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "66E6E1",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF3FC",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "DDB9E5",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF3FC",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "DDB9E5",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "66E6E1",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "DDB9E5",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "66E6E1",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "66E6E1",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "synthwave",
+    "name": "Synthwave",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "191434",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "442359",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "693C72",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "FF9ED8",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF2FC",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "D2B9E4",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF2FC",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "D2B9E4",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "FF9ED8",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "D2B9E4",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "FF9ED8",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "FF9ED8",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "cyberpunk",
+    "name": "Cyberpunk",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "151628",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "293049",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "515752",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "F2F578",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F8FAEC",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "C9D0DC",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F8FAEC",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "C9D0DC",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "F2F578",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "C9D0DC",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "F2F578",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "F2F578",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "cottonCandy",
+    "name": "Cotton Candy",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "F4D4E9",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "CEDDF7",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "BCC2E5",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "73569B",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "382740",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "705B80",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "382740",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "705B80",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "73569B",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "705B80",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "73569B",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "73569B",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "sakura",
+    "name": "Sakura",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "F5DBDF",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "E7BBCB",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "D8A3B7",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "9D4567",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "482C38",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "785563",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "482C38",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "785563",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "9D4567",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "785563",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "9D4567",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "9D4567",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "aurora",
+    "name": "Aurora",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "102B39",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "245449",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "3D7162",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "A3E7C4",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "EFFFF8",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "B8D9D8",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "EFFFF8",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "B8D9D8",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "A3E7C4",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "B8D9D8",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "A3E7C4",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "A3E7C4",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "galaxy",
+    "name": "Galaxy",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "161B40",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "403366",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "5B4E85",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "C5B8FF",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F7F3FF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "C6C1E5",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F7F3FF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "C6C1E5",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "C5B8FF",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "C6C1E5",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "C5B8FF",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "C5B8FF",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "matcha",
+    "name": "Matcha",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "E8E9D8",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "D7DFC7",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "BBC6AB",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "49623B",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "243326",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "52604A",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "243326",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "52604A",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "49623B",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "52604A",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "49623B",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "49623B",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "espresso",
+    "name": "Espresso",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "241914",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "3B2920",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "5A4435",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "D8B18A",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "FFF1E2",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "D1BAA6",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "FFF1E2",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "D1BAA6",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "D8B18A",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "D1BAA6",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "D8B18A",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "D8B18A",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "roseGold",
+    "name": "Rose Gold",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "EFD9D0",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "DDBCB1",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "CCA79A",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "87523F",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "442D28",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "795D53",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "442D28",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "795D53",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "87523F",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "795D53",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "87523F",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "87523F",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "silver",
+    "name": "Silver",
+    "category": "Aesthetic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "E1E5EA",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "C5CED8",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "ADB9C5",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "4D637A",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "273342",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "56697D",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "273342",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "56697D",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "4D637A",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "56697D",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "4D637A",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "4D637A",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "white",
+    "name": "Pure White",
+    "category": "Light",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "FFFFFF",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "F3F4F6",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "CFD5DC",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "3D5775",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "202936",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "596678",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "202936",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "596678",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "3D5775",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "596678",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "3D5775",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "3D5775",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "cream",
+    "name": "Cream",
+    "category": "Light",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "FFF4DF",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "F0E1C5",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "DBC7A9",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "856039",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "382D20",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "726049",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "382D20",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "726049",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "856039",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "726049",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "856039",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "856039",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "paper",
+    "name": "Paper",
+    "category": "Light",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "F6F1E7",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "E9E0D0",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "D2C4B4",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "785444",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "292520",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "665E52",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "292520",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "665E52",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "785444",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "665E52",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "785444",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "785444",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "softGray",
+    "name": "Soft Gray",
+    "category": "Light",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "EDEEF0",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "DBDEE3",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "C1C6CF",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "57677F",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "2E3541",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "626C7D",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "2E3541",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "626C7D",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "57677F",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "626C7D",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "57677F",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "57677F",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "paleBlue",
+    "name": "Pale Blue",
+    "category": "Light",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "E7F0FF",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "D4E2F7",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "B7C9E4",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "456798",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "283D59",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "5A708E",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "283D59",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "5A708E",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "456798",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "5A708E",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "456798",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "456798",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "palePink",
+    "name": "Pale Pink",
+    "category": "Light",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "FBE8EF",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "EDD2DF",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "DBBAC9",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "925871",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "49313E",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "795D6D",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "49313E",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "795D6D",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "925871",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "795D6D",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "925871",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "925871",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "paleLavender",
+    "name": "Pale Lavender",
+    "category": "Light",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "EFE9FA",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "DFD5F1",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "CABCDF",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "745A99",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "3B304C",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "6B5C7F",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "3B304C",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "6B5C7F",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "745A99",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "6B5C7F",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "745A99",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "745A99",
+        "alpha": 1
+      }
+    },
+    "dynamic": null
+  },
+  {
+    "id": "albumArt",
+    "name": "Album Art",
+    "category": "Dynamic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "111B27",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "253447",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "3D5368",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      }
+    },
+    "dynamic": "albumArt"
+  },
+  {
+    "id": "albumDominant",
+    "name": "Album Dominant",
+    "category": "Dynamic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "111B27",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "253447",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "3D5368",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      }
+    },
+    "dynamic": "albumDominant"
+  },
+  {
+    "id": "albumGradient",
+    "name": "Album Gradient",
+    "category": "Dynamic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "111B27",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "253447",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "3D5368",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      }
+    },
+    "dynamic": "albumGradient"
+  },
+  {
+    "id": "albumComplementary",
+    "name": "Album Complementary",
+    "category": "Dynamic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "111B27",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "253447",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "3D5368",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      }
+    },
+    "dynamic": "albumComplementary"
+  },
+  {
+    "id": "albumDarkened",
+    "name": "Album Darkened",
+    "category": "Dynamic",
+    "revision": 1,
+    "colors": {
+      "background": {
+        "hex": "111B27",
+        "alpha": 1
+      },
+      "secondaryBackground": {
+        "hex": "253447",
+        "alpha": 1
+      },
+      "tertiaryBackground": {
+        "hex": "3D5368",
+        "alpha": 1
+      },
+      "accent": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "primaryLyric": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "secondaryLyric": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "songTitle": {
+        "hex": "F5FAFF",
+        "alpha": 1
+      },
+      "artist": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "progressFill": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "progressTrack": {
+        "hex": "C1D5E3",
+        "alpha": 1
+      },
+      "border": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      },
+      "glow": {
+        "hex": "9CCDEE",
+        "alpha": 1
+      }
+    },
+    "dynamic": "albumDarkened"
+  }
+]

@@ -43,6 +43,17 @@ enum DiagnosticsLog {
         }
     }
 
+    /// Spotify error bodies are useful for classifying quota exhaustion, but
+    /// they are untrusted diagnostic input. Redact credential-shaped fields,
+    /// flatten newlines, and cap the output before it reaches a shareable log.
+    static func boundedResponseBody(_ data: Data, limit: Int = 512) -> String {
+        let decoded = String(decoding: data.prefix(max(0, limit * 2)), as: UTF8.self)
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+        let redacted = redact(decoded)
+        return String(redacted.prefix(limit))
+    }
+
     private static var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
@@ -73,6 +84,14 @@ enum DiagnosticsLog {
                 in: result,
                 range: NSRange(result.startIndex..., in: result),
                 withTemplate: "$1[REDACTED]"
+            )
+        }
+        let jsonSecretPattern = #"(?i)(\"(?:access_token|refresh_token|token|authorization|client_secret)\"\s*:\s*\")[^\"]*(\")"#
+        if let regex = try? NSRegularExpression(pattern: jsonSecretPattern) {
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: "$1[REDACTED]$2"
             )
         }
         return result

@@ -5,6 +5,7 @@ import LyricCore
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showingWidgetGallery = false
     @State private var clientIDDraft = SpotifyConfig.clientID
 
     var body: some View {
@@ -25,6 +26,12 @@ struct RootView: View {
                     }
                 }
         }
+        .sheet(isPresented: $showingWidgetGallery) {
+            NavigationStack { WidgetGalleryView().toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingWidgetGallery = false } } } }
+        }
+        .onOpenURL { url in
+            if url.scheme == "dynamicallyrics", url.host == "widgets" { showingWidgetGallery = true }
+        }
         .onAppear {
             // The first scene-phase transition is not guaranteed to fire for
             // the initial foreground scene. Seed the model so polling and
@@ -39,6 +46,13 @@ struct RootView: View {
     @ViewBuilder
     private var content: some View {
         VStack(spacing: 0) {
+            Button { showingWidgetGallery = true } label: {
+                HStack {
+                    Label("Widget Studio", systemImage: "square.grid.2x2.fill").font(.headline)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.bold())
+                }.padding(14).background(.tint.opacity(0.1), in: .rect(cornerRadius: 16))
+            }.padding(.horizontal).padding(.vertical, 8)
             connectionCard
 
             if !model.auth.isConnected {

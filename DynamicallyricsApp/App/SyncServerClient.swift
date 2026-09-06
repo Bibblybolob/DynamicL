@@ -25,6 +25,8 @@ final class SyncServerClient {
     private(set) var updateToken: String?
     private(set) var pushToStartToken: String?
     private(set) var serverSessionDismissed = false
+    private(set) var spotifyWebAPICooldownUntil: Date?
+    private(set) var spotifyOAuthCooldownUntil: Date?
     /// An explicit Start or Restart action supersedes a dismissal stored by an
     /// older server session. Registration and heartbeat requests can overlap,
     /// so ignore that old value until the server acknowledges the reset. A
@@ -233,6 +235,8 @@ final class SyncServerClient {
         localRevision: Int64,
         healthy: Bool,
         autoStartEnabled: Bool,
+        spotifyWebAPICooldownUntil: Date? = nil,
+        spotifyOAuthCooldownUntil: Date? = nil,
         albumDominantRGB: [Double]? = nil,
         requiresUserStart: Bool = false,
         contentState: LyricsActivityAttributes.ContentState? = nil,
@@ -297,6 +301,16 @@ final class SyncServerClient {
             }
             if let albumDominantRGB = self.lastAlbumDominantRGB {
                 body["albumDominantRGB"] = albumDominantRGB
+            }
+            if let spotifyWebAPICooldownUntil {
+                body["spotifyWebAPICooldownUntilMs"] = Int64(
+                    spotifyWebAPICooldownUntil.timeIntervalSince1970 * 1_000
+                )
+            }
+            if let spotifyOAuthCooldownUntil {
+                body["spotifyOAuthCooldownUntilMs"] = Int64(
+                    spotifyOAuthCooldownUntil.timeIntervalSince1970 * 1_000
+                )
             }
             if let updateToken = self.updateToken { body["updateToken"] = updateToken }
             else if activityState == .none, let activityEndToken = self.activityEndToken {
@@ -453,6 +467,12 @@ final class SyncServerClient {
             "autoStartEnabled": UserDefaults.standard.object(forKey: "lockScreenLyricsEnabled") as? Bool ?? true,
             "requiresUserStart": requiresUserStart,
         ]
+        if let deadline = SpotifyRequestGate.webAPI.cooldownUntil {
+            body["spotifyWebAPICooldownUntilMs"] = Int64(deadline.timeIntervalSince1970 * 1_000)
+        }
+        if let deadline = SpotifyRequestGate.oauth.cooldownUntil {
+            body["spotifyOAuthCooldownUntilMs"] = Int64(deadline.timeIntervalSince1970 * 1_000)
+        }
         if let lastAlbumDominantRGB {
             body["albumDominantRGB"] = lastAlbumDominantRGB
         }
@@ -562,6 +582,14 @@ final class SyncServerClient {
     }
 
     private func applyServerState(_ object: [String: Any]) {
+        if let milliseconds = (object["spotifyWebAPICooldownUntilMs"] as? NSNumber)?.doubleValue,
+           milliseconds.isFinite {
+            spotifyWebAPICooldownUntil = Date(timeIntervalSince1970: milliseconds / 1_000)
+        }
+        if let milliseconds = (object["spotifyOAuthCooldownUntilMs"] as? NSNumber)?.doubleValue,
+           milliseconds.isFinite {
+            spotifyOAuthCooldownUntil = Date(timeIntervalSince1970: milliseconds / 1_000)
+        }
         if let dismissed = object["playbackSessionDismissed"] as? Bool {
             if !dismissed {
                 serverSessionDismissed = false

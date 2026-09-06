@@ -76,7 +76,10 @@ public enum LyricBatchBuilder {
             // or a widget timeline can revive stale text after its idle entry.
             if let trackDuration, playbackStart >= trackDuration { break }
             let delta = (playbackStart - safePosition) / safeRate
-            guard delta > 0.05 else { continue }
+            // Even a boundary a few milliseconds away must be exported. The
+            // current line is still the preceding lyric; dropping this entry
+            // strands suspended consumers on it until the following boundary.
+            guard delta > 0 else { continue }
 
             let start = now.addingTimeInterval(delta)
             guard start <= endOfWindow else { break }

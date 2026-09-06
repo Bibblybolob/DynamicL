@@ -1,0 +1,53 @@
+{
+  "googleFontsCommit": "5e35378e6bda803962ee6fd257e444a7d459660d",
+  "addedFonts": [
+    {
+      "name": "Fraunces[SOFT,WONK,opsz,wght].ttf",
+      "bytes": 360440,
+      "sha256": "177ff6c0f14e5550a3c624247cd1189611d4eb65d000b14944c63d967958abbb",
+      "source": "https://raw.githubusercontent.com/google/fonts/5e35378e6bda803962ee6fd257e444a7d459660d/ofl/fraunces/Fraunces%5BSOFT%2CWONK%2Copsz%2Cwght%5D.ttf"
+    },
+    {
+      "name": "BarlowCondensed-Bold.ttf",
+      "bytes": 109912,
+      "sha256": "e476562ec9c1e16cf16475895b511f08c804f438cc9a9f80a44ea50a0eeb5b65",
+      "source": "https://raw.githubusercontent.com/google/fonts/5e35378e6bda803962ee6fd257e444a7d459660d/ofl/barlowcondensed/BarlowCondensed-Bold.ttf"
+    },
+    {
+      "name": "BarlowCondensed-ExtraBold.ttf",
+      "bytes": 110296,
+      "sha256": "724c9c25952d5f4a2d87185d9767aa006144c5f0d944dc05bf7d5d603551c260",
+      "source": "https://raw.githubusercontent.com/google/fonts/5e35378e6bda803962ee6fd257e444a7d459660d/ofl/barlowcondensed/BarlowCondensed-ExtraBold.ttf"
+    },
+    {
+      "name": "BarlowCondensed-Regular.ttf",
+      "bytes": 102480,
+      "sha256": "583cec5da3b84bc4dc7c9c72e2a565c94d34e431518b19d7e250b7830ad5f996",
+      "source": "https://raw.githubusercontent.com/google/fonts/5e35378e6bda803962ee6fd257e444a7d459660d/ofl/barlowcondensed/BarlowCondensed-Regular.ttf"
+    },
+    {
+      "name": "BarlowCondensed-SemiBold.ttf",
+      "bytes": 109428,
+      "sha256": "7b619d14bc2327509a9ef32b0890f709626f7ecc9ff61191c2a4314c5499d2d9",
+      "source": "https://raw.githubusercontent.com/google/fonts/5e35378e6bda803962ee6fd257e444a7d459660d/ofl/barlowcondensed/BarlowCondensed-SemiBold.ttf"
+    },
+    {
+      "name": "DMSerifDisplay-Regular.ttf",
+      "bytes": 76580,
+      "sha256": "8cc3643535edf039aa5d95440a8542735e9197e4f4b8d9303e980fefbf5ab616",
+      "source": "https://raw.githubusercontent.com/google/fonts/5e35378e6bda803962ee6fd257e444a7d459660d/ofl/dmserifdisplay/DMSerifDisplay-Regular.ttf"
+    },
+    {
+      "name": "AtkinsonHyperlegible-Bold.ttf",
+      "bytes": 55256,
+      "sha256": "5a3b0c8cc8ca545155150b4512a1fa248298df121c50d6557e651e61fbdab92f",
+      "source": "https://raw.githubusercontent.com/google/fonts/5e35378e6bda803962ee6fd257e444a7d459660d/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Bold.ttf"
+    },
+    {
+      "name": "AtkinsonHyperlegible-Regular.ttf",
+      "bytes": 54348,
+      "sha256": "7fb917c89019896d0b52ee84b7cbb3304c18cb90b19a62f5e32712bd23e97669",
+      "source": "https://raw.githubusercontent.com/google/fonts/5e35378e6bda803962ee6fd257e444a7d459660d/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Regular.ttf"
+    }
+  ]
+}

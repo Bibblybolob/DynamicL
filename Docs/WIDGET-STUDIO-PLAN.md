@@ -1,8 +1,10 @@
 # Widget Studio architecture proposal
 
-Status: proposed on September 6, 2026; not implemented. Build 55 remains the
-latest verified release. This document expands the build 55 foundation rather
-than replacing playback timing or Live Activity ownership.
+Status: implementation delivered for build 56 on September 6, 2026. This document
+preserves the architecture proposal; [RELEASE-56.md](RELEASE-56.md) records the
+actual implemented scope, validation and remaining follow-ups. Some proposed
+refinements (multi-hue extraction, cached artwork variants and archive management)
+remain follow-up work. Playback timing and Live Activity ownership are preserved.
 
 ## 1. Current architecture
 

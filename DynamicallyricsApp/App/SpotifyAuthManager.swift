@@ -36,6 +36,12 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         return hasAccessToken || storedRefreshToken != nil
     }
 
+    var hasReusableAccessToken: Bool {
+        guard accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+              let tokenExpiresAt else { return false }
+        return Date.now < tokenExpiresAt.addingTimeInterval(-30)
+    }
+
     private var storedRefreshToken: String? {
         guard let refreshToken else { return nil }
         let value = refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -100,7 +106,7 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
     /// Concurrent callers share a single in-flight refresh instead of racing
     /// duplicate POSTs to /api/token against each other.
     func validAccessToken() async throws -> String {
-        if let accessToken, let expiresAt = tokenExpiresAt, Date.now < expiresAt.addingTimeInterval(-30) {
+        if let accessToken, hasReusableAccessToken {
             return accessToken
         }
         guard let refreshToken = storedRefreshToken else {
@@ -176,7 +182,12 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
     }
 
     private func exchange(code: String, verifier: String) async throws {
-        var request = URLRequest(url: URL(string: "https://accounts.spotify.com/api/token")!)
+        let url = URL(string: "https://accounts.spotify.com/api/token")!
+        let purpose = "oauth.authorization-code"
+        guard SpotifyRequestGate.oauth.beginRequest(purpose: purpose, endpoint: url.path) else {
+            throw SpotifyRequestGateError.cooldown(SpotifyRequestGate.oauth.cooldownUntil)
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         // Keep an interrupted sign-in request bounded as well.
         request.timeoutInterval = 10
@@ -190,16 +201,41 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         ]
         request.httpBody = formEncode(body).data(using: .utf8)
 
-        let (data, response) = try await tokenSession.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw SpotifyAuthError.tokenExchange("HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await tokenSession.data(for: request)
+        } catch {
+            SpotifyRequestGate.oauth.recordTransportFailure(
+                error: error,
+                purpose: purpose,
+                endpoint: url.path
+            )
+            throw error
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw SpotifyAuthError.tokenExchange("invalid response")
+        }
+        SpotifyRequestGate.oauth.recordResponse(
+            data: data,
+            response: http,
+            purpose: purpose,
+            endpoint: url.path
+        )
+        guard http.statusCode == 200 else {
+            throw SpotifyAuthError.tokenExchange("HTTP \(http.statusCode)")
         }
         let tokens = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
         store(tokens: tokens)
     }
 
     private func refresh(using refresh: String) async throws -> String {
-        var request = URLRequest(url: URL(string: "https://accounts.spotify.com/api/token")!)
+        let url = URL(string: "https://accounts.spotify.com/api/token")!
+        let purpose = "oauth.refresh"
+        guard SpotifyRequestGate.oauth.beginRequest(purpose: purpose, endpoint: url.path) else {
+            throw SpotifyRequestGateError.cooldown(SpotifyRequestGate.oauth.cooldownUntil)
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         // Token refresh runs from the background poll loop. Keep a stalled
         // network request from holding the provider's scheduler indefinitely.
@@ -217,12 +253,23 @@ final class SpotifyAuthManager: NSObject, ASWebAuthenticationPresentationContext
         do {
             (data, response) = try await tokenSession.data(for: request)
         } catch {
+            SpotifyRequestGate.oauth.recordTransportFailure(
+                error: error,
+                purpose: purpose,
+                endpoint: url.path
+            )
             DiagnosticsLog.append("Spotify token refresh failed: \(error.localizedDescription)")
             throw error
         }
         guard let http = response as? HTTPURLResponse else {
             throw SpotifyAuthError.tokenExchange("invalid response")
         }
+        SpotifyRequestGate.oauth.recordResponse(
+            data: data,
+            response: http,
+            purpose: purpose,
+            endpoint: url.path
+        )
         guard http.statusCode == 200 else {
             // Only 400/401 mean the refresh token itself is dead and signing out is
             // warranted. Transient failures (429, 5xx) must not wipe stored tokens,

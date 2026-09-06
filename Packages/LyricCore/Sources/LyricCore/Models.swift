@@ -121,6 +121,9 @@ public struct SharedPlaybackSnapshotV2: Codable, Hashable, Sendable {
     public var revision: Int64
     public var lyricOffsetSeconds: TimeInterval
     public var currentLine: String
+    public var albumName: String?
+    public var frozenPositionSeconds: TimeInterval?
+    public var previousLine: String?
     public var nextLine: String?
     public var lyricIntervals: [LyricInterval]
 
@@ -139,6 +142,9 @@ public struct SharedPlaybackSnapshotV2: Codable, Hashable, Sendable {
         revision: Int64 = 0,
         lyricOffsetSeconds: TimeInterval = 0,
         currentLine: String,
+        albumName: String? = nil,
+        frozenPositionSeconds: TimeInterval? = nil,
+        previousLine: String? = nil,
         nextLine: String? = nil,
         lyricIntervals: [LyricInterval] = []
     ) {
@@ -157,6 +163,9 @@ public struct SharedPlaybackSnapshotV2: Codable, Hashable, Sendable {
         self.revision = revision
         self.lyricOffsetSeconds = lyricOffsetSeconds
         self.currentLine = currentLine
+        self.albumName = albumName
+        self.frozenPositionSeconds = frozenPositionSeconds
+        self.previousLine = previousLine
         self.nextLine = nextLine
         self.lyricIntervals = lyricIntervals
     }

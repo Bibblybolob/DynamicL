@@ -2,6 +2,86 @@ import XCTest
 @testable import LyricCore
 
 final class SharedNowPlayingTests: XCTestCase {
+    func testOldTrackOrSeekSnapshotCannotOverwriteNewerRevisionInEitherStoredFormat() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let latest = WidgetLyricSnapshot(trackTitle: "New", artistName: "Artist", trackID: "new", revision: 9,
+                                         currentLine: "new line", isPlaying: true, updatedAt: now)
+        let lateOldTrack = WidgetLyricSnapshot(trackTitle: "Old", artistName: "Artist", trackID: "old", revision: 8,
+                                              currentLine: "old line", isPlaying: true, updatedAt: now.addingTimeInterval(1))
+        SharedNowPlaying.save(latest, defaults: defaults)
+        SharedNowPlaying.save(lateOldTrack, defaults: defaults)
+        XCTAssertEqual(SharedNowPlaying.load(defaults: defaults)?.trackID, "new")
+        let v2Data = try XCTUnwrap(defaults.data(forKey: SharedNowPlaying.storageKeyV2))
+        XCTAssertEqual(try JSONDecoder().decode(SharedPlaybackSnapshotV2.self, from: v2Data).revision, 9)
+        var sameTrackSeek = latest
+        sameTrackSeek.revision = 10
+        sameTrackSeek.scheduledLines = [.init(date: now, text: "seek line")]
+        SharedNowPlaying.save(sameTrackSeek, defaults: defaults)
+        SharedNowPlaying.save(latest, defaults: defaults)
+        XCTAssertEqual(SharedNowPlaying.load(defaults: defaults)?.resolvedCurrentLine(at: now), "seek line")
+    }
+
+    func testLegacySnapshotsUseTimestampOrderingAcrossTrackChanges() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let newer = WidgetLyricSnapshot(trackTitle: "New", artistName: "Artist", currentLine: "new", isPlaying: true, updatedAt: now)
+        let older = WidgetLyricSnapshot(trackTitle: "Old", artistName: "Artist", currentLine: "old", isPlaying: true, updatedAt: now.addingTimeInterval(-1))
+        SharedNowPlaying.save(newer, defaults: defaults)
+        SharedNowPlaying.save(older, defaults: defaults)
+        XCTAssertEqual(SharedNowPlaying.load(defaults: defaults)?.trackTitle, "New")
+    }
+
+    func testOptimisticPauseFreezesAtCommandTimeInsteadOfOldPublicationLine() {
+        let now = Date.now
+        let snapshot = WidgetLyricSnapshot(
+            trackTitle: "Track", artistName: "Artist", currentLine: "minutes ago", isPlaying: true,
+            updatedAt: now.addingTimeInterval(-180),
+            scheduledLines: [.init(date: now.addingTimeInterval(-2), text: "pause here"),
+                             .init(date: now.addingTimeInterval(2), text: "future")]
+        )
+        SharedNowPlaying.setPlayingOverride(false, defaults: defaults)
+        XCTAssertEqual(SharedNowPlaying.resolvedWidgetLine(snapshot, at: now.addingTimeInterval(5), defaults: defaults), "pause here")
+    }
+
+    func testDelayedSnapshotReadResolvesTheSameLineAsTheScroller() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let document = LyricsDocument(
+            track: .init(title: "Trace", artist: "Artist", duration: 40),
+            lines: [.init(time: 0, text: "intro"), .init(time: 10, text: "verse"), .init(time: 20, text: "chorus")]
+        )
+        let engine = SyncEngine()
+        engine.update(document: document)
+        engine.update(status: .init(state: .playing, position: 9.98, timestamp: now))
+        let batch = LyricBatchBuilder.make(document: document, position: 9.98, now: now)
+        let snapshot = WidgetLyricSnapshot(
+            trackTitle: "Trace", artistName: "Artist", trackID: "trace-track", revision: 7,
+            currentLine: "intro", isPlaying: true, updatedAt: now,
+            scheduledLines: batch.lines.map {
+                .init(date: Date(timeIntervalSince1970: $0.startEpoch), text: $0.text,
+                      endDate: Date(timeIntervalSince1970: $0.endEpoch))
+            }
+        )
+        SharedNowPlaying.save(snapshot, defaults: defaults)
+        let loaded = try XCTUnwrap(SharedNowPlaying.load(defaults: defaults))
+        for delay in [0.0, 0.04, 5, 11, 20] {
+            let date = now.addingTimeInterval(delay)
+            XCTAssertEqual(loaded.resolvedCurrentLine(at: date), engine.currentLine(at: date)?.text)
+        }
+        XCTAssertEqual(loaded.trackID, "trace-track")
+        XCTAssertEqual(loaded.revision, 7)
+        XCTAssertEqual(loaded.generatedAtEpoch, now.timeIntervalSince1970)
+        XCTAssertEqual(loaded.resolvedCurrentLine(at: now.addingTimeInterval(11), advancing: false), "intro")
+    }
+
+    func testPausedSnapshotDoesNotAdvanceItsSavedSchedule() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = WidgetLyricSnapshot(
+            trackTitle: "Trace", artistName: "Artist", currentLine: "paused line",
+            isPlaying: false, updatedAt: now,
+            scheduledLines: [.init(date: now.addingTimeInterval(1), text: "future line")]
+        )
+        XCTAssertEqual(snapshot.resolvedCurrentLine(at: now.addingTimeInterval(20)), "paused line")
+    }
+
     private var defaults: UserDefaults!
 
     override func setUp() {

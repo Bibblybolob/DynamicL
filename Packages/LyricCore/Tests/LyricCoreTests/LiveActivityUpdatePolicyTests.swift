@@ -2,6 +2,27 @@ import Testing
 @testable import LyricCore
 
 struct LiveActivityUpdatePolicyTests {
+    @Test func unscheduledContentRefreshesBeforeItsSixtySecondDeadline() {
+        #expect(!LiveActivityUpdatePolicy.shouldRefreshUnscheduledContent(
+            isPlaying: true, playbackIsHealthy: true, timeSinceLastSend: 44.9
+        ))
+        #expect(LiveActivityUpdatePolicy.shouldRefreshUnscheduledContent(
+            isPlaying: true, playbackIsHealthy: true, timeSinceLastSend: 45
+        ))
+    }
+
+    @Test func unscheduledRefreshDoesNotMaskStalledOrPausedPlayback() {
+        #expect(!LiveActivityUpdatePolicy.shouldRefreshUnscheduledContent(
+            isPlaying: true, playbackIsHealthy: false, timeSinceLastSend: 60
+        ))
+        #expect(!LiveActivityUpdatePolicy.shouldRefreshUnscheduledContent(
+            isPlaying: false, playbackIsHealthy: true, timeSinceLastSend: 60
+        ))
+        #expect(!LiveActivityUpdatePolicy.shouldRefreshUnscheduledContent(
+            isPlaying: true, playbackIsHealthy: true, timeSinceLastSend: .infinity
+        ))
+    }
+
     @Test func loadingPlaceholderRecognitionCoversServerAndPhonePunctuation() {
         #expect(LiveActivityUpdatePolicy.isLoadingPlaceholder("Finding lyrics…"))
         #expect(LiveActivityUpdatePolicy.isLoadingPlaceholder(" Finding lyrics... "))

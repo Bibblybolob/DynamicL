@@ -8,7 +8,7 @@ let package = Package(
         .library(name: "LyricCore", targets: ["LyricCore"])
     ],
     targets: [
-        .target(name: "LyricCore"),
+        .target(name: "LyricCore", resources: [.process("Resources")]),
         .testTarget(name: "LyricCoreTests", dependencies: ["LyricCore"])
     ]
 )

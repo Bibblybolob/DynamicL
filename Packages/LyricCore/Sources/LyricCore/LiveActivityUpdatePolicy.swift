@@ -5,6 +5,18 @@ import Foundation
 /// line consumes ActivityKit's update budget and can make later background
 /// updates appear frozen.
 public enum LiveActivityUpdatePolicy {
+    /// Content without a lyric schedule still needs a fresh ActivityContent
+    /// deadline while playback is healthy. Reuse the existing 45-second
+    /// cadence; do not hide a stalled feed by extending its stale date.
+    public static func shouldRefreshUnscheduledContent(
+        isPlaying: Bool,
+        playbackIsHealthy: Bool,
+        timeSinceLastSend: TimeInterval
+    ) -> Bool {
+        isPlaying && playbackIsHealthy && timeSinceLastSend.isFinite
+            && timeSinceLastSend >= 45
+    }
+
     private static let loadingMessages: Set<String> = [
         "Finding lyrics…",
         "Finding lyrics...",

@@ -6,37 +6,54 @@ and Apple Watch remain supported companion surfaces.
 
 ## Release status
 
-The latest verified beta is **1.2.0 (55)**. App Store Connect reports build 55 as
-**VALID**, verified September 6, 2026. See the [release notes](Docs/RELEASE-55.md)
-for delivered scope, test results, and remaining device checks.
-
-The expanded **Widget Studio**, 50-theme catalog, richer artwork templates and
-additional fonts are an [architecture proposal](Docs/WIDGET-STUDIO-PLAN.md).
-They are not included in build 55. Earlier release behavior may differ from the
-current implementation; avoid using historical timing claims as guarantees.
+**1.2.0 (56)** introduces Widget Studio. Release validation and TestFlight upload
+are in progress; build 55 remains the last verified TestFlight release until
+processing finishes. See [build 56 notes](Docs/RELEASE-56.md).
 
 ## Customize widgets
 
-Open **Customize Widgets** in the app to create a design. Add **OpenLyrics
-Widgets** to the Home Screen or **OpenLyrics Lock Screen** to the Lock Screen,
-then select a preset or saved design in **Edit Widget**.
+Open **Widget Studio** to browse palettes and layouts, favorite themes, or edit
+saved designs. Add **OpenLyrics Widgets** to the Home Screen or **OpenLyrics Lock
+Screen** to the Lock Screen, then select a saved design in **Edit Widget**.
 
-Build 55 supports:
+Build 56 includes:
 
-- Minimal, Lyrics Focus and Lyric Stack presets.
-- Font, bounded size, weight, alignment, lyric context and context opacity.
-- Song-title and artist visibility; Lyric Stack highlight corners.
-- Accent/background colors and system, solid, gradient or album-derived backgrounds.
-- Independent design selection and text-size overrides for each widget instance.
-- Shared designs that intentionally share edits; **Duplicate Design** creates an
-  independent look.
-- Local previews until Save. Unchanged saves do not reload widgets; changed saves
-  reload only the two configurable widget kinds.
+- **50 palettes** across Dark, Colorful, Aesthetic, Light and Dynamic categories.
+  Static palettes live in a bundled JSON catalog with stable IDs and semantic roles.
+- **15 layouts:** Lyric Hero, Lyric Stack, Album Card, Now Playing, Minimal, Poster,
+  Vinyl, Editorial, Glass, Neon, OLED, Karaoke, Quote, Artwork Full Bleed and Retro Player.
+- Presets plus sectioned advanced editing for typography, background, artwork and
+  information. Every saved design has its own choices.
+- Semantic custom colors for backgrounds, accent, lyrics, title, artist, progress,
+  border and glow. Save a named palette for reuse or select it in Edit Widget.
+- Four system font designs and ten bundled families. New additions are Fraunces,
+  Barlow Condensed, DM Serif Display and Atkinson Hyperlegible; redistribution
+  notices are bundled. [Font provenance](Docs/WIDGET-FONTS.json) pins their sources.
+- Font weight/scale, casing, alignment, line spacing, bounded line count, independent
+  lyric opacities, emphasis and subtle shadow. Family adaptation limits crowded layouts.
+- Solid, two/three-color directional and radial gradients, static glow, cached
+  artwork, frosted-style panels, paper/outline/neon treatments and inner corner controls.
+- Artwork placement, square/rounded/circle/vinyl treatments, size, opacity, tint,
+  blur and background darkening. Artwork uses the existing bounded cache.
+- Optional title, artist, album, lyric context, progress, elapsed/remaining time,
+  playback icon and decorative quotes. Missing metadata is omitted.
+- Per-instance design, template, palette, font, surface, text-size, artwork and
+  density choices through App Intent configuration.
+- Current-song or sample previews for Small, Medium, Large, Inline, Circular and
+  Rectangular using the same renderer as the widget. Tint/background-removal
+  simulations are illustrative; iOS retains control over the real appearance.
 
-The Home Screen configuration supports Small, Medium and Large. The Lock Screen
-configuration supports Inline, Rectangular and Circular. Circular widgets show
-playback status; rectangular and inline widgets prioritize current lyrics.
-System tint, glass appearance, and background removal can alter custom colors.
+Two widgets selecting the same saved design intentionally share its edits.
+**Duplicate / Make Independent** creates a separate design. Named palettes are
+copied into saved designs; explicit palette overrides resolve that palette when
+the timeline is next built. Preview gestures do not write playback state or reload
+widgets. Saving a changed design reloads only the two configurable widget kinds;
+no-op saves do not reload. Saving a new palette does not reload existing widgets.
+
+Home Screen configuration supports Small, Medium and Large. Lock Screen
+configuration supports Inline, Rectangular and Circular; circular widgets show
+playback status, and rectangular/inline widgets prioritize lyrics. Small artwork
+layouts use compact headers. Existing widgets and their kind identifiers remain.
 
 Existing widget kinds remain available:
 
@@ -68,10 +85,18 @@ record for Live Activity and legacy static widgets. It provides themes, fonts,
 layout, artwork, surface, alignment and visibility settings. Its karaoke setting
 also affects the in-app lyric scroller.
 
-The two configurable widget kinds use a separate `WidgetAppearance` and
-`WidgetDesignStore` catalog. Editing their designs does not change Live Activity
-preferences. Four system font styles and six bundled families are available:
-Bungee, Bebas Neue, Baloo 2, Pacifico, Playfair Display and Space Grotesk.
+The configurable kinds use dedicated `WidgetStylePrefs`, separate from
+`LAStylePrefs`. `WidgetAppearance` remains the build-55 compatibility adapter.
+`WidgetDesignStore` reads `widgetDesignCatalog.v2`, with v1 fallback and per-record
+decoding. Saved design IDs/names/revisions remain stable; saving verifies a
+round-trip before replacing the catalog. The v1 record and unsupported v2 records
+are retained. Old intent parameters and values still resolve. Import Live Activity
+Appearance makes a copy rather than linking settings.
+
+Palette values are stored with each design to avoid silent restyling when a
+built-in catalog changes. Custom palette storage is separate from playback
+snapshots. The Apple Watch and Live Activity retain their existing appearance and
+timing paths; the new widget style record is not sent in APNs content state.
 
 ## Playback, snapshots and reliability
 

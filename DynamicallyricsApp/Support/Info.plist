@@ -49,6 +49,14 @@
 		<string>Pacifico-Regular.ttf</string>
 		<string>PlayfairDisplay.ttf</string>
 		<string>SpaceGrotesk.ttf</string>
+		<string>Fraunces[SOFT,WONK,opsz,wght].ttf</string>
+		<string>BarlowCondensed-Bold.ttf</string>
+		<string>BarlowCondensed-ExtraBold.ttf</string>
+		<string>BarlowCondensed-Regular.ttf</string>
+		<string>BarlowCondensed-SemiBold.ttf</string>
+		<string>DMSerifDisplay-Regular.ttf</string>
+		<string>AtkinsonHyperlegible-Bold.ttf</string>
+		<string>AtkinsonHyperlegible-Regular.ttf</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

@@ -63,8 +63,8 @@ struct WatchLyricProvider: TimelineProvider {
 
         var entries = [entry(from: snapshot, at: now)]
         if isPlaying {
-            for line in snapshot.scheduledLines where line.date > now {
-            entries.append(entry(from: snapshot, at: line.date, line: line.text))
+            for date in snapshot.lyricTimelineDates(after: now, advancing: isPlaying) {
+                entries.append(entry(from: snapshot, at: date))
             }
         }
 
@@ -108,7 +108,7 @@ struct WatchLyricProvider: TimelineProvider {
         WatchLyricEntry(
             date: date,
             trackTitle: snapshot.trackTitle,
-            currentLine: line ?? snapshot.currentLine,
+            currentLine: line ?? SharedNowPlaying.resolvedWidgetLine(snapshot, at: date),
             isPlaying: SharedNowPlaying.effectiveIsPlaying(snapshot),
             artistName: snapshot.artistName,
             nextLine: snapshot.scheduledLines.first(where: { $0.date > date })?.text,

@@ -22,11 +22,6 @@ final class SpotifyProvider: PlaybackProvider {
     /// poisoning unrelated app traffic. The timeout path replaces this
     /// session before the next request.
     private var playerSession = SpotifyProvider.makePlayerSession()
-    /// Spotify supplies an absolute wait instruction after HTTP 429. Keep it
-    /// outside the request task so the 12-second transport watchdog cannot
-    /// cancel the delay and immediately issue another request.
-    private var rateLimitUntil: Date?
-    private static let rateLimitDefaultsKey = "spotify_rate_limit_until"
     /// Every scheduler restart owns a new generation. A request from a
     /// cancelled scheduler can still finish at the URLSession boundary; this
     /// value prevents that old response from overwriting a newer track,
@@ -42,9 +37,6 @@ final class SpotifyProvider: PlaybackProvider {
 
     init(auth: SpotifyAuthManager) {
         self.auth = auth
-        rateLimitUntil = UserDefaults.standard.object(
-            forKey: Self.rateLimitDefaultsKey
-        ) as? Date
     }
 
     func start() {
@@ -82,18 +74,10 @@ final class SpotifyProvider: PlaybackProvider {
                 await self?.pollCycle(generation: generation)
                 guard !Task.isCancelled,
                       self?.pollGeneration == generation else { return }
-                // Poll more often while stopped or paused so a new Spotify
-                // session reaches the Live Activity quickly. Steady playback
-                // stays at the lower-rate cadence because the app and Activity
-                // use the shared wall-clock schedule between polls.
+                // Stable playing, paused, and stopped states use the same
+                // cadence. Only a bounded recovery probe may run faster.
                 let fast = self?.usesRapidProbe == true || self?.isStalledPause == true
-                let notPlaying = self?.status?.state != .playing
-                let aggressive = self?.aggressiveBackgroundMode == true
-                let normalInterval = fast
-                    ? 0.7
-                    : aggressive
-                        ? (notPlaying ? 0.8 : 1.0)
-                        : (notPlaying ? 1.2 : 3.0)
+                let normalInterval = fast ? 1.5 : 3.0
                 let rateLimitDelay = self?.activeRateLimitRemaining() ?? 0
                 let interval = max(normalInterval, rateLimitDelay)
                 await self?.waitForNextPoll(
@@ -202,7 +186,23 @@ final class SpotifyProvider: PlaybackProvider {
     }
 
     var isWaitingForRateLimit: Bool {
-        SpotifyRateLimitPolicy.remaining(until: rateLimitUntil) > 0
+        activeRateLimitRemaining() > 0
+    }
+
+    var spotifyWebAPICooldownUntil: Date? {
+        SpotifyRequestGate.webAPI.cooldownUntil
+    }
+
+    var spotifyOAuthCooldownUntil: Date? {
+        SpotifyRequestGate.oauth.cooldownUntil
+    }
+
+    func adoptSpotifyWebAPICooldown(until deadline: Date?) {
+        SpotifyRequestGate.webAPI.adopt(cooldown: deadline)
+    }
+
+    func adoptSpotifyOAuthCooldown(until deadline: Date?) {
+        SpotifyRequestGate.oauth.adopt(cooldown: deadline)
     }
 
     /// Immediate poll: wakes the current scheduling loop so the next request
@@ -294,11 +294,12 @@ final class SpotifyProvider: PlaybackProvider {
     private var transportQueueTail: Task<Bool, Never>?
     private var transportQueueGeneration: UInt64 = 0
 
-    /// Schedules N fast polls so a user-initiated change (transport command,
-    /// audio interruption) shows up in ≤N×0.7s instead of waiting out the 3s cadence.
+    /// Schedules a small bounded recovery set. The process-wide request gate
+    /// remains authoritative even when several callers request a burst.
     func burst(count: Int = 6) {
-        rapidProbesLeft = max(rapidProbesLeft, count)
-        usesRapidProbe = true
+        guard !SpotifyRequestGate.webAPI.isCoolingDown else { return }
+        rapidProbesLeft = max(rapidProbesLeft, min(6, max(0, count)))
+        usesRapidProbe = rapidProbesLeft > 0
     }
 
     private func consumeRapidProbe() {
@@ -332,7 +333,8 @@ final class SpotifyProvider: PlaybackProvider {
 
     private func beginRapidProbe(staleItem: String?) {
         guard rapidProbesLeft == 0 else { return }
-        rapidProbesLeft = 25
+        guard !SpotifyRequestGate.webAPI.isCoolingDown else { return }
+        rapidProbesLeft = 6
         usesRapidProbe = true
         stalePauseProbeArmed = true
         stalledPauseCount = 0
@@ -447,7 +449,7 @@ final class SpotifyProvider: PlaybackProvider {
                 lastPollSummary = "no active Spotify device (204)"
                 lastError = nil
             case 429:
-                applyRateLimit(http.value(forHTTPHeaderField: "Retry-After"))
+                noteActiveRateLimit()
             default:
                 throw LyricsLookupError(kind: .network("HTTP \(http.statusCode)"))
             }
@@ -455,6 +457,12 @@ final class SpotifyProvider: PlaybackProvider {
             guard ownsPoll(generation) else { return }
             stop()
             lastError = error.errorDescription
+        } catch is SpotifyRequestGateError {
+            guard ownsPoll(generation) else { return }
+            // A local rolling-budget block can happen between the first
+            // endpoint and its bounded fallback/401 retry. Preserve the last
+            // trusted playback state exactly as a provider 429 would.
+            noteActiveRateLimit()
         } catch is CancellationError {
         } catch {
             if Self.isRequestCancellation(error) {
@@ -484,29 +492,24 @@ final class SpotifyProvider: PlaybackProvider {
     }
 
     private func activeRateLimitRemaining(now: Date = .now) -> TimeInterval {
-        let remaining = SpotifyRateLimitPolicy.remaining(until: rateLimitUntil, now: now)
-        if remaining == 0, rateLimitUntil != nil {
-            rateLimitUntil = nil
-            UserDefaults.standard.removeObject(forKey: Self.rateLimitDefaultsKey)
-        }
-        return remaining
+        max(
+            SpotifyRequestGate.webAPI.remainingCooldown(now: now),
+            auth.hasReusableAccessToken
+                ? 0
+                : SpotifyRequestGate.oauth.remainingCooldown(now: now)
+        )
     }
 
-    private func applyRateLimit(_ retryAfter: String?) {
-        let delay = SpotifyRateLimitPolicy.delay(retryAfter: retryAfter)
-        let proposed = Date.now.addingTimeInterval(delay)
-        if rateLimitUntil == nil || proposed > rateLimitUntil! {
-            rateLimitUntil = proposed
-            UserDefaults.standard.set(proposed, forKey: Self.rateLimitDefaultsKey)
-        }
+    private func noteActiveRateLimit() {
+        let delay = activeRateLimitRemaining()
         rapidProbesLeft = 0
         usesRapidProbe = false
         stalePauseProbeArmed = false
         isStalledPause = false
         lastError = nil
-        let seconds = Int(ceil(delay))
+        let seconds = Int(ceil(max(1, delay)))
         lastPollSummary = "Spotify is limiting requests. Retrying in \(seconds) seconds…"
-        DiagnosticsLog.append("Spotify rate limit accepted for \(seconds)s")
+        DiagnosticsLog.append("Spotify Web API cooldown active for \(seconds)s")
     }
 
     private func ownsPoll(_ generation: UInt64) -> Bool {
@@ -524,13 +527,15 @@ final class SpotifyProvider: PlaybackProvider {
         while true {
             var result = try await requestSpotifyPlayer(
                 at: URL(string: "https://api.spotify.com/v1/me/player/currently-playing")!,
-                token: token
+                token: token,
+                purpose: "playback.currently-playing"
             )
             if result.1.statusCode == 204 {
                 DiagnosticsLog.append("currently-playing returned 204; checking full player state")
                 result = try await requestSpotifyPlayer(
                     at: URL(string: "https://api.spotify.com/v1/me/player")!,
-                    token: token
+                    token: token,
+                    purpose: "playback.full-state"
                 )
             }
             let (data, http) = result
@@ -545,18 +550,31 @@ final class SpotifyProvider: PlaybackProvider {
 
     private func requestSpotifyPlayer(
         at url: URL,
-        token: String
+        token: String,
+        purpose: String
     ) async throws -> (Data, HTTPURLResponse) {
+        let endpoint = url.path
+        guard SpotifyRequestGate.webAPI.beginRequest(
+            purpose: purpose,
+            endpoint: endpoint
+        ) else {
+            throw SpotifyRequestGateError.cooldown(SpotifyRequestGate.webAPI.cooldownUntil)
+        }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 7
-        let endpoint = url.lastPathComponent
         let startedAt = Date.now
         do {
             let (data, response) = try await playerSession.data(for: request)
             guard let http = response as? HTTPURLResponse else {
                 throw LyricsLookupError(kind: .network("invalid response"))
             }
+            SpotifyRequestGate.webAPI.recordResponse(
+                data: data,
+                response: http,
+                purpose: purpose,
+                endpoint: endpoint
+            )
             let elapsed = Date.now.timeIntervalSince(startedAt)
             if elapsed >= 2 || http.statusCode != 200 {
                 DiagnosticsLog.append(
@@ -565,6 +583,11 @@ final class SpotifyProvider: PlaybackProvider {
             }
             return (data, http)
         } catch {
+            SpotifyRequestGate.webAPI.recordTransportFailure(
+                error: error,
+                purpose: purpose,
+                endpoint: endpoint
+            )
             let elapsed = Date.now.timeIntervalSince(startedAt)
             DiagnosticsLog.append(
                 "Spotify \(endpoint) failed after \(String(format: "%.1f", elapsed))s: \(error.localizedDescription)"
@@ -1066,15 +1089,11 @@ final class SpotifyProvider: PlaybackProvider {
 
     private func maybeCrossCheckRecentlyPlayed(generation: UInt64) async {
         guard ownsPoll(generation) else { return }
-        // A commanded skip already has echo protection. External skips do not
-        // pass through this process, so the aggressive session needs a small
-        // bounded history check as well. The five-second interval keeps this
-        // useful while locked without turning the one-second player poll into
-        // a second high-rate Spotify request stream.
-        let isTransition = isStalledPause || rapidProbesLeft > 0
-        guard isTransition || aggressiveBackgroundMode else { return }
+        // History is not a routine companion to playback polling. Use one
+        // sparse check only after the bounded stale-pause detector has fired.
+        guard isStalledPause, rapidProbesLeft > 0 else { return }
         if let last = lastRecentlyPlayedCheckAt,
-           Date.now.timeIntervalSince(last) < (isTransition ? 2.5 : Self.aggressiveRecentlyPlayedInterval) {
+           Date.now.timeIntervalSince(last) < Self.aggressiveRecentlyPlayedInterval {
             return
         }
 
@@ -1087,12 +1106,39 @@ final class SpotifyProvider: PlaybackProvider {
 
         guard let token = try? await auth.validAccessToken(),
               ownsPoll(generation) else { return }
-        var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player/recently-played?limit=5")!)
+        let url = URL(string: "https://api.spotify.com/v1/me/player/recently-played?limit=5")!
+        let purpose = "history.stale-pause-recovery"
+        guard SpotifyRequestGate.webAPI.beginRequest(purpose: purpose, endpoint: url.path) else {
+            noteActiveRateLimit()
+            return
+        }
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 10
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              ownsPoll(generation),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
+        let responsePair: (Data, URLResponse)
+        do {
+            responsePair = try await playerSession.data(for: request)
+        } catch {
+            SpotifyRequestGate.webAPI.recordTransportFailure(
+                error: error,
+                purpose: purpose,
+                endpoint: url.path
+            )
+            return
+        }
+        let (data, response) = responsePair
+        guard ownsPoll(generation), let http = response as? HTTPURLResponse else { return }
+        SpotifyRequestGate.webAPI.recordResponse(
+            data: data,
+            response: http,
+            purpose: purpose,
+            endpoint: url.path
+        )
+        if http.statusCode == 429 {
+            noteActiveRateLimit()
+            return
+        }
+        guard http.statusCode == 200,
               let decoded = try? JSONDecoder().decode(RecentlyPlayedResponse.self, from: data),
               let newest = decoded.items.first else { return }
 
@@ -1191,15 +1237,34 @@ final class SpotifyProvider: PlaybackProvider {
 
     private func transportCall(url: URL, method: String = "PUT") async -> Bool {
         guard var token = try? await auth.validAccessToken() else { return false }
+        let purpose = "control.\(url.lastPathComponent)"
+        let endpoint = url.path
         var retried401 = false
         while true {
+            guard SpotifyRequestGate.webAPI.beginRequest(
+                purpose: purpose,
+                endpoint: endpoint
+            ) else {
+                noteActiveRateLimit()
+                return false
+            }
             var request = URLRequest(url: url)
             request.httpMethod = method
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 10
             do {
-                let (_, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await playerSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else { return false }
+                SpotifyRequestGate.webAPI.recordResponse(
+                    data: data,
+                    response: http,
+                    purpose: purpose,
+                    endpoint: endpoint
+                )
+                if http.statusCode == 429 {
+                    noteActiveRateLimit()
+                    return false
+                }
                 if http.statusCode == 401, !retried401 {
                     retried401 = true
                     auth.invalidateAccessToken()
@@ -1217,6 +1282,11 @@ final class SpotifyProvider: PlaybackProvider {
                 }
                 return false
             } catch {
+                SpotifyRequestGate.webAPI.recordTransportFailure(
+                    error: error,
+                    purpose: purpose,
+                    endpoint: endpoint
+                )
                 return false
             }
         }
@@ -1305,12 +1375,16 @@ protocol PlaybackProvider: AnyObject {
     var isPlaybackConfirmedStopped: Bool { get }
     var isLoopLikelyAlive: Bool { get }
     var isWaitingForRateLimit: Bool { get }
+    var spotifyWebAPICooldownUntil: Date? { get }
+    var spotifyOAuthCooldownUntil: Date? { get }
 
     func start()
     func stop()
     func kick()
     func setAggressiveBackgroundMode(_ enabled: Bool)
     func burst(count: Int)
+    func adoptSpotifyWebAPICooldown(until deadline: Date?)
+    func adoptSpotifyOAuthCooldown(until deadline: Date?)
     func next() async -> Bool
     func previous() async -> Bool
     func seek(to position: TimeInterval) async -> Bool

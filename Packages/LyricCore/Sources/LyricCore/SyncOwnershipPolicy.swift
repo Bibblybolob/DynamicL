@@ -7,9 +7,14 @@ public enum SyncOwnershipPolicy {
         loopIsAlive: Bool,
         lastSuccessfulPollAge: TimeInterval?,
         isWarmingUp: Bool,
+        isRateLimited: Bool = false,
         maximumPollAge: TimeInterval = 8
     ) -> Bool {
         if isForeground && isWarmingUp { return true }
+        // A 429 is a successful instruction from Spotify to retain the last
+        // trusted anchor and wait. Keep the phone lease while its loop is alive
+        // so the same cooldown is not handed to a competing server poller.
+        if loopIsAlive && isRateLimited { return true }
         guard loopIsAlive,
               let lastSuccessfulPollAge,
               lastSuccessfulPollAge.isFinite,

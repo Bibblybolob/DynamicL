@@ -4,6 +4,39 @@ import XCTest
 
 @MainActor
 final class LAAnimatedComponentsTests: XCTestCase {
+    func testExportedScheduleMatchesScrollerAcrossAnImminentBoundary() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let document = LyricsDocument(
+            track: .init(title: "Trace", artist: "Artist", duration: 30),
+            lines: [.init(time: 0, text: "intro"), .init(time: 10, text: "verse"), .init(time: 20, text: "chorus")]
+        )
+        for offset in [-2.0, 0, 1.25] {
+            for rate in [0.5, 1, 2] {
+                let status = PlaybackStatus(state: .playing, position: 9.98 + offset, rate: rate, timestamp: now)
+                let engine = SyncEngine(userOffset: offset)
+                engine.update(document: document)
+                engine.update(status: status)
+                let batch = LyricBatchBuilder.make(
+                    document: document, position: try XCTUnwrap(engine.currentPosition(at: now)),
+                    offset: offset, now: now, rate: rate, trackID: "trace-track"
+                )
+                let schedule = batch.lines.map {
+                    WidgetLyricSnapshot.ScheduledLine(date: Date(timeIntervalSince1970: $0.startEpoch), text: $0.text,
+                                                      endDate: Date(timeIntervalSince1970: $0.endEpoch))
+                }
+                // Render after the imminent boundary, without another app update.
+                let renderDate = now.addingTimeInterval(0.04 / rate)
+                let resolved = LAScheduledLyricText.resolveLines(
+                    currentLine: try XCTUnwrap(engine.currentLine(at: now)?.text), nextLine: "verse",
+                    scheduledLines: schedule, karaokeStartDate: nil, karaokeEndDate: nil,
+                    playbackEndDate: nil, at: renderDate
+                )
+                XCTAssertEqual(resolved.current, engine.currentLine(at: renderDate)?.text,
+                               "offset=\(offset), rate=\(rate)")
+            }
+        }
+    }
+
     func testTrackEndClearsTheFinalScheduledLyric() {
         let start = Date(timeIntervalSince1970: 1_700_000_010)
         let end = Date(timeIntervalSince1970: 1_700_000_020)
@@ -58,50 +91,27 @@ final class LAAnimatedComponentsTests: XCTestCase {
         XCTAssertEqual(resolved.endDate, end)
     }
 
-    func testRecoveryDatesWakeAfterBoundariesWereMissedOffscreen() {
+    func testOnlyKnownBoundariesAreRequestedWithoutSyntheticRecoveryTicks() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let lines = [
-            WidgetLyricSnapshot.ScheduledLine(
-                date: now.addingTimeInterval(10),
-                text: "first",
-                endDate: now.addingTimeInterval(20)
-            ),
-            WidgetLyricSnapshot.ScheduledLine(
-                date: now.addingTimeInterval(20),
-                text: "second",
-                endDate: now.addingTimeInterval(30)
-            )
-        ]
-
-        let dates = LAScheduledLyricText.makeRefreshDates(
-            now: now,
-            scheduledLines: lines,
-            playbackEndDate: now.addingTimeInterval(180)
-        )
-
-        let becameVisible = now.addingTimeInterval(23)
-        let nextWake = dates.first { $0 > becameVisible }
-        XCTAssertNotNil(nextWake)
-        XCTAssertLessThanOrEqual(
-            nextWake?.timeIntervalSince(becameVisible) ?? .infinity,
-            5
-        )
-        XCTAssertTrue(dates.contains(now.addingTimeInterval(10)))
-        XCTAssertTrue(dates.contains(now.addingTimeInterval(20)))
+        let start = now.addingTimeInterval(10)
+        let end = now.addingTimeInterval(20)
+        XCTAssertEqual(LAScheduledLyricText.makeRefreshDates(
+            now: now, scheduledLines: [.init(date: start, text: "line", endDate: end)],
+            playbackEndDate: now.addingTimeInterval(600)
+        ), [now, start, end, now.addingTimeInterval(600)])
     }
 
-    func testRecoveryDatesStayInsideTheBoundedWindow() {
+    func testExhaustedBatchDoesNotHoldItsLastLineUntilTrackEnd() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let dates = LAScheduledLyricText.makeRefreshDates(
-            now: now,
-            scheduledLines: [],
-            playbackEndDate: now.addingTimeInterval(600)
+        let resolved = LAScheduledLyricText.resolveLines(
+            currentLine: "intro", nextLine: "verse",
+            scheduledLines: [.init(date: now.addingTimeInterval(10), text: "verse",
+                                   endDate: now.addingTimeInterval(20))],
+            karaokeStartDate: now, karaokeEndDate: now.addingTimeInterval(10),
+            playbackEndDate: now.addingTimeInterval(240), at: now.addingTimeInterval(21)
         )
-
-        XCTAssertTrue(dates.contains(now.addingTimeInterval(600)))
-        let recoveryDates = dates.filter { $0 < now.addingTimeInterval(600) }
-        XCTAssertEqual(recoveryDates.last, now.addingTimeInterval(135))
-        XCTAssertLessThanOrEqual(recoveryDates.count, 28)
+        XCTAssertEqual(resolved.current, "♪")
+        XCTAssertNil(resolved.next)
     }
 }
 #endif
