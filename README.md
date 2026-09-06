@@ -1,328 +1,160 @@
 # OpenLyrics
 
 OpenLyrics displays time-synced lyrics for the track that is playing.
-It shows lyrics on the Lock Screen, Home Screen, Dynamic Island, and Apple Watch.
+Widgets are the primary customizable experience. Live Activity, Dynamic Island,
+and Apple Watch remain supported companion surfaces.
 
-## Status
+## Release status
 
-Development continues.
+The latest verified beta is **1.2.0 (55)**. App Store Connect reports build 55 as
+**VALID**, verified September 6, 2026. See the [release notes](Docs/RELEASE-55.md)
+for delivered scope, test results, and remaining device checks.
 
-- The current beta build is version 1.2.0, build 43.
-- Build 43 is a private beta build.
-- TestFlight distributes this build for beta testing.
+The expanded **Widget Studio**, 50-theme catalog, richer artwork templates and
+additional fonts are an [architecture proposal](Docs/WIDGET-STUDIO-PLAN.md).
+They are not included in build 55. Earlier release behavior may differ from the
+current implementation; avoid using historical timing claims as guarantees.
 
-| Feature | Status |
-|---|---|
-| LRC parsing and lyric synchronization | Complete |
-| Spotify integration with PKCE authentication and polling | Complete |
-| Lock Screen Live Activity and Dynamic Island lyrics | Complete |
-| Home Screen and Lock Screen widgets | Complete |
-| Adaptive lyric size and overflow protection | Complete |
-| Play and pause from widgets | Complete |
-| Apple Watch app and complications | Complete |
-| Lyric cache across app launches | Complete |
-| Lyric lookup retry and recovery | Complete |
-| Automatic server-based Live Activity updates | Complete |
-| Live Activity layout, artwork, alignment, and control settings | Complete |
-| Apple Music integration | Planned |
+## Customize widgets
 
-## Current release candidate
+Open **Customize Widgets** in the app to create a design. Add **OpenLyrics
+Widgets** to the Home Screen or **OpenLyrics Lock Screen** to the Lock Screen,
+then select a preset or saved design in **Edit Widget**.
 
-Build 43, version 1.2.0, is a private beta and includes these changes:
+Build 55 supports:
 
-- The server completes a pending lyric schedule while the phone owns playback updates.
-- The server sends a lyric schedule that was saved but not sent during the ownership handoff.
-- The server does not send old lyrics after the phone reports a different Spotify track.
-- A failed APNs lyric update remains eligible for retry.
-- A local lyric request stops after a fixed time and starts a replacement request.
-- LRCLIB requests use a shorter timeout so the app can recover sooner.
+- Minimal, Lyrics Focus and Lyric Stack presets.
+- Font, bounded size, weight, alignment, lyric context and context opacity.
+- Song-title and artist visibility; Lyric Stack highlight corners.
+- Accent/background colors and system, solid, gradient or album-derived backgrounds.
+- Independent design selection and text-size overrides for each widget instance.
+- Shared designs that intentionally share edits; **Duplicate Design** creates an
+  independent look.
+- Local previews until Save. Unchanged saves do not reload widgets; changed saves
+  reload only the two configurable widget kinds.
 
-- The app handles a confirmed Spotify stop one time for each playback session.
-- Repeated stopped-state checks cannot bypass the five-second heartbeat limit.
-- Idle playback does not send a continuous heartbeat request loop to the sync server.
+The Home Screen configuration supports Small, Medium and Large. The Lock Screen
+configuration supports Inline, Rectangular and Circular. Circular widgets show
+playback status; rectangular and inline widgets prioritize current lyrics.
+System tint, glass appearance, and background removal can alter custom colors.
 
-- The Spotify poller waits between requests and does not enter a request loop.
-- Repeated play, pause, and skip events create only one immediate Spotify check.
-- A Spotify check stops after seven seconds if the connection does not respond.
-- The app replaces a stopped Spotify connection before it tries again.
+Existing widget kinds remain available:
 
-- The app checks Spotify's current track endpoint before it checks the full player state.
-- The app confirms an empty Spotify response before it reports that playback stopped.
-- A timed-out Spotify check shows a retry message and does not remain silent.
-- The app uploads ActivityKit tokens only when a token changes.
-- The server uses the same Spotify playback fallback as the app.
+| Widget | Families |
+| --- | --- |
+| Current Line | Small, Medium, Large, Extra Large; Inline, Circular, Rectangular |
+| Album Player | Small, Medium |
+| Lyric Focus | Medium, Large |
+| Minimal Lyrics | Small, Medium, Large |
+| Album Card | Small, Medium |
+| Karaoke Focus | Medium, Large |
+| Lyrics Poster | Small, Medium, Large |
+| Waveform Player | Small, Medium, Large |
+| Album Stack | Medium, Large |
+| Lock Screen Lyrics | Inline, Circular, Rectangular |
+| Lock Screen Album | Circular, Rectangular |
+| Lock Screen Quote | Inline, Rectangular |
+| Vinyl Player | Small, Circular |
 
-- The Start Lock Screen Lyrics button always creates a Live Activity.
-- Automatic Lyrics creates a waiting Live Activity after a short Spotify delay.
-- The waiting state uses clear text and updates when Spotify returns the track.
-- The watchdog restarts a Spotify poller that has no successful response.
-- The app shows when it is checking Spotify playback.
+Extra Large is declared for Current Line but is not an iPhone widget size; the
+project currently targets iPhone. Some legacy layouts include playback and
+refresh buttons. Vinyl motion and other continuous effects are not guaranteed
+by WidgetKit.
 
-- App activation does not cancel a working Spotify polling loop.
-- A canceled Spotify request retries and does not remain as an error.
-- The polling watchdog can recover before the first playback sample arrives.
-- The Live Activity waits for current Spotify track data before it starts.
-- The phone remains the update owner while its Spotify data is current.
-- The server takes ownership after the phone heartbeat stops.
+## Appearance compatibility
 
-- A partial Spotify response cannot clear a valid widget snapshot during a track change.
-- The app sends one WidgetKit reload request for all widget styles.
-- The Live Activity does not stop direct lyric updates after a dense lyric minute.
-- A background phone yields update ownership to the APNs server.
-- A foreground phone keeps ownership only while Spotify data is current.
+**Live Activity Style** continues to use the existing `LAStylePrefs` app-group
+record for Live Activity and legacy static widgets. It provides themes, fonts,
+layout, artwork, surface, alignment and visibility settings. Its karaoke setting
+also affects the in-app lyric scroller.
 
-- Lyric-line changes use the urgent local ActivityKit queue.
-- Server lyric-line changes use APNs priority 10.
-- The Live Activity uses a positive relevance score for Lock Screen and Dynamic Island presentation.
-- Routine schedule refills and keepalive updates remain low priority.
-- The existing Heroku web dyno runs the polling loop when a separate worker dyno is off.
+The two configurable widget kinds use a separate `WidgetAppearance` and
+`WidgetDesignStore` catalog. Editing their designs does not change Live Activity
+preferences. Four system font styles and six bundled families are available:
+Bungee, Bebas Neue, Baloo 2, Pacifico, Playfair Display and Space Grotesk.
 
-- The iPhone sends a direct Live Activity update at each lyric boundary while the app process runs.
-- Each direct update keeps a future lyric schedule for app suspension.
-- Dense lyrics use a bounded update rate to reduce ActivityKit throttling.
+## Playback, snapshots and reliability
 
-- A new Live Activity clears an obsolete server dismissal.
-- The app ignores a dismissal response from a session that existed before a direct restart.
-- Repeated taps cannot start overlapping ActivityKit replacement tasks.
-- The start button shows when recovery is in progress.
+The iPhone's accepted playback state feeds the shared LyricCore timing engine.
+It publishes a versioned `WidgetLyricSnapshot` to app group
+`group.com.jonathantran.dynamicallyrics.la`. The snapshot contains playback
+anchors, ordered lyric intervals, track identity, artwork references and
+publication ordering. Artwork is stored in a bounded shared file cache.
 
-- The app ignores dismissed Live Activities left by an earlier TestFlight build.
-- A direct start clears stale phone and server dismissal gates.
-- The main screen has a visible Start Lock Screen Lyrics recovery button.
-- The app shows a Live Activity start error when ActivityKit rejects a request.
+Widgets consume the existing snapshot and precomputed timeline. Appearance
+changes do not request Spotify playback or acquire lyrics. Ordinary lyric
+progression does not require a new snapshot or manual reload for every line.
+Pause, seek, track changes and corrected lyrics update the schedule through the
+existing publication path. Track-end and schedule-expiration boundaries are
+preserved. Actual timeline presentation remains controlled by WidgetKit.
 
-- Rapid skip commands run in order.
-- A skip wakes the current Spotify poll without cancelling an in-flight poll.
-- Live Activity updates keep the newest track during a rapid skip sequence.
+Live Activity remains functional through phone updates and the APNs server.
+Healthy phone heartbeats grant a 15-second lease; the current Heroku v2 worker
+skips Spotify acquisition during that lease. In-flight requests can still overlap
+a handoff. The server can take over when the phone stops renewing its lease.
 
-- The app rejects a Spotify response from an old or canceled poll.
-- A lyric request uses the Spotify track ID as its primary identity.
-- A late lyric request cannot replace lyrics for a new track.
-- Play, pause, and seek changes update the Live Activity while lyrics load.
-- The app clears an old dismissal flag that can block all Live Activities.
-- The app accepts a server dismissal only when the phone reports it.
-- An expired APNs token does not count as a user dismissal.
-- Live Activity timelines use explicit lyric start and end times.
-- A widget always returns to idle at the real end of a track.
+A cached schedule cannot discover an unobserved pause, seek or track change.
+An ActivityKit push does not update the widget's app-group snapshot. Accurate
+schedule data also does not guarantee continuously executing arbitrary text
+animations in a suspended Live Activity. See the [timing audit](Docs/ANCHORED-LYRICS.md).
 
-- The phone remains the primary Live Activity update source.
-- A 15-second lease prevents the phone and server from writing at the same time.
-- The server can start one Live Activity when Spotify starts and the app is closed.
-- The phone and server use the same version 2 playback fields and lyric offset.
-- All new server timestamps use Unix epoch seconds.
-- The Live Activity uses explicit lyric start and end boundaries.
-- Each Activity content state stays below 3.5 KB.
-- Partial Spotify data does not remove valid track data or artwork.
-- A verified new track cannot use artwork from the previous track.
-- Artwork uses a four-image, 2 MB file cache in the app group.
-- Cache disk work is debounced away from the main actor.
-- Widget and server commands use IDs and expire after eight seconds.
-- The sync server status reports owner, readiness, payload size, and delivery state.
-- Watch lyrics advance from the last received local schedule.
-- The app can share a rotated diagnostic log from the sync server settings.
-
-- The app uses the OpenLyrics name.
-- The app uses the selected OpenLyrics artwork.
-- The Live Activity uses a bounded lyric area.
-- Long lyric lines wrap or reduce in size inside the lyric area.
-- The app sends Live Activity updates in order.
-- The app uses a 0.5-second minimum gap between lyric updates.
-- The Live Activity supports layout, artwork, alignment, and control settings.
-- The vinyl widget can show static artwork when animation is off.
-- The Now Playing screen shows album artwork and playback state.
-- The app downloads a reduced album image in the app process.
-- Widgets and Live Activities use the file-backed image cache for the current track.
-- The artwork cache rejects an image from a different track.
-- Watch payloads carry one bounded artwork copy when the Watch needs it.
-- Live Activities refresh when pending artwork becomes ready.
-- The app can retry a failed lyric lookup.
-- The app provides Minimal Lyrics, Album Card, Karaoke Focus, Lyrics Poster,
-  Waveform Player, and Album Stack widgets.
-- The app provides Lock Screen Lyrics, Lock Screen Album, and Lock Screen Quote
-  widgets.
-- The watch extension provides Karaoke Lyrics and Album Player widgets.
-- All iPhone widget styles refresh when the track or artwork changes.
-- The vinyl widget downloads artwork once for each timeline.
-- Live Activity artwork can recover from the shared cache.
-- The main lyrics view centers the active line when it opens.
-- Plain lyrics use estimated times across the track duration.
-- The iPhone sends the current snapshot to the Watch app and Watch widgets.
-
-## Live Activity update ownership
-
-The app sends a heartbeat every five seconds while Spotify data is healthy.
-The heartbeat gives the phone a 15-second update lease.
-The server continues to poll Spotify, but it does not send an update during this lease.
-The server becomes the writer after the lease expires.
-
-The server polls every five seconds during playback.
-It polls every 10 seconds when playback is stopped.
-On iOS 17.2 or later, the server can use the push-to-start token to start one
-Live Activity for a new playback session. The app then registers the new
-Activity update token.
-
-## Beta 2 reliability changes
-
-- The phone and server send one batch of up to 32 future lyric lines to the
-  Live Activity.
-- The batch covers up to 75 seconds and includes exact Unix start and end
-  times.
-- The phone sends an urgent update for a track change, play state change, seek,
-  artwork change, or style change.
-- The phone and server send a low-priority schedule refill when fewer than
-  three future lines or fewer than 20 seconds remain.
-- A valid schedule changes the lyric inside the Live Activity. The app does
-  not send one ActivityKit update for every lyric line.
-- The widget snapshot stores a longer bounded song schedule. It also stores a
-  predicted track end. This lets WidgetKit return to idle when the phone is
-  suspended.
-- Partial Spotify responses keep the last trusted progress and artwork.
-- A verified new track cannot use artwork from the previous track.
-- A track that reaches its duration returns widgets, Watch, and Live Activity
-  surfaces to idle.
-- Automatic Lyrics is enabled by default. It starts the phone-owned lyric
-  session when Spotify playback begins. iOS controls background refresh.
-- The Live Activity remains available during a pause for up to 10 minutes.
-- The recovery button starts one phone-owned lyrics session and sends an
-  immediate Spotify probe when automatic activation is unavailable.
-- Play, pause, next, previous, and refresh actions use the phone first and the
-  server as a fallback. Commands have an ID and expire after eight seconds.
-- The iOS 18 OpenLyrics control is a toggle. Turn it on to start the local
-  lyrics session immediately. Turn it off to end the phone-owned session.
-  The Open Live Activity Lyrics Shortcut enables automatic lyrics without a
-  per-session Show Lyrics action.
-- The Start Lyrics Shortcut starts the local lyrics session immediately. You
-  can use it in a Shortcuts personal automation when Spotify opens.
-- Automatic Lyrics starts the Live Activity after the first Spotify playback
-  sample. The recovery button is available when automatic activation is not
-  ready. iOS can still suspend the app, so the server remains the recovery
-  authority.
-- Home Screen artwork and lyric widgets have a **Refresh lyrics** action. Use
-  it after a track change when WidgetKit has not yet reloaded its timeline.
-- The automatic lyrics request is consumed only once for each shortcut event.
-- Pause, play, seek, and skip commands update the local playback state before
-  the Spotify response arrives. The app uses the local Spotify client first
-  while it is running and uses the server as a fallback.
-
-## Widgets
-
-The app writes a `WidgetLyricSnapshot` to the shared app group.
-The widgets read this snapshot and load artwork by its cache key.
-The widgets do not connect to Spotify.
-
-The app group is `group.com.jonathantran.dynamicallyrics.la`.
-
-| Widget | Locations | Function |
-|---|---|---|
-| **Current Line** (`CurrentLineWidget`) | Home Screen small, medium, and large; Lock Screen circular, rectangular, and inline | Shows the current lyric line. Uses one timeline entry for each line. Sends a play or pause command. |
-| **Lock Screen Lyrics** (`LockscreenLyricWidget`) | Lock Screen circular, rectangular, and inline | Shows the current lyric line with serif italic text. Uses the Lock Screen tint. |
-| **Vinyl Player** (`VinylWidget`) | Home Screen small and Lock Screen circular | Shows album artwork in a record image. Rotates the record during playback. |
-| **Album Player** (`AlbumPlayerWidget`) | Home Screen small and medium | Shows album art, track details, lyrics, and playback controls. |
-| **Lyric Focus** (`LyricFocusWidget`) | Home Screen medium and large | Shows the current and next lyric lines. |
-| **Minimal Lyrics** (`MinimalLyricsWidget`) | Home Screen small, medium, and large | Shows lyrics in a text-only layout. |
-| **Album Card** (`AlbumCardWidget`) | Home Screen small and medium | Shows album art with track details and lyrics. |
-| **Karaoke Focus** (`KaraokeFocusWidget`) | Home Screen medium and large | Highlights the current lyric and shows the next line. |
-| **Lyrics Poster** (`LyricsPosterWidget`) | Home Screen small, medium, and large | Shows the current lyric as a bold quote card. |
-| **Waveform Player** (`WaveformPlayerWidget`) | Home Screen small, medium, and large | Shows the current lyric with a compact player and waveform. |
-| **Album Stack** (`AlbumStackWidget`) | Home Screen medium and large | Shows layered album artwork with the current lyric. |
-| **Lock Screen Album** (`LockscreenAlbumWidget`) | Lock Screen circular and rectangular | Shows album artwork, the track, and the current lyric. |
-| **Lock Screen Quote** (`LockscreenQuoteWidget`) | Lock Screen rectangular and inline | Shows the current lyric as a compact quotation. |
-| **Lyrics Live Activity** (`LyricsLiveActivity`) | Lock Screen and Dynamic Island | Shows the current and next lyric lines. Provides a play or pause button. |
-
-### Appearance settings
-
-The **Live Activity Style** screen provides these settings:
-
-- Player, Lyrics Focus, or Minimal layout
-- Vinyl, square, or hidden artwork
-- Gradient, glass, neon, paper, or outline card surface
-- Left or centered lyric text
-- Font and color theme
-- Lyric size
-- Karaoke sweep
-- Next-line and progress-bar visibility
-- Playback-control and track-detail visibility
-
-The app uses these settings in the Live Activity and widgets.
-The vinyl widget uses a static image when animation is off.
-
-### Playback control
-
-The play and pause buttons use the `ToggleLyricPlaybackIntent` App Intent.
-The intent writes a command with an ID to the shared `PlaybackCommandBus`.
-The app sends the command to the managed sync server when it is available.
-The server command is idempotent. If the server is not configured, the app calls
-Spotify directly.
-
-Playback control requires the Spotify `user-modify-playback-state` scope.
-If you connected Spotify before playback control was added, sign out in the app.
-Then sign in again and grant the scope.
-
-The app also requests the `user-read-recently-played` scope.
-This scope helps the app prevent stale track data after a skip.
-
-### Managed sync setup
-
-The app uses the managed OpenLyrics sync server. The user does not enter a
-server URL or access token. After Spotify sign-in and the first ActivityKit
-token, the app validates the Spotify session and stores a private server token
-in Keychain. The Spotify Client ID remains the only app-specific value.
+The app uses Spotify PKCE authentication and existing request-safety handling.
+Playback controls require `user-modify-playback-state`; the current integration
+also requests playback-reading and recently-played scopes. Reauthorize if an
+older sign-in did not grant playback control. Managed synchronization uses
+per-installation authentication; secrets belong in Keychain/server configuration,
+never in source control.
 
 ## Apple Watch
 
-- The Watch app shows the synced lyric line from the iPhone.
-- The iPhone sends the lyric line and a bounded future schedule through Connectivity.
-- The Watch advances lines from its local schedule when the iPhone is suspended.
-- Complications include circular, rectangular, inline, and corner layouts.
-- The Smart Stack includes a Current Line card.
-- Watch widgets include Karaoke Lyrics and Album Player styles.
+The phone sends snapshots through WatchConnectivity. The Watch advances its
+local schedule and uses its own snapshot storage. Existing watch widgets are
+Current Line (Inline, Circular, Rectangular and Corner), Lyrics Stack Card
+(Rectangular), Karaoke Lyrics (Rectangular), and Album Player (Circular and
+Rectangular). The new iOS design editor does not yet configure Watch widgets.
 
 ## Project layout
 
-```text
-├── DynamicallyricsApp/         # Main SwiftUI app target
-│   ├── App/                    # AppModel, Spotify, Live Activity, and sync code
-│   └── UI/
-├── LyricWidgets/               # iOS WidgetKit extension
-├── WatchApp/                   # watchOS companion app
-├── WatchWidgets/               # watchOS widget extension
-├── Packages/LyricCore/         # Swift package shared by all targets
-│   ├── LRCParser               # Parses .lrc files and the offset tag
-│   ├── LRCLIB                  # Gets lyrics from lrclib.net
-│   ├── Models / SyncEngine      # Shared playback state and timing logic
-│   ├── SharedNowPlaying         # App-group snapshot and file-backed artwork
-│   ├── PlaybackCommand         # ID-based playback command queue
-│   └── LyricsActivityAttributes # Live Activity data
-├── server/                     # Optional authenticated Cloudflare sync worker
-└── project.yml                 # XcodeGen project definition
-```
+| Path | Responsibility |
+| --- | --- |
+| `DynamicallyricsApp/App/` | AppModel, Spotify, lyrics, Live Activity and synchronization services |
+| `DynamicallyricsApp/UI/` | Main scroller, legacy appearance settings and widget gallery/editor |
+| `LyricWidgets/` | Configurable/legacy widgets, Live Activity, Control Center control and intents |
+| `Packages/LyricCore/` | Shared timing, snapshots, appearance models and rendering components |
+| `WatchApp/`, `WatchWidgets/` | Companion app and watch widgets |
+| `server/` | Heroku/PostgreSQL sync service; legacy Cloudflare paths retained |
+| `project.yml` | XcodeGen definition; canonical project is `Dynamicallyrics.xcodeproj` |
+| `Docs/` | Release notes, audits and proposals with their implementation status |
 
-## Build the app
+Some shipped work remains uncommitted in the local checkout. The release notes
+identify the verified binary; a source checkout should be assessed by its own
+commit and working-tree state.
 
-The build requires Xcode 16 or later, Swift 6, and XcodeGen.
+## Build and test
+
+Use Xcode with the required SDKs, Swift 6, and XcodeGen. The deployment targets
+are iOS 18 and watchOS 10. Build 55 was validated with Xcode 26.6.
 
 ```sh
-xcodegen generate   # Regenerates Dynamicallyrics.xcodeproj from project.yml
+xcodegen generate
 open Dynamicallyrics.xcodeproj
-```
-
-The iOS target requires iOS 18 or later.
-The watchOS target requires watchOS 10 or later.
-
-Enter the Spotify client ID in the app.
-Use `dynamicallyrics://callback` as the redirect URI.
-
-## Run the tests
-
-LyricCore uses Swift Package Manager tests.
-
-```sh
+xcodebuild -project Dynamicallyrics.xcodeproj -scheme Dynamicallyrics -destination 'generic/platform=iOS' build
 swift test --package-path Packages/LyricCore
 ```
 
-The sync server tests run with:
+The Watch scheme is `DynamicallyricsWatch`. Device builds require appropriate
+local signing. Enter the Spotify Client ID in the app and configure
+`dynamicallyrics://callback` as its redirect URI.
+
+For server changes, use Node 22 and the commands in [server/README.md](server/README.md):
 
 ```sh
 cd server
+npm install
 npm test
 ```
+
+Build 55 passed 100 XCTest tests plus 38 Swift Testing tests, the generic iOS
+build, simulator build, Release archive and code-signature verification.
+Real-device checks still need to cover widget configuration, saved-design
+independence, app upgrades, all rendering appearances, and playback transitions.
